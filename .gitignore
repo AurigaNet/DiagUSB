@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Build
+build/dist/
+dist/
+*.spec.tmp
+*.pyz
+
+# Tools descargadas localmente
+/tools/downloads/
+/tools/cache/
+/tools/staging/
+/tools/*.tmp
+/tools/*.part
+
+# Reports and hashes
+SHA256SUMS
+
+# Windows
+Thumbs.db
+desktop.ini

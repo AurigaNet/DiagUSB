@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "generated_at": null,
+  "notes": [
+    "No inventar versiones, hashes ni URLs.",
+    "Toda entrada con sha256 null o URL no confirmada debe fallar cerrado en fetch_tools.",
+    "Los binarios de terceros no se redistribuyen en este repositorio."
+  ],
+  "tools": [
+    {
+      "name": "Ventoy",
+      "official_domain": null,
+      "url": null,
+      "version": null,
+      "sha256": null,
+      "license": null,
+      "redistribuible": "verificar",
+      "estado": "pendiente"
+    },
+    {
+      "name": "SystemRescue",
+      "official_domain": null,
+      "url": null,
+      "version": null,
+      "sha256": null,
+      "license": null,
+      "redistribuible": "verificar",
+      "estado": "pendiente"
+    },
+    {
+      "name": "WinPE",
+      "official_domain": null,
+      "url": null,
+      "version": null,
+      "sha256": null,
+      "license": null,
+      "redistribuible": "verificar",
+      "estado": "pendiente"
+    },
+    {
+      "name": "memtest86+",
+      "official_domain": null,
+      "url": null,
+      "version": null,
+      "sha256": null,
+      "license": null,
+      "redistribuible": "verificar",
+      "estado": "pendiente"
+    },
+    {
+      "name": "Sysinternals",
+      "official_domain": null,
+      "url": null,
+      "version": null,
+      "sha256": null,
+      "license": null,
+      "redistribuible": "no",
+      "estado": "pendiente"
+    },
+    {
+      "name": "Npcap",
+      "official_domain": null,
+      "url": null,
+      "version": null,
+      "sha256": null,
+      "license": null,
+      "redistribuible": "requiere licencia OEM para redistribuir",
+      "estado": "pendiente"
+    }
+  ]
+}
