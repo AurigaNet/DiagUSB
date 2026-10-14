@@ -18,3 +18,9 @@
 - Se incorpora el aviso de copyright `Copyright (C) 2026 Daniel Ricardo Novoa (AurigaNet)` en la documentación principal y en cada archivo de código propio.
 - El proyecto no aceptará ni incorporará código de terceros con licencia incompatible con GPLv3.
 - Si en el futuro se incorpora, con aprobación explícita, código MIT de `machine_scanner` o `Apotrope`, habrá que conservar sus avisos en `THIRD_PARTY_NOTICES.md`.
+## 2026-10-13 - Colectores de impresión F1
+
+- Se implementan colectores separados para impresoras, puertos TCP/IP, drivers, servicio Spooler, cola de trabajos y eventos de `PrintService`.
+- Todos devuelven JSON con `schema_version`, `collector_id`, `query.status`, `context`, `data` y `errors`.
+- Para eventos se captura XML estructurado (`EventData`) y metadatos numéricos; no se parsea el mensaje localizado del evento.
+- La clasificación inicial de estado se resuelve en el propio colector: `ok` si hay datos, `empty` si la consulta devuelve cero elementos y `not_available`/`denied`/`timeout`/`error` si la ejecución lo reporta de forma explícita.

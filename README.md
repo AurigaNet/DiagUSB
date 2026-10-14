@@ -12,9 +12,10 @@ Este programa se distribuye con la esperanza de que sea útil, pero SIN NINGUNA 
 
 ## Estado del repositorio
 
-- F0 en curso: chasis, documentación legal, manifiesto de herramientas y scripts base.
-- Sin validación todavía sobre Windows real.
-- Sin evidencia todavía de colectores, reglas ni reportes funcionales.
+- F0 completada: chasis, documentación legal, manifiesto de herramientas y scripts base.
+- F1 en curso: colectores PowerShell de impresión y plantilla de permisos.
+- Sigue sin validación formal sobre Windows real controlado.
+- Los reportes, reglas y el comparador todavía no están implementados.
 
 ## Alcance inicial
 
