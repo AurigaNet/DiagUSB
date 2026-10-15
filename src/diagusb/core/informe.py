@@ -855,67 +855,50 @@ class _PdfDoc:
             objects.append(body)
             return len(objects)
 
+        # Reservamos los objetos 1 (Catalog) y 2 (Pages); se completan al final,
+        # cuando ya se conocen los ids de fuentes, contenidos y paginas.
+        objects.append(b"")
+        objects.append(b"")
+
         font_ids = {}
         for fname, base in _FONTS.items():
             font_ids[fname] = add(
                 f"<< /Type /Font /Subtype /Type1 /BaseFont /{base} /Encoding /WinAnsiEncoding >>".encode()
             )
+        font_res = " ".join(f"/{k} {v} 0 R" for k, v in font_ids.items())
 
         page_ids = []
-        content_ids = []
         for ops in self.pages:
             stream = "\n".join(ops).encode("cp1252", errors="replace")
-            content_ids.append(add(
-                b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + stream + b"\nendstream"
-            ))
-
-        font_res = " ".join(f"/{k} {v} 0 R" for k, v in font_ids.items())
-        for cid in content_ids:
-            page_ids.append(add(
+            cid = add(b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n"
+                      + stream + b"\nendstream")
+            pid = add(
                 f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {_PAGE_W:g} {_PAGE_H:g}] "
                 f"/Resources << /Font << {font_res} >> >> /Contents {cid} 0 R >>".encode()
-            ))
+            )
+            page_ids.append(pid)
 
         kids = " ".join(f"{p} 0 R" for p in page_ids)
-        # Reordenar: necesitamos ids fijos para 1=Catalog 2=Pages.
-        # Reconstruimos con la convencion: obj1 Catalog, obj2 Pages, luego el resto.
-        catalog_body = b"<< /Type /Catalog /Pages 2 0 R >>"
-        pages_body = f"<< /Type /Pages /Kids [{kids}] /Count {len(page_ids)} >>".encode()
+        objects[0] = b"<< /Type /Catalog /Pages 2 0 R >>"
+        objects[1] = f"<< /Type /Pages /Kids [{kids}] /Count {len(page_ids)} >>".encode()
 
-        # Mapear: los objetos ya agregados arrancan en 1 (fonts...). Reconstruimos
-        # la lista completa renumerando: 1 catalog, 2 pages, 3.. fonts, luego pages/contents.
-        final: list[bytes] = [catalog_body, pages_body]
-        # fonts ya estan en objects[0:len(fonts)] con ids 1..len; los remapeamos:
-        remap = {}
-        for old_id in range(1, len(objects) + 1):
-            remap[old_id] = len(final) + 1
-            final.append(objects[old_id - 1])
-        # parchear referencias /Parent 2 0 R ya correcto; /Contents y fonts ids:
-        patched = []
-        font_remap_str = " ".join(f"/{k} {remap[font_ids[k]]} 0 R" for k in font_ids)
-        for i, body in enumerate(final):
-            if body.startswith(b"<< /Type /Page "):
-                s = body.decode()
-                for fname, fid in font_ids.items():
-                    s = s.replace(f"/{fname} {fid} 0 R", f"/{fname} {remap[fid]} 0 R")
-                patched.append(s.encode())
-            else:
-                patched.append(body)
-        final = patched
-
+        # Los offsets se calculan sobre bytes (out es bytearray), nunca sobre
+        # caracteres, y /Length es la longitud real en bytes del stream.
         out = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
-        offsets = [0]
-        for idx, body in enumerate(final, 1):
+        offsets = []
+        for idx, body in enumerate(objects, 1):
             offsets.append(len(out))
             out += f"{idx} 0 obj\n".encode()
             out += body
             out += b"\nendobj\n"
+
+        n = len(objects)
         xref_pos = len(out)
-        out += f"xref\n0 {len(final) + 1}\n".encode()
+        out += f"xref\n0 {n + 1}\n".encode()
         out += b"0000000000 65535 f \n"
-        for off in offsets[1:]:
+        for off in offsets:
             out += f"{off:010d} 00000 n \n".encode()
-        out += (f"trailer\n<< /Size {len(final) + 1} /Root 1 0 R >>\n"
+        out += (f"trailer\n<< /Size {n + 1} /Root 1 0 R >>\n"
                 f"startxref\n{xref_pos}\n%%EOF\n").encode()
         return bytes(out)
 
