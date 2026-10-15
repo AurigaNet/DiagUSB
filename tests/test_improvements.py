@@ -11,9 +11,15 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent))
+
+from validar_pdf import validar_pdf
 
 from diagusb.core import knowledge_base as kb
 from diagusb.core.informe import (
+    InformeColector,
+    InformeData,
+    InformeProblema,
     _resumen_datos,
     codigo_verificacion,
     informe_a_doc,
@@ -1277,6 +1283,74 @@ def test_banner_flush():
     assert "USB" in f.getvalue()
 
 
+def _pdf_caso_base(**kw) -> InformeData:
+    e = InformeData(generado_en="2026-10-15T21:00:00",
+                    paquete={"label": "Disco", "symptom": "lento"})
+    e.equipo = {"computer_name": "PC-01", "user": "ti", "is_elevated": False,
+                "os": "Windows 10", "os_version": "10.0.19045", "build": "19045"}
+    e.resumen = {"colectores_total": 3, "colectores_ok": 3, "colectores_error": 0,
+                 "problemas_total": 1, "criticos": 0, "errores": 0, "advertencias": 1}
+    for k, v in kw.items():
+        setattr(e, k, v)
+    return e
+
+
+def _pdf_casos() -> dict:
+    """Casos de la ronda 6: normal, fuera de cp1252, parentesis/barras, mucho, vacio."""
+    def prob(titulo, detalle=None):
+        return InformeProblema(indice=1, severidad="warning", colector="logical_disks",
+                               titulo=titulo, detalle=detalle or {}, recomendacion="revise",
+                               soluciones=["opcion A", "opcion B"])
+
+    casos = {}
+    casos["normal"] = _pdf_caso_base(
+        problemas=[prob("Espacio limitado en disco C: 15.0% libre",
+                        {"device_id": "C:", "free_percent": 15.0, "size_gb": 512})],
+        colectores=[InformeColector("logical_disks", "ok", 120, ["C: 15% libre, 512 GB"], [])],
+        recomendaciones=["Libere espacio."])
+
+    casos["no_cp1252"] = _pdf_caso_base(
+        problemas=[prob("Emoji 😀 cirílico Привет chino 中文 comillas “x” guion — ok",
+                        {"model": "Samsung SSD “EVO” — 500GB 🚀"})],
+        observaciones="Привет 中文 😀 – — ‘ ’ “ ”",
+        colectores=[InformeColector("logical_disks", "ok", 10, ["привет 中文 😀"], [])])
+
+    casos["parentesis_barras"] = _pdf_caso_base(
+        problemas=[prob("Ruta C:\\Windows\\System32 (x86) y (parentesis)",
+                        {"path": "C:\\Program Files (x86)\\algo\\(sub)"})],
+        observaciones="backslash \\ y (parentesis) y )cierre( ")
+
+    casos["mucho"] = _pdf_caso_base(
+        problemas=[prob(f"Problema numero {i} con texto de relleno " * 3,
+                        {"device_id": f"D{i}"}) for i in range(1, 40)],
+        colectores=[InformeColector(f"col{i}", "ok", i, [f"linea {j} " * 5 for j in range(10)], [])
+                    for i in range(1, 25)],
+        recomendaciones=[f"Recomendacion {i} " * 4 for i in range(1, 20)])
+
+    casos["vacio"] = _pdf_caso_base(problemas=[], colectores=[], recomendaciones=[],
+                                    observaciones="")
+    return casos
+
+
+def test_pdf_valido_casos():
+    for nombre, inf in _pdf_casos().items():
+        errores = validar_pdf(informe_a_pdf(inf))
+        assert not errores, f"{nombre}: {errores}"
+
+
+def test_pdf_validador_externo():
+    try:
+        import pypdf
+    except ImportError:
+        print("      (validador externo no disponible: NO VERIFICADO)")
+        return
+    import io
+    for nombre, inf in _pdf_casos().items():
+        r = pypdf.PdfReader(io.BytesIO(informe_a_pdf(inf)), strict=True)
+        assert len(r.pages) >= 1, f"{nombre}: sin paginas"
+        assert any((pg.extract_text() or "").strip() for pg in r.pages), f"{nombre}: sin texto"
+
+
 def run_tests():
     """Ejecuta todas las pruebas de esta suite."""
     tests = [
@@ -1329,6 +1403,8 @@ def run_tests():
         ("test_rutas_portables", test_rutas_portables),
         ("test_codigo_verificacion_informe", test_codigo_verificacion_informe),
         ("test_banner_flush", test_banner_flush),
+        ("test_pdf_valido_casos", test_pdf_valido_casos),
+        ("test_pdf_validador_externo", test_pdf_validador_externo),
     ]
 
     passed = 0
