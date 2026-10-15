@@ -159,10 +159,28 @@ jobs:
         with:
           name: diagusb-firmado
 
-      - name: Publicar el release con los archivos firmados
+      - name: Descargar el artefacto sin firma
+        if: env.HAS_SIGNPATH != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: diagusb-SIN-FIRMAR
+
+      - name: Publicar el release firmado
         if: env.HAS_SIGNPATH == 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
         run: |
-          gh release create "${{ github.ref_name }}" diagusb-firmado.zip SHA256SUMS.txt --title "${{ github.ref_name }}" --notes "Version firmada de DiagUSB."
+          gh release create "$env:TAG" diagusb-firmado.zip SHA256SUMS.txt --title "$env:TAG" --notes "Version firmada de DiagUSB."
+
+      - name: Publicar el release sin firma (prerelease)
+        if: env.HAS_SIGNPATH != 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$env:TAG" diagusb-SIN-FIRMAR.zip SHA256SUMS.txt --title "$env:TAG (SIN FIRMAR)" --prerelease --notes "Version SIN FIRMAR. Solo para pruebas. La regla ASR de Microsoft Defender 'Bloquear procesos no confiables y sin firmar que se ejecutan desde USB' bloquea esta version."
