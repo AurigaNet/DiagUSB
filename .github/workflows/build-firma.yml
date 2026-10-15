@@ -21,6 +21,23 @@ jobs:
       - name: Obtener el codigo
         uses: actions/checkout@v4
 
+      - name: Verificar la coherencia entre el tag y la version
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          $texto = Get-Content src\diagusb\_version.py -Raw
+          if ($texto -notmatch '__version__\s*=\s*"([^"]+)"') {
+            throw 'No se pudo leer __version__ de src/diagusb/_version.py'
+          }
+          $version = $Matches[1]
+          $esperado = "v$version"
+          Write-Host "Tag: $env:TAG | Version declarada: $version | Esperado: $esperado"
+          if ($env:TAG -ne $esperado) {
+            throw "El tag '$env:TAG' no coincide con 'v$version' declarado en src/diagusb/_version.py"
+          }
+
       - name: Instalar Python (misma version que el proyecto)
         uses: actions/setup-python@v5
         with:
