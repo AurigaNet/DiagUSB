@@ -108,6 +108,53 @@ def _snapshot_from_results(results: list) -> Snapshot:
     )
 
 
+_CLAVES_IDENTIDAD = ("smbios_uuid", "uuid", "bios_serial", "machine_guid",
+                     "serial_number")
+
+
+def _buscar_identificador(datos):
+    """Primer valor de identidad (UUID/serial) hallado en los datos."""
+    cola = [datos]
+    vistos = 0
+    while cola and vistos < 500:
+        actual = cola.pop(0)
+        vistos += 1
+        if isinstance(actual, dict):
+            for clave in _CLAVES_IDENTIDAD:
+                valor = actual.get(clave)
+                if isinstance(valor, str) and valor.strip():
+                    return valor.strip()
+            cola.extend(actual.values())
+        elif isinstance(actual, list):
+            cola.extend(actual)
+    return ""
+
+
+def _identidad_equipo(results) -> dict:
+    """Identidad visible del equipo: nombre y UUID/serial si estan disponibles."""
+    nombre = ""
+    ident = ""
+    for r in results or []:
+        if not isinstance(r, dict):
+            continue
+        ctx = r.get("context") or {}
+        if not nombre and str(ctx.get("computer_name") or "").strip():
+            nombre = str(ctx["computer_name"]).strip()
+        if not ident:
+            ident = _buscar_identificador(r.get("data"))
+    return {"computer_name": nombre, "hardware_id": ident}
+
+
+def _identidad_coincide(base: dict, actual: dict) -> bool:
+    """True si no se puede probar que los equipos sean distintos."""
+    for clave in ("computer_name", "hardware_id"):
+        a = str(base.get(clave) or "").strip().lower()
+        b = str(actual.get(clave) or "").strip().lower()
+        if a and b and a != b:
+            return False
+    return True
+
+
 def _parse_json_output(output: str):
     """Extrae el primer JSON valido (objeto o array) de la salida de PowerShell."""
     output = output.strip()
@@ -893,6 +940,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         let isRunning = false;
         let currentDiag = null;
         let lastDiffs = null;
+        let lastComparacionForzada = false;
 
         function escHtml(s) {
             const d = document.createElement('div');
@@ -971,6 +1019,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         function hideAcciones() {
             currentDiag = null;
             lastDiffs = null;
+            lastComparacionForzada = false;
             document.getElementById('accionesSection').style.display = 'none';
             document.getElementById('btnWord').style.display = 'none';
             document.getElementById('btnPdf').style.display = 'none';
@@ -1095,7 +1144,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 tecnico: (document.getElementById('tecnico') || {}).value || '',
                 cliente: (document.getElementById('cliente') || {}).value || '',
                 observaciones: (document.getElementById('observaciones') || {}).value || '',
-                diferencias: lastDiffs || []
+                diferencias: lastDiffs || [],
+                comparacion_forzada: !!lastComparacionForzada
             };
         }
 
@@ -1141,19 +1191,34 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             sec.scrollIntoView({behavior: 'smooth', block: 'nearest'});
         }
 
-        async function compareSnapshot() {
+        async function compareSnapshot(forzar) {
             if (!currentDiag) return;
             setStatus('running', 'Comparando contra el snapshot ANTES...');
             try {
                 const resp = await fetch('/api/compare', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({results: currentDiag.results || []})
+                    body: JSON.stringify({results: currentDiag.results || [], forzar: !!forzar})
                 });
                 const d = await resp.json();
+                if (resp.status === 409) {
+                    const msg = d.error || 'El snapshot ANTES pertenece a otro equipo.';
+                    if (confirm(msg + '  ¿Comparar de todos modos?')) {
+                        return compareSnapshot(true);
+                    }
+                    setStatus('ready', 'Comparación cancelada por el técnico.');
+                    return;
+                }
                 if (!resp.ok) throw new Error(d.error || ('HTTP ' + resp.status));
+                lastComparacionForzada = !!d.equipos_distintos;
                 renderDiff(d.diferencias || [], d.baseline_en);
-                setStatus('ready', 'Comparación lista: ' + (lastDiffs ? lastDiffs.length : 0) + ' diferencia(s). Incluirán en el informe.');
+                let texto = 'Comparación lista: ' + (lastDiffs ? lastDiffs.length : 0) + ' diferencia(s). Incluirán en el informe.';
+                if (lastComparacionForzada) {
+                    texto = 'ADVERTENCIA: comparación entre equipos distintos. ' + texto;
+                } else if (d.advertencia) {
+                    texto = d.advertencia + ' ' + texto;
+                }
+                setStatus(lastComparacionForzada ? 'error' : 'ready', texto);
             } catch (e) {
                 setStatus('error', 'Error al comparar: ' + e.message);
             }
@@ -1241,6 +1306,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 } else {
                     currentDiag = data;
                     lastDiffs = null;
+                    lastComparacionForzada = false;
                     document.getElementById('diffSection').style.display = 'none';
                     const nProblemas = (data.findings || []).length;
                     renderProblemas(data.findings || []);
@@ -1382,6 +1448,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
                 // Seccion de acciones del tecnico e informe (igual que un diagnostico individual)
                 lastDiffs = null;
+                lastComparacionForzada = false;
                 document.getElementById('diffSection').style.display = 'none';
                 currentDiag = {
                     package: 'full-scan',
@@ -2091,10 +2158,17 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
         try:
             payload = self._read_payload()
             results = payload.get("results") or []
-            doc = {"captured_at": datetime.now().isoformat(), "results": results}
+            ident = _identidad_equipo(results)
+            doc = {
+                "captured_at": datetime.now().isoformat(),
+                "computer_name": ident["computer_name"],
+                "hardware_id": ident["hardware_id"],
+                "results": results,
+            }
             almacen.escribir_json_atomico(BASELINE_PATH, doc, indent=1)
             self._json_response({"ok": True, "guardado_en": str(BASELINE_PATH),
                                  "collectors": len(results),
+                                 "computer_name": ident["computer_name"],
                                  "captured_at": doc["captured_at"]})
         except Exception as e:
             self._json_response({"error": str(e)}, 400)
@@ -2109,6 +2183,32 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
                 return
             payload = self._read_payload()
             base = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
+            ident_base = {
+                "computer_name": base.get("computer_name") or "",
+                "hardware_id": base.get("hardware_id") or "",
+            }
+            ident_actual = _identidad_equipo(payload.get("results") or [])
+            tiene_identidad = bool(ident_base["computer_name"] or ident_base["hardware_id"])
+            equipos_distintos = False
+            advertencia = ""
+            if tiene_identidad and not _identidad_coincide(ident_base, ident_actual):
+                if not payload.get("forzar"):
+                    nombre_guardado = ident_base["computer_name"] or "(sin nombre)"
+                    nombre_actual = ident_actual["computer_name"] or "(sin nombre)"
+                    self._json_response({
+                        "error": (f"El snapshot ANTES pertenece a otro equipo "
+                                  f"(guardado: '{nombre_guardado}', actual: "
+                                  f"'{nombre_actual}'). Confirme para comparar de "
+                                  f"todos modos."),
+                        "requiere_confirmacion": True,
+                        "equipo_guardado": nombre_guardado,
+                        "equipo_actual": nombre_actual,
+                    }, 409)
+                    return
+                equipos_distintos = True
+            elif not tiene_identidad:
+                advertencia = ("El snapshot ANTES no tiene identidad de equipo; se "
+                               "compara sin poder verificarla.")
             diffs = compare_snapshots(
                 _snapshot_from_results(base.get("results") or []),
                 _snapshot_from_results(payload.get("results") or []),
@@ -2116,6 +2216,8 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             self._json_response({
                 "ok": True,
                 "baseline_en": base.get("captured_at"),
+                "equipos_distintos": equipos_distintos,
+                "advertencia": advertencia,
                 "diferencias": [asdict(d) for d in diffs],
             })
         except Exception as e:
@@ -2158,6 +2260,7 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
                 cliente=payload.get("cliente", ""),
                 observaciones=payload.get("observaciones", ""),
                 diferencias=payload.get("diferencias"),
+                comparacion_forzada=bool(payload.get("comparacion_forzada")),
             )
             paquete = _paquete_seguro(diag["package"])
 

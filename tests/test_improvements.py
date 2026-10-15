@@ -1015,6 +1015,87 @@ def test_kb_corrupta_preservada():
         kb._cargar(force=True)
 
 
+def test_identidad_coincide_unitario():
+    import diagusb.web_server as ws
+
+    a = {"computer_name": "PC-A", "hardware_id": "S1"}
+    assert ws._identidad_coincide(a, {"computer_name": "pc-a", "hardware_id": "s1"})
+    assert not ws._identidad_coincide(a, {"computer_name": "PC-B", "hardware_id": "S1"})
+    assert not ws._identidad_coincide(a, {"computer_name": "PC-A", "hardware_id": "S2"})
+    assert ws._identidad_coincide(a, {"computer_name": "", "hardware_id": ""})
+
+    ident = ws._identidad_equipo([
+        {"context": {"computer_name": "PC-A"},
+         "data": {"bios": [{"serial_number": "XYZ"}]}}])
+    assert ident == {"computer_name": "PC-A", "hardware_id": "XYZ"}
+
+
+def test_identidad_equipo_comparacion():
+    import urllib.request
+    import urllib.error
+    import diagusb.web_server as ws
+
+    tmp = Path(tempfile.mkdtemp(prefix="diagusb_cmp_"))
+    old = ws.BASELINE_PATH
+    ws.BASELINE_PATH = tmp / "snapshot_antes.json"
+    httpd, base = _abrir_servidor()
+
+    def post_status(path, obj):
+        data = json.dumps(obj).encode("utf-8")
+        h = dict(_cookie())
+        h["Content-Type"] = "application/json"
+        req = urllib.request.Request(base + path, data=data, headers=h)
+        try:
+            r = urllib.request.urlopen(req, timeout=20)
+            return r.status, json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            return e.code, json.loads(e.read().decode("utf-8"))
+
+    def result(name, serial):
+        return {"collector_id": "hardware", "query": {"status": "ok"},
+                "context": {"computer_name": name},
+                "data": {"bios": [{"serial_number": serial}]}}
+
+    try:
+        st, _ = post_status("/api/snapshot", {"results": [result("PC-A", "SER-1")]})
+        assert st == 200
+        guardado = json.loads(ws.BASELINE_PATH.read_text(encoding="utf-8"))
+        assert guardado["computer_name"] == "PC-A"
+        assert guardado["hardware_id"] == "SER-1"
+
+        st, d = post_status("/api/compare", {"results": [result("PC-A", "SER-1")]})
+        assert st == 200 and d["equipos_distintos"] is False
+
+        st, d = post_status("/api/compare", {"results": [result("PC-B", "SER-9")]})
+        assert st == 409
+        assert d.get("requiere_confirmacion") is True
+        assert "PC-A" in d["error"] and "PC-B" in d["error"]
+
+        st, d = post_status("/api/compare",
+                            {"results": [result("PC-B", "SER-9")], "forzar": True})
+        assert st == 200 and d["equipos_distintos"] is True
+
+        ws.BASELINE_PATH.write_text(json.dumps(
+            {"captured_at": "2020-01-01T00:00:00", "results": [result("", "")]}),
+            encoding="utf-8")
+        st, d = post_status("/api/compare", {"results": [result("PC-A", "SER-1")]})
+        assert st == 200
+        assert d.get("advertencia")
+
+        data = json.dumps({"diagnostico": _diag_minimo(),
+                           "comparacion_forzada": True}).encode("utf-8")
+        h = dict(_cookie())
+        h["Content-Type"] = "application/json"
+        req = urllib.request.Request(base + "/api/report?format=doc",
+                                     data=data, headers=h)
+        texto = urllib.request.urlopen(req, timeout=30).read().decode("utf-8")
+        assert "ADVERTENCIA: la comparación se hizo entre equipos distintos" in texto
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        ws.BASELINE_PATH = old
+
+
 def run_tests():
     """Ejecuta todas las pruebas de esta suite."""
     tests = [
@@ -1058,6 +1139,8 @@ def run_tests():
          test_escritura_atomica_fallo_preserva_original),
         ("test_registro_corrupto_preservado", test_registro_corrupto_preservado),
         ("test_kb_corrupta_preservada", test_kb_corrupta_preservada),
+        ("test_identidad_coincide_unitario", test_identidad_coincide_unitario),
+        ("test_identidad_equipo_comparacion", test_identidad_equipo_comparacion),
     ]
 
     passed = 0

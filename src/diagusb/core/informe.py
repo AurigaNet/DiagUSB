@@ -276,6 +276,7 @@ class InformeData:
     cliente: str = ""
     observaciones: str = ""
     diferencias: list[dict] = field(default_factory=list)
+    advertencias: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -386,7 +387,8 @@ def informe_desde_diagnostico(diag: dict, acciones: list[dict] | None = None,
                               mejoras_acciones: list[dict] | None = None,
                               tecnico: str = "", cliente: str = "",
                               observaciones: str = "",
-                              diferencias: list[dict] | None = None) -> InformeData:
+                              diferencias: list[dict] | None = None,
+                              comparacion_forzada: bool = False) -> InformeData:
     """Construye el informe a partir del payload de /api/diagnose (o CLI)."""
     now = diag.get("timestamp") or datetime.now().isoformat()
 
@@ -482,6 +484,11 @@ def informe_desde_diagnostico(diag: dict, acciones: list[dict] | None = None,
     n_err = sum(1 for p in problemas if p.severidad == "error")
     n_warn = sum(1 for p in problemas if p.severidad == "warning")
 
+    advertencias = []
+    if comparacion_forzada:
+        advertencias.append(
+            "ADVERTENCIA: la comparación se hizo entre equipos distintos")
+
     return InformeData(
         generado_en=now,
         equipo=equipo,
@@ -507,6 +514,7 @@ def informe_desde_diagnostico(diag: dict, acciones: list[dict] | None = None,
         cliente=cliente,
         observaciones=observaciones,
         diferencias=[d for d in (diferencias or []) if isinstance(d, dict)],
+        advertencias=advertencias,
     )
 
 
@@ -533,6 +541,7 @@ th { background: #f1f3f4; }
 .problema { border: 1px solid #ddd; border-left: 5px solid #888; padding: 10px; margin: 10px 0; }
 .problema h3 { margin: 0 0 6px 0; font-size: 13px; }
 .muted { color: #666; }
+.advertencia { background: #fff3cd; border: 1px solid #e0a800; color: #7a4f00; padding: 10px; margin: 10px 0; font-size: 13px; }
 .mono { font-family: Consolas, monospace; font-size: 11px; white-space: pre-wrap; }
 .firma { margin-top: 40px; display: flex; gap: 40px; }
 .firma div { flex: 1; border-top: 1px solid #333; padding-top: 4px; text-align: center; }
@@ -572,6 +581,8 @@ def informe_a_html(informe: InformeData, con_anexo: bool = True,
     out.append(f"<p class='muted'>Generado: {_esc(e.generado_en)} | "
                f"Paquete: <b>{_esc(e.paquete.get('label'))}</b> | "
                f"Síntoma: {_esc(e.paquete.get('symptom'))}</p>")
+    for adv in e.advertencias:
+        out.append(f"<p class='advertencia'><b>{_esc(adv)}</b></p>")
 
     out.append("<h2>1. Datos del equipo</h2>")
     if e.equipo:
@@ -890,6 +901,10 @@ def informe_a_pdf(informe: InformeData) -> bytes:
     doc.text_flow(f"Generado: {e.generado_en}  |  Paquete: {e.paquete.get('label', '')}  |  "
                   f"Síntoma: {e.paquete.get('symptom', '')}", size=9, font="F3", color=(0.4, 0.4, 0.4))
     doc.hrule()
+
+    for adv in e.advertencias:
+        doc.text_flow(adv, size=10, font="F2", color=(0.7, 0.35, 0))
+        doc.spacer(2)
 
     doc.text_flow("1. Datos del equipo", size=12, font="F2", color=(0.10, 0.45, 0.91))
     if e.equipo:
