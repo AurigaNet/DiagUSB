@@ -32,10 +32,10 @@ jobs:
             throw 'No se pudo leer __version__ de src/diagusb/_version.py'
           }
           $version = $Matches[1]
-          $esperado = "v$version"
-          Write-Host "Tag: $env:TAG | Version declarada: $version | Esperado: $esperado"
-          if ($env:TAG -ne $esperado) {
-            throw "El tag '$env:TAG' no coincide con 'v$version' declarado en src/diagusb/_version.py"
+          $patron = '^v' + [regex]::Escape($version) + '(-rc[0-9]+)?$'
+          Write-Host "Tag: $env:TAG | Version declarada: $version | Patron: $patron"
+          if ($env:TAG -notmatch $patron) {
+            throw "El tag '$env:TAG' no coincide con 'v$version' ni con su candidata 'v$version-rcN' declarados en src/diagusb/_version.py"
           }
 
       - name: Instalar Python (misma version que el proyecto)
@@ -173,7 +173,9 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$env:TAG" diagusb-firmado.zip SHA256SUMS.txt --title "$env:TAG" --notes "Version firmada de DiagUSB."
+          $opciones = @('release', 'create', $env:TAG, 'diagusb-firmado.zip', 'SHA256SUMS.txt', '--title', $env:TAG, '--notes', 'Version firmada de DiagUSB.')
+          if ($env:TAG -match '-rc') { $opciones += '--prerelease' }
+          gh @opciones
 
       - name: Publicar el release sin firma (prerelease)
         if: env.HAS_SIGNPATH != 'true'
