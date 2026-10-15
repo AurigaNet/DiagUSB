@@ -625,6 +625,51 @@ def test_api_registro_endpoints():
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+def test_sin_servidor_de_archivos():
+    import http.server
+    import threading
+    import socketserver
+    import urllib.request
+    import urllib.error
+    import diagusb.web_server as ws
+
+    assert not issubclass(ws.DiagUSBHandler, http.server.SimpleHTTPRequestHandler), \
+        "el handler no debe heredar de SimpleHTTPRequestHandler"
+
+    class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+        allow_reuse_address = True
+        daemon_threads = True
+
+    httpd = ThreadedTCPServer(("127.0.0.1", 0), ws.DiagUSBHandler)
+    port = httpd.server_address[1]
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{port}"
+    try:
+        r = urllib.request.urlopen(base + "/", timeout=5)
+        assert r.status == 200
+        assert "text/html" in r.headers.get("Content-Type", "")
+        assert "DiagUSB" in r.read().decode("utf-8")
+
+        for ruta in ("/src/diagusb/web_server.py", "/README.md", "/noexiste",
+                     "/src/diagusb/"):
+            try:
+                urllib.request.urlopen(base + ruta, timeout=5)
+                raise AssertionError(f"{ruta} debio dar 404")
+            except urllib.error.HTTPError as e:
+                assert e.code == 404, f"{ruta} -> {e.code}"
+
+        req = urllib.request.Request(base + "/src/diagusb/web_server.py",
+                                     method="HEAD")
+        try:
+            r = urllib.request.urlopen(req, timeout=5)
+            raise AssertionError("HEAD no debio responder 200")
+        except urllib.error.HTTPError as e:
+            assert e.code in (404, 501), f"HEAD -> {e.code}"
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
 def run_tests():
     """Ejecuta todas las pruebas de esta suite."""
     tests = [
@@ -654,6 +699,7 @@ def run_tests():
         ("test_registro_persistente_unitario", test_registro_persistente_unitario),
         ("test_registro_poda_y_full_scan", test_registro_poda_y_full_scan),
         ("test_api_registro_endpoints", test_api_registro_endpoints),
+        ("test_sin_servidor_de_archivos", test_sin_servidor_de_archivos),
     ]
 
     passed = 0

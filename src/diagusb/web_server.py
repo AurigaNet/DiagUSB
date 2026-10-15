@@ -1787,8 +1787,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </html>"""
 
 
-class DiagUSBHandler(http.server.SimpleHTTPRequestHandler):
-    """Handler para DiagUSB web."""
+class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
+    """Handler para DiagUSB web (sin herencia de servidor de archivos)."""
     
     def do_GET(self):
         """Maneja GET requests."""
@@ -1886,12 +1886,15 @@ class DiagUSBHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps(result, ensure_ascii=False).encode("utf-8"))
             
-        else:
+        elif parsed.path == "/":
             # Servir pagina principal
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
             self.wfile.write(HTML_TEMPLATE.encode("utf-8"))
+
+        else:
+            self.send_error(404, "No encontrado")
     
     def do_POST(self):
         """APIs POST: informes, snapshot, comparacion y base de conocimiento."""
