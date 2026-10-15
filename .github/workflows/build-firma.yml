@@ -100,8 +100,13 @@ jobs:
         shell: pwsh
         run: |
           tar -a -c -f diagusb-firmado.zip -C dist diagusb
-          $lineas = foreach ($f in @('dist\diagusb\diagusb.exe', 'dist\diagusb\_internal\manifiesto_hashes.json', 'diagusb-firmado.zip')) {
-            "$((Get-FileHash -Algorithm SHA256 $f).Hash.ToLower())  $f"
+          $entradas = @(
+            @{ archivo = 'dist\diagusb\diagusb.exe'; ruta = 'diagusb/diagusb.exe' },
+            @{ archivo = 'dist\diagusb\_internal\manifiesto_hashes.json'; ruta = 'diagusb/_internal/manifiesto_hashes.json' },
+            @{ archivo = 'diagusb-firmado.zip'; ruta = 'diagusb-firmado.zip' }
+          )
+          $lineas = foreach ($e in $entradas) {
+            "$((Get-FileHash -Algorithm SHA256 $e.archivo).Hash.ToLower())  $($e.ruta)"
           }
           $lineas | Set-Content -Encoding ascii SHA256SUMS.txt
           Get-Content SHA256SUMS.txt
@@ -120,8 +125,13 @@ jobs:
         shell: pwsh
         run: |
           Copy-Item diagusb-unsigned.zip diagusb-SIN-FIRMAR.zip -Force
-          $lineas = foreach ($f in @('dist\diagusb\diagusb.exe', 'dist\diagusb\_internal\manifiesto_hashes.json', 'diagusb-SIN-FIRMAR.zip')) {
-            "$((Get-FileHash -Algorithm SHA256 $f).Hash.ToLower())  $f"
+          $entradas = @(
+            @{ archivo = 'dist\diagusb\diagusb.exe'; ruta = 'diagusb/diagusb.exe' },
+            @{ archivo = 'dist\diagusb\_internal\manifiesto_hashes.json'; ruta = 'diagusb/_internal/manifiesto_hashes.json' },
+            @{ archivo = 'diagusb-SIN-FIRMAR.zip'; ruta = 'diagusb-SIN-FIRMAR.zip' }
+          )
+          $lineas = foreach ($e in $entradas) {
+            "$((Get-FileHash -Algorithm SHA256 $e.archivo).Hash.ToLower())  $($e.ruta)"
           }
           $lineas | Set-Content -Encoding ascii SHA256SUMS.txt
           Get-Content SHA256SUMS.txt

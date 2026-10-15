@@ -89,7 +89,15 @@ scripts\build_exe.cmd               # reconstruye dist\diagusb\diagusb.exe
 - Política de privacidad: "Este programa no transmite información a otros sistemas de red a menos que lo solicite expresamente el usuario o quien lo opera".
 - Cómo verificar el ejecutable:
   - Firma digital: clic derecho sobre `diagusb.exe` → Propiedades → Firmas digitales, o en PowerShell `Get-AuthenticodeSignature dist\diagusb\diagusb.exe` (debe mostrar `Status: Valid`).
-  - Integridad de archivos: comparar los hashes listados en `SHA256SUMS.txt` con `Get-FileHash -Algorithm SHA256` de cada archivo.
+  - Integridad de archivos: `SHA256SUMS.txt` usa el formato `<hash>  <ruta>` con `/`, con las rutas tal como quedan al descomprimir el zip (`diagusb/diagusb.exe`, `diagusb/_internal/manifiesto_hashes.json`) y el nombre del zip en una línea aparte. Verificá con el zip y la carpeta `diagusb` descomprimidos en el mismo directorio:
+    - PowerShell (Windows), con el nombre del zip descargado (`diagusb-firmado.zip` o `diagusb-SIN-FIRMAR.zip`):
+      ```powershell
+      Get-FileHash -Algorithm SHA256 diagusb\diagusb.exe, diagusb\_internal\manifiesto_hashes.json, diagusb-SIN-FIRMAR.zip
+      ```
+    - `sha256sum -c` (Linux/macOS/Git Bash):
+      ```bash
+      sha256sum -c SHA256SUMS.txt
+      ```
 
 ## Antivirus y EDR
 
