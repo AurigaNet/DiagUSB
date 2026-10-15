@@ -82,4 +82,19 @@ scripts\build_exe.cmd               # reconstruye dist\diagusb\diagusb.exe
 - Sin telemetría, sin conexiones salientes del producto final y sin modificación de la configuración del equipo analizado (los colectores son de solo lectura).
 - No se incluyen binarios o ISOs de terceros; ver `tools/tools.manifest.json`.
 
+## Política de firma de código
+
+- Firma de código gratuita provista por SignPath.io, certificado de SignPath Foundation.
+- Roles: Autor, Committer y Revisor/Aprobador: Daniel Ricardo Novoa (https://github.com/AurigaNet).
+- Política de privacidad: "Este programa no transmite información a otros sistemas de red a menos que lo solicite expresamente el usuario o quien lo opera".
+- Cómo verificar el ejecutable:
+  - Firma digital: clic derecho sobre `diagusb.exe` → Propiedades → Firmas digitales, o en PowerShell `Get-AuthenticodeSignature dist\diagusb\diagusb.exe` (debe mostrar `Status: Valid`).
+  - Integridad de archivos: comparar los hashes listados en `SHA256SUMS.txt` con `Get-FileHash -Algorithm SHA256` de cada archivo.
+
+## Antivirus y EDR
+
+- En equipos con EDR gestionado, el ejecutable puede requerir autorización por firmante o por hash antes de ejecutarse.
+- La regla ASR de Microsoft Defender "Bloquear procesos no confiables y sin firmar que se ejecutan desde USB" bloquea las versiones sin firma.
+- Las versiones SIN-FIRMAR (`diagusb-SIN-FIRMAR.zip`) son solo para pruebas; no se recomienda su uso en equipos de clientes.
+
 Este programa se distribuye con la esperanza de que sea útil, pero SIN NINGUNA GARANTÍA; ni siquiera la garantía implícita de COMERCIABILIDAD o IDONEIDAD PARA UN PROPÓSITO PARTICULAR. Véase `LICENSE` para más detalles.
