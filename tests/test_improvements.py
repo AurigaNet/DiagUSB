@@ -856,6 +856,45 @@ def test_token_sesion():
         httpd.server_close()
 
 
+def test_limite_de_cuerpo():
+    import socket
+    import diagusb.web_server as ws
+
+    httpd, base = _abrir_servidor()
+    port = httpd.server_address[1]
+    token = ws._token_sesion()
+
+    def status(req):
+        s = socket.create_connection(("127.0.0.1", port), timeout=5)
+        s.sendall(req)
+        data = b""
+        while b"\r\n" not in data:
+            chunk = s.recv(4096)
+            if not chunk:
+                break
+            data += chunk
+        s.close()
+        return int(data.split(b" ", 2)[1])
+
+    def req_with(cl):
+        cab = (f"POST /api/snapshot HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n"
+               f"Content-Type: application/json\r\n"
+               f"Cookie: diagusb_token={token}\r\n")
+        if cl is not None:
+            cab += f"Content-Length: {cl}\r\n"
+        cab += "Connection: close\r\n\r\n"
+        return cab.encode()
+
+    try:
+        assert status(req_with(None)) == 400
+        assert status(req_with("abc")) == 400
+        assert status(req_with("-5")) == 400
+        assert status(req_with(str(11 * 1024 * 1024))) == 413
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
 def run_tests():
     """Ejecuta todas las pruebas de esta suite."""
     tests = [
@@ -891,6 +930,7 @@ def run_tests():
         ("test_validacion_host_y_origin", test_validacion_host_y_origin),
         ("test_post_exige_json", test_post_exige_json),
         ("test_token_sesion", test_token_sesion),
+        ("test_limite_de_cuerpo", test_limite_de_cuerpo),
     ]
 
     passed = 0

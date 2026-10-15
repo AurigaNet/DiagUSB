@@ -39,6 +39,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 BASELINE_PATH = _REPO_ROOT / "reports" / "snapshot_antes.json"
 REGISTRO_PATH = _REPO_ROOT / "config" / "registro_analisis.json"
 BIND_HOST = "127.0.0.1"
+MAX_CUERPO = 10 * 1024 * 1024
 _SESSION_TOKEN = None
 
 
@@ -1996,6 +1997,17 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             return
         if not self._token_valido():
             self._json_response({"error": "No autorizado"}, 401)
+            return
+        try:
+            largo = int(self.headers.get("Content-Length", ""))
+        except (TypeError, ValueError):
+            self.send_error(400, "Content-Length requerido o invalido")
+            return
+        if largo < 0:
+            self.send_error(400, "Content-Length invalido")
+            return
+        if largo > MAX_CUERPO:
+            self.send_error(413, "Cuerpo demasiado grande")
             return
         parsed = urlparse(self.path)
         if parsed.path == "/api/report":
