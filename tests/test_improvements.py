@@ -615,6 +615,12 @@ def test_api_registro_endpoints():
 
         try:
             _get(base + "/api/registro?id=nope")
+            raise AssertionError("el id invalido debio dar 400")
+        except urllib.error.HTTPError as e:
+            assert e.code == 400
+
+        try:
+            _get(base + "/api/registro?id=20200101_000000_deadbeef")
             raise AssertionError("el detalle inexistente debio dar 404")
         except urllib.error.HTTPError as e:
             assert e.code == 404
@@ -625,6 +631,12 @@ def test_api_registro_endpoints():
 
         try:
             _delete(base + "/api/registro?id=nope")
+            raise AssertionError("el id invalido debio dar 400")
+        except urllib.error.HTTPError as e:
+            assert e.code == 400
+
+        try:
+            _delete(base + "/api/registro?id=20200101_000000_deadbeef")
             raise AssertionError("el borrado inexistente debio dar 404")
         except urllib.error.HTTPError as e:
             assert e.code == 404
@@ -924,6 +936,18 @@ def test_nombre_informe_seguro():
         httpd.server_close()
 
 
+def test_id_registro_validado():
+    import diagusb.web_server as ws
+
+    assert ws._id_registro_valido("20261015_112427_229d0eda")
+    assert not ws._id_registro_valido("nope")
+    assert not ws._id_registro_valido("20261015_112427_229D0EDA")
+    assert not ws._id_registro_valido("20261015_112427_229d0ed")
+    assert not ws._id_registro_valido("")
+    assert not ws._id_registro_valido(None)
+    assert not ws._id_registro_valido("../etc/passwd")
+
+
 def run_tests():
     """Ejecuta todas las pruebas de esta suite."""
     tests = [
@@ -961,6 +985,7 @@ def run_tests():
         ("test_token_sesion", test_token_sesion),
         ("test_limite_de_cuerpo", test_limite_de_cuerpo),
         ("test_nombre_informe_seguro", test_nombre_informe_seguro),
+        ("test_id_registro_validado", test_id_registro_validado),
     ]
 
     passed = 0

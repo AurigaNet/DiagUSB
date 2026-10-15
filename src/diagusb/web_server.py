@@ -5,6 +5,7 @@
 
 import http.server
 import json
+import re
 import secrets
 import socketserver
 import sys
@@ -57,6 +58,13 @@ def _paquete_seguro(package) -> str:
     limpio = "".join(c for c in texto
                      if c.isascii() and (c.isalnum() or c in "_-"))
     return limpio or "equipo"
+
+
+_ID_REGISTRO = re.compile(r"^\d{8}_\d{6}_[0-9a-f]{8}$")
+
+
+def _id_registro_valido(valor) -> bool:
+    return bool(valor) and _ID_REGISTRO.match(str(valor)) is not None
 
 
 REGISTRO_MAX = 200
@@ -1961,6 +1969,9 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             registro_id = params.get("id", [None])[0]
             entradas = _cargar_registro()
             if registro_id:
+                if not _id_registro_valido(registro_id):
+                    self._json_response({"error": "Id invalido"}, 400)
+                    return
                 entrada = next((e for e in entradas
                                 if e.get("id") == registro_id), None)
                 if entrada:
@@ -2052,6 +2063,9 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
         params = parse_qs(parsed.query)
         registro_id = params.get("id", [None])[0]
         if registro_id:
+            if not _id_registro_valido(registro_id):
+                self._json_response({"error": "Id invalido"}, 400)
+                return
             ok = eliminar_analisis(registro_id)
             if ok:
                 self._json_response({"ok": True, "eliminado": registro_id})
