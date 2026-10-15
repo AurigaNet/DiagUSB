@@ -9,8 +9,11 @@ __pycache__/
 .venv/
 venv/
 
-# Build
-build/
+# Build (se versionan solo los fuentes; el resto es generado por PyInstaller)
+build/*
+!build/diagusb.spec
+!build/entry_console.py
+!build/README.md
 dist/
 *.spec.tmp
 *.pyz
