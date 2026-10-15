@@ -1928,6 +1928,10 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
         """APIs POST: informes, snapshot, comparacion y base de conocimiento."""
         if not self._validar_solicitud():
             return
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if ctype != "application/json":
+            self.send_error(415, "Content-Type debe ser application/json")
+            return
         parsed = urlparse(self.path)
         if parsed.path == "/api/report":
             self._post_report()

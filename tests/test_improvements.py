@@ -744,6 +744,39 @@ def test_validacion_host_y_origin():
         httpd.server_close()
 
 
+def test_post_exige_json():
+    import threading
+    import socketserver
+    import http.client
+    import diagusb.web_server as ws
+
+    class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+        allow_reuse_address = True
+        daemon_threads = True
+
+    httpd = ThreadedTCPServer((ws.BIND_HOST, 0), ws.DiagUSBHandler)
+    port = httpd.server_address[1]
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+
+    def post(path, ctype=None):
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        headers = {"Content-Type": ctype} if ctype else {}
+        conn.request("POST", path, body="{}", headers=headers)
+        r = conn.getresponse()
+        r.read()
+        conn.close()
+        return r.status
+
+    try:
+        assert post("/api/snapshot") == 415
+        assert post("/api/snapshot", "text/plain") == 415
+        assert post("/api/noexiste", "application/json") == 404
+        assert post("/api/noexiste", "application/json; charset=utf-8") == 404
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
 def run_tests():
     """Ejecuta todas las pruebas de esta suite."""
     tests = [
@@ -777,6 +810,7 @@ def run_tests():
         ("test_bind_solo_loopback", test_bind_solo_loopback),
         ("test_sin_cabeceras_cors", test_sin_cabeceras_cors),
         ("test_validacion_host_y_origin", test_validacion_host_y_origin),
+        ("test_post_exige_json", test_post_exige_json),
     ]
 
     passed = 0
