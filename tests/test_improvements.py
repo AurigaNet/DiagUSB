@@ -683,6 +683,28 @@ def test_bind_solo_loopback():
         httpd.server_close()
 
 
+def test_sin_cabeceras_cors():
+    import threading
+    import socketserver
+    import urllib.request
+    import diagusb.web_server as ws
+
+    class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+        allow_reuse_address = True
+        daemon_threads = True
+
+    httpd = ThreadedTCPServer((ws.BIND_HOST, 0), ws.DiagUSBHandler)
+    base = f"http://127.0.0.1:{httpd.server_address[1]}"
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        r = urllib.request.urlopen(base + "/", timeout=5)
+        assert r.headers.get("Access-Control-Allow-Origin") is None, \
+            "no debe emitirse Access-Control-Allow-Origin"
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
 def run_tests():
     """Ejecuta todas las pruebas de esta suite."""
     tests = [
@@ -714,6 +736,7 @@ def run_tests():
         ("test_api_registro_endpoints", test_api_registro_endpoints),
         ("test_sin_servidor_de_archivos", test_sin_servidor_de_archivos),
         ("test_bind_solo_loopback", test_bind_solo_loopback),
+        ("test_sin_cabeceras_cors", test_sin_cabeceras_cors),
     ]
 
     passed = 0
