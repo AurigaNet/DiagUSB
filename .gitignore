@@ -14,6 +14,7 @@ build/*
 !build/diagusb.spec
 !build/entry_console.py
 !build/README.md
+build/version_info.txt
 dist/
 *.spec.tmp
 *.pyz

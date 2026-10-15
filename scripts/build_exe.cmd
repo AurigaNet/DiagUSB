@@ -36,6 +36,13 @@ if errorlevel 1 (
     exit /b 1
 )
 
+echo Generando recurso de version del ejecutable...
+python scripts\generar_version_info.py
+if errorlevel 1 (
+    echo ERROR: no se pudo generar la informacion de version.
+    exit /b 1
+)
+
 echo Ejecutando PyInstaller...
 python -m PyInstaller build\diagusb.spec --noconfirm
 if errorlevel 1 (
