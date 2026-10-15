@@ -1,0 +1,148 @@
+name: Build y firma
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      HAS_SIGNPATH: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+    steps:
+      - name: Obtener el codigo
+        uses: actions/checkout@v4
+
+      - name: Instalar Python (misma version que el proyecto)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Mostrar la version de Python
+        run: |
+          python --version
+          python -c "import sys; print(sys.version)"
+
+      - name: Instalar PyInstaller compilando el bootloader desde fuente
+        run: python -m pip install --no-binary pyinstaller pyinstaller
+
+      - name: Ejecutar la suite de pruebas
+        run: python -X utf8 tests\run_tests.py
+
+      - name: Generar el manifiesto y construir el ejecutable
+        shell: cmd
+        run: scripts\build_exe.cmd
+
+      - name: Comprimir el ejecutable sin firmar
+        shell: pwsh
+        run: Compress-Archive -Path dist\diagusb -DestinationPath diagusb-unsigned.zip -Force
+
+      - name: Subir el artefacto sin firmar
+        id: upload_unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagusb-unsigned
+          path: diagusb-unsigned.zip
+
+      - name: Enviar la solicitud de firma a SignPath
+        id: sign
+        if: env.HAS_SIGNPATH == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORG_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIG_SLUG }}
+          github-artifact-id: ${{ steps.upload_unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+
+      - name: Verificar la firma del ejecutable
+        if: env.HAS_SIGNPATH == 'true'
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path signed -Recurse | Select-Object -ExpandProperty FullName
+          $zip = (Get-ChildItem -Path signed -Filter *.zip -Recurse | Select-Object -First 1).FullName
+          if (-not $zip) { throw 'SignPath no devolvio ningun archivo .zip' }
+          Expand-Archive -Path $zip -DestinationPath dist -Force
+          $firma = Get-AuthenticodeSignature dist\diagusb\diagusb.exe
+          $firma | Format-List Status, StatusMessage, SignerCertificate
+          if ($firma.Status -ne 'Valid') { throw "Firma no valida: $($firma.Status)" }
+
+      - name: Empaquetar y hashear el resultado firmado
+        if: env.HAS_SIGNPATH == 'true'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist\diagusb -DestinationPath diagusb-firmado.zip -Force
+          $lineas = foreach ($f in @('dist\diagusb\diagusb.exe', 'dist\diagusb\_internal\manifiesto_hashes.json', 'diagusb-firmado.zip')) {
+            "$((Get-FileHash -Algorithm SHA256 $f).Hash.ToLower())  $f"
+          }
+          $lineas | Set-Content -Encoding ascii SHA256SUMS.txt
+          Get-Content SHA256SUMS.txt
+
+      - name: Subir el artefacto firmado
+        if: env.HAS_SIGNPATH == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagusb-firmado
+          path: |
+            diagusb-firmado.zip
+            SHA256SUMS.txt
+
+      - name: Empaquetar y hashear el resultado sin firma
+        if: env.HAS_SIGNPATH != 'true'
+        shell: pwsh
+        run: |
+          Copy-Item diagusb-unsigned.zip diagusb-SIN-FIRMAR.zip -Force
+          $lineas = foreach ($f in @('dist\diagusb\diagusb.exe', 'dist\diagusb\_internal\manifiesto_hashes.json', 'diagusb-SIN-FIRMAR.zip')) {
+            "$((Get-FileHash -Algorithm SHA256 $f).Hash.ToLower())  $f"
+          }
+          $lineas | Set-Content -Encoding ascii SHA256SUMS.txt
+          Get-Content SHA256SUMS.txt
+
+      - name: Subir el artefacto sin firma
+        if: env.HAS_SIGNPATH != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagusb-SIN-FIRMAR
+          path: |
+            diagusb-SIN-FIRMAR.zip
+            SHA256SUMS.txt
+
+      - name: Aviso en el resumen del job (sin firma)
+        if: env.HAS_SIGNPATH != 'true'
+        shell: pwsh
+        run: |
+          "## AVISO: artefacto SIN FIRMAR" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+          "SignPath no esta configurado (falta el secret SIGNPATH_API_TOKEN)." | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+          "diagusb-SIN-FIRMAR.zip es solo para pruebas. La regla ASR de Defender 'Bloquear procesos no confiables y sin firmar que se ejecutan desde USB' bloquea las versiones sin firma." | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    permissions:
+      contents: write
+      actions: read
+    env:
+      HAS_SIGNPATH: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+    steps:
+      - name: Descargar el artefacto firmado
+        if: env.HAS_SIGNPATH == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: diagusb-firmado
+
+      - name: Publicar el release con los archivos firmados
+        if: env.HAS_SIGNPATH == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" diagusb-firmado.zip SHA256SUMS.txt --title "${{ github.ref_name }}" --notes "Version firmada de DiagUSB."
