@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .models import CollectorResult, ComputerId, Difference, Snapshot
+from . import almacen
 
 
 def load_snapshot(path: Path) -> Snapshot:
@@ -148,8 +149,7 @@ def save_snapshot(snapshot: Snapshot, path: Path) -> None:
         }
         data["observations"].append(obs_data)
 
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    almacen.escribir_json_atomico(path, data, indent=2)
 
 
 def _get_nested_value(data: dict[str, Any], path: str) -> Any:

@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from diagusb.core.registry import discover_packages
 from diagusb.core.models import CollectorResult, QueryInfo, Snapshot, ComputerId
 from diagusb.core.comparator import compare_snapshots
+from diagusb.core import almacen
 from diagusb.core.rules import diagnose_symptoms
 from diagusb.core import knowledge_base as kb
 from diagusb.core.informe import (
@@ -240,20 +241,13 @@ def run_diagnostic(package_name: str, symptom: str = None) -> dict:
 
 def _cargar_registro() -> list[dict]:
     """Carga el registro persistente de análisis; lista vacía si no existe."""
-    if not REGISTRO_PATH.exists():
-        return []
-    try:
-        data = json.loads(REGISTRO_PATH.read_text(encoding="utf-8"))
-        return data if isinstance(data, list) else []
-    except Exception:
-        return []
+    data = almacen.leer_json(REGISTRO_PATH, preservar=True)
+    return data if isinstance(data, list) else []
 
 
 def _guardar_registro(entradas: list[dict]) -> None:
     """Escribe el registro completo en disco (llamar con _REGISTRO_LOCK tomado)."""
-    REGISTRO_PATH.parent.mkdir(parents=True, exist_ok=True)
-    REGISTRO_PATH.write_text(
-        json.dumps(entradas, ensure_ascii=False, indent=1), encoding="utf-8")
+    almacen.escribir_json_atomico(REGISTRO_PATH, entradas, indent=1)
 
 
 def _entrada_registro(diag: dict, tipo: str) -> dict:
@@ -2097,10 +2091,8 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
         try:
             payload = self._read_payload()
             results = payload.get("results") or []
-            BASELINE_PATH.parent.mkdir(parents=True, exist_ok=True)
             doc = {"captured_at": datetime.now().isoformat(), "results": results}
-            BASELINE_PATH.write_text(json.dumps(doc, ensure_ascii=False, indent=1),
-                                     encoding="utf-8")
+            almacen.escribir_json_atomico(BASELINE_PATH, doc, indent=1)
             self._json_response({"ok": True, "guardado_en": str(BASELINE_PATH),
                                  "collectors": len(results),
                                  "captured_at": doc["captured_at"]})

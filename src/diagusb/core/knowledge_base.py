@@ -18,6 +18,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from . import almacen
+
 # Base embebida (se distribuye con el codigo) y capa local editable en config/
 _RUTA_EMBEBIDA = Path(__file__).with_name("base_conocimiento.json")
 _RUTA_CONFIG = Path(__file__).resolve().parents[3] / "config" / "base_conocimiento.json"
@@ -40,13 +42,9 @@ def ruta_activa() -> Path:
 
 
 def _leer_doc(ruta: Path) -> dict:
-    try:
-        with open(ruta, "r", encoding="utf-8") as fh:
-            data = json.load(fh)
-        if isinstance(data, dict) and isinstance(data.get("entradas"), list):
-            return data
-    except (OSError, ValueError):
-        pass
+    data = almacen.leer_json(ruta, preservar=Path(ruta) == _RUTA_CONFIG)
+    if isinstance(data, dict) and isinstance(data.get("entradas"), list):
+        return data
     return {}
 
 
@@ -94,9 +92,7 @@ def _doc_para_editar() -> dict:
 
 
 def _escribir_config(doc: dict) -> None:
-    _RUTA_CONFIG.parent.mkdir(parents=True, exist_ok=True)
-    with open(_RUTA_CONFIG, "w", encoding="utf-8") as fh:
-        json.dump(doc, fh, ensure_ascii=False, indent=2)
+    almacen.escribir_json_atomico(_RUTA_CONFIG, doc, indent=2)
     _cargar(force=True)
 
 

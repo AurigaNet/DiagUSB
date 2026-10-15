@@ -948,6 +948,73 @@ def test_id_registro_validado():
     assert not ws._id_registro_valido("../etc/passwd")
 
 
+def test_escritura_atomica_normal():
+    import diagusb.core.almacen as almacen
+
+    tmp = Path(tempfile.mkdtemp(prefix="diagusb_atom_"))
+    destino = tmp / "datos.json"
+    almacen.escribir_json_atomico(destino, {"a": 1, "b": "ñ"})
+    assert json.loads(destino.read_text(encoding="utf-8")) == {"a": 1, "b": "ñ"}
+    assert not (tmp / "datos.json.tmp").exists()
+
+
+def test_escritura_atomica_fallo_preserva_original():
+    import diagusb.core.almacen as almacen
+
+    tmp = Path(tempfile.mkdtemp(prefix="diagusb_atom_"))
+    destino = tmp / "datos.json"
+    almacen.escribir_json_atomico(destino, {"v": 1})
+
+    original = almacen.os.replace
+
+    def boom(a, b):
+        raise OSError("fallo simulado entre tmp y replace")
+
+    almacen.os.replace = boom
+    try:
+        try:
+            almacen.escribir_json_atomico(destino, {"v": 2})
+            raise AssertionError("debio fallar la escritura atomica")
+        except OSError:
+            pass
+    finally:
+        almacen.os.replace = original
+    assert json.loads(destino.read_text(encoding="utf-8")) == {"v": 1}
+
+
+def test_registro_corrupto_preservado():
+    import diagusb.web_server as ws
+
+    tmp = Path(tempfile.mkdtemp(prefix="diagusb_reg_"))
+    old = ws.REGISTRO_PATH
+    ws.REGISTRO_PATH = tmp / "registro_analisis.json"
+    try:
+        ws.REGISTRO_PATH.write_text("{esto no es json", encoding="utf-8")
+        assert ws._cargar_registro() == []
+        corruptos = list(tmp.glob("registro_analisis.json.corrupto-*"))
+        assert len(corruptos) == 1
+        assert not ws.REGISTRO_PATH.exists()
+    finally:
+        ws.REGISTRO_PATH = old
+
+
+def test_kb_corrupta_preservada():
+    from diagusb.core import knowledge_base as kb
+
+    tmp = Path(tempfile.mkdtemp(prefix="diagusb_kb_"))
+    old = kb._RUTA_CONFIG
+    kb._RUTA_CONFIG = tmp / "base_conocimiento.json"
+    try:
+        kb._RUTA_CONFIG.write_text("no-json", encoding="utf-8")
+        kb._cargar(force=True)
+        corruptos = list(tmp.glob("base_conocimiento.json.corrupto-*"))
+        assert len(corruptos) == 1
+        assert not kb._RUTA_CONFIG.exists()
+    finally:
+        kb._RUTA_CONFIG = old
+        kb._cargar(force=True)
+
+
 def run_tests():
     """Ejecuta todas las pruebas de esta suite."""
     tests = [
@@ -986,6 +1053,11 @@ def run_tests():
         ("test_limite_de_cuerpo", test_limite_de_cuerpo),
         ("test_nombre_informe_seguro", test_nombre_informe_seguro),
         ("test_id_registro_validado", test_id_registro_validado),
+        ("test_escritura_atomica_normal", test_escritura_atomica_normal),
+        ("test_escritura_atomica_fallo_preserva_original",
+         test_escritura_atomica_fallo_preserva_original),
+        ("test_registro_corrupto_preservado", test_registro_corrupto_preservado),
+        ("test_kb_corrupta_preservada", test_kb_corrupta_preservada),
     ]
 
     passed = 0
