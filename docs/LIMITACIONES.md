@@ -18,14 +18,18 @@ Documento de limitaciones y estado actual del proyecto.
 
 ### Pendiente de validacion
 - Windows 11 (validado hasta ahora en Windows 10)
+- Comportamiento bajo antivirus/EDR (bloqueo de PowerShell, escaneo de la carpeta del kit, cuarentena de scripts `.ps1`)
 - Prueba de UAC del exe portable en una segunda cuenta/maquina
 - Diferentes contextos de permisos (equipo sin elevacion disponible)
 
 ## Restricciones conocidas
 
+### Integridad
+- El manifiesto de hashes (`manifiesto_hashes.json`) detecta corrupcion y modificaciones accidentales de los colectores, pero NO protege contra un atacante con acceso de escritura al pendrive: puede modificar el manifiesto junto con los colectores. La proteccion contra ese escenario es la firma digital del ejecutable (fuera del alcance actual).
+
 ### Arquitectura
 - PowerShell 5.1 minimo para colectores
-- Python 3.12 para la capa de orquestacion (solo biblioteca estandar + reportlab para PDF, embebida en el exe)
+- Python 3.12 para la capa de orquestacion (solo biblioteca estandar; el PDF se genera con un motor propio en `src/diagusb/core/informe.py`, sin dependencias externas)
 - La base de conocimiento y el registro de analisis se guardan en `config/` local (no sincronizan entre equipos)
 - El registro de analisis conserva hasta 200 entradas; se descartan automaticamente las mas viejas
 

@@ -270,6 +270,7 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 
 - Validado en **Windows 10**. **Windows 11 no está validado**: los cmdlets usados existen en ambos, pero no hay prueba formal sobre 11.
 - El **comportamiento bajo antivirus/EDR** no está validado: el bloqueo o la limitación de PowerShell, el escaneo de la carpeta del kit y la eventual cuarentena de los scripts `.ps1` no se han probado en un entorno con protección activa. La verificación de integridad por SHA-256 detecta la alteración de colectores, no los falsos positivos de seguridad.
+- La verificación de integridad por SHA-256 de los colectores detecta corrupción y modificaciones accidentales, pero **no protege contra un atacante con acceso de escritura al pendrive**: puede modificar el manifiesto junto con los colectores y la verificación pasaría. La protección contra ese escenario es la firma digital del ejecutable, fuera del alcance actual.
 - Los colectores corren con `subprocess` y timeout fijo de 30 s por colector (en equipos muy lentos un colector puede quedar `timeout`).
 - El registro usa un archivo JSON local (no hay multi-usuario ni sincronización entre equipos; cada PC tiene su historial).
 - El informe .doc es HTML con namespaces Office (no OOXML nativo); se abre bien en Word/WPS/LibreOffice, pero no es un `.docx` de firma digital.

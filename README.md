@@ -78,7 +78,7 @@ scripts\build_exe.cmd               # reconstruye dist\diagusb\diagusb.exe
 
 - Interfaz, informes y documentación en español.
 - Código propio bajo `GPL-3.0-or-later`.
-- Solo biblioteca estándar de Python; reportlab para PDF (incluida en el exe).
+- Solo biblioteca estándar de Python; el PDF se genera con un motor propio sin dependencias (`src/diagusb/core/informe.py`).
 - Sin telemetría, sin conexiones salientes del producto final y sin modificación de la configuración del equipo analizado (los colectores son de solo lectura).
 - No se incluyen binarios o ISOs de terceros; ver `tools/tools.manifest.json`.
 
