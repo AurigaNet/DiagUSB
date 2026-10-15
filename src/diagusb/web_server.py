@@ -1791,9 +1791,40 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
     """Handler para DiagUSB web (sin herencia de servidor de archivos)."""
     
+    def _host_valido(self):
+        host = (self.headers.get("Host") or "").strip().lower()
+        if not host:
+            return False
+        if host.startswith("["):
+            nombre = host.split("]")[0] + "]"
+        else:
+            nombre = host.split(":")[0]
+        return nombre in ("127.0.0.1", "localhost", "[::1]")
+
+    def _origen_valido(self):
+        origen = self.headers.get("Origin")
+        if not origen:
+            return True
+        origen = origen.strip().lower()
+        if origen == "null":
+            return False
+        try:
+            host = urlparse(origen).hostname
+        except ValueError:
+            return False
+        return host in ("127.0.0.1", "localhost", "::1")
+
+    def _validar_solicitud(self):
+        if self._host_valido() and self._origen_valido():
+            return True
+        self.send_error(403, "Origen no permitido")
+        return False
+
     def do_GET(self):
         """Maneja GET requests."""
         try:
+            if not self._validar_solicitud():
+                return
             self._handle_get()
         except Exception as e:
             try:
@@ -1895,6 +1926,8 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
     
     def do_POST(self):
         """APIs POST: informes, snapshot, comparacion y base de conocimiento."""
+        if not self._validar_solicitud():
+            return
         parsed = urlparse(self.path)
         if parsed.path == "/api/report":
             self._post_report()
@@ -1910,6 +1943,8 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
     def do_DELETE(self):
         """APIs DELETE: borrado del registro de analisis."""
         try:
+            if not self._validar_solicitud():
+                return
             self._handle_delete()
         except Exception as e:
             try:

@@ -705,6 +705,45 @@ def test_sin_cabeceras_cors():
         httpd.server_close()
 
 
+def test_validacion_host_y_origin():
+    import threading
+    import socketserver
+    import urllib.request
+    import urllib.error
+    import diagusb.web_server as ws
+
+    class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+        allow_reuse_address = True
+        daemon_threads = True
+
+    httpd = ThreadedTCPServer((ws.BIND_HOST, 0), ws.DiagUSBHandler)
+    port = httpd.server_address[1]
+    base = f"http://127.0.0.1:{port}"
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        req = urllib.request.Request(base + "/", headers={"Host": "evil.example.com"})
+        try:
+            urllib.request.urlopen(req, timeout=5)
+            raise AssertionError("Host ajeno debio dar 403")
+        except urllib.error.HTTPError as e:
+            assert e.code == 403, e.code
+
+        req = urllib.request.Request(base + "/",
+                                     headers={"Origin": "http://evil.example.com"})
+        try:
+            urllib.request.urlopen(req, timeout=5)
+            raise AssertionError("Origin ajeno debio dar 403")
+        except urllib.error.HTTPError as e:
+            assert e.code == 403, e.code
+
+        req = urllib.request.Request(base + "/",
+                                     headers={"Origin": f"http://127.0.0.1:{port}"})
+        assert urllib.request.urlopen(req, timeout=5).status == 200
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
 def run_tests():
     """Ejecuta todas las pruebas de esta suite."""
     tests = [
@@ -737,6 +776,7 @@ def run_tests():
         ("test_sin_servidor_de_archivos", test_sin_servidor_de_archivos),
         ("test_bind_solo_loopback", test_bind_solo_loopback),
         ("test_sin_cabeceras_cors", test_sin_cabeceras_cors),
+        ("test_validacion_host_y_origin", test_validacion_host_y_origin),
     ]
 
     passed = 0
