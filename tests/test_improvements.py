@@ -15,6 +15,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from diagusb.core import knowledge_base as kb
 from diagusb.core.informe import (
     _resumen_datos,
+    codigo_verificacion,
+    informe_a_doc,
     informe_a_html,
     informe_a_pdf,
     informe_desde_diagnostico,
@@ -1226,6 +1228,31 @@ def test_rutas_portables():
         rutas.resetear_cache()
 
 
+def test_codigo_verificacion_informe():
+    diag = _diag_minimo()
+    a = informe_desde_diagnostico(diag)
+    b = informe_desde_diagnostico(diag)
+    b.generado_en = a.generado_en
+    ca = codigo_verificacion(a)
+    assert ca == codigo_verificacion(b)
+    assert len(ca) == 16 and all(ch in "0123456789abcdef" for ch in ca)
+
+    b2 = informe_desde_diagnostico(diag)
+    b2.generado_en = a.generado_en
+    b2.equipo = dict(b2.equipo)
+    b2.equipo["computer_name"] = "PC-DISTINTA"
+    assert codigo_verificacion(b2) != ca
+
+    diag2 = _diag_minimo()
+    diag2["package_label"] = "Otro distinto"
+    c = informe_desde_diagnostico(diag2)
+    c.generado_en = a.generado_en
+    assert codigo_verificacion(c) != ca
+
+    assert ca.encode("utf-8") in informe_a_doc(a)
+    assert ca.encode("latin-1") in informe_a_pdf(a)
+
+
 def run_tests():
     """Ejecuta todas las pruebas de esta suite."""
     tests = [
@@ -1276,6 +1303,7 @@ def run_tests():
         ("test_generar_manifiesto", test_generar_manifiesto),
         ("test_web_server_rutas_base", test_web_server_rutas_base),
         ("test_rutas_portables", test_rutas_portables),
+        ("test_codigo_verificacion_informe", test_codigo_verificacion_informe),
     ]
 
     passed = 0

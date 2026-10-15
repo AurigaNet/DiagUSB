@@ -6,6 +6,7 @@ Sin dependencias externas: el PDF se genera con un motor minimo propio y
 el Word es un HTML con la cabecera especifica de Microsoft Word.
 """
 
+import hashlib
 import html
 import json
 from dataclasses import dataclass, field
@@ -572,6 +573,32 @@ def _fmt_valor_truncado(v: Any) -> str:
     return s if len(s) <= 160 else s[:157] + "..."
 
 
+def codigo_verificacion(e: InformeData) -> str:
+    """Primeros 16 caracteres del SHA-256 de contenido + acciones + fecha + equipo."""
+    partes = [
+        f"fecha:{e.generado_en}",
+        f"equipo:{e.equipo.get('computer_name', '')}",
+        json.dumps(e.paquete, ensure_ascii=False, sort_keys=True, default=str),
+        json.dumps(e.resumen, ensure_ascii=False, sort_keys=True, default=str),
+    ]
+    for c in e.colectores:
+        partes.append(f"C|{c.collector_id}|{c.status}|{c.duration_ms}|"
+                      + "\u001f".join(c.resumen) + "|" + "\u001f".join(c.errores))
+    for p in e.problemas:
+        partes.append(f"P|{p.indice}|{p.severidad}|{p.colector}|{p.titulo}|{p.estado}|"
+                      f"{p.solucion}|{p.solucion_elegida}|"
+                      + json.dumps(p.detalle, ensure_ascii=False, sort_keys=True, default=str))
+    for m in e.mejoras:
+        partes.append(f"M|{m.id}|{m.titulo}|{int(m.aplicada)}|{m.comentario}")
+    partes.append("R|" + "\u001f".join(e.recomendaciones))
+    partes.append(f"T|{e.tecnico}|{e.cliente}|{e.observaciones}")
+    for d in e.diferencias:
+        partes.append("D|" + json.dumps(d, ensure_ascii=False, sort_keys=True, default=str))
+    partes.append("A|" + "\u001f".join(e.advertencias))
+    material = "\n".join(partes)
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
+
+
 def informe_a_html(informe: InformeData, con_anexo: bool = True,
                    resultados_completos: list | None = None) -> str:
     e = informe
@@ -704,6 +731,7 @@ def informe_a_html(informe: InformeData, con_anexo: bool = True,
         out.append("</pre>")
 
     out.append("<div class='firma'><div>Firma del técnico</div><div>Conformidad del cliente</div></div>")
+    out.append(f"<p class='muted mono'>Código de verificación: {codigo_verificacion(e)}</p>")
     out.append("</body></html>")
     return "".join(out)
 
@@ -1024,6 +1052,9 @@ def informe_a_pdf(informe: InformeData) -> bytes:
     doc.text_flow("____________________________________          ____________________________________",
                   size=9, indent=8)
     doc.text_flow("Firma del técnico                                        Conformidad del cliente",
+                  size=8, font="F3", indent=8, color=(0.4, 0.4, 0.4))
+    doc.spacer(4)
+    doc.text_flow(f"Código de verificación: {codigo_verificacion(e)}",
                   size=8, font="F3", indent=8, color=(0.4, 0.4, 0.4))
 
     doc.header_every_page(f"DiagUSB - Informe: {e.paquete.get('label', '')} - {e.generado_en[:16]}")
