@@ -28,6 +28,7 @@ dist/
 
 # Reports and hashes
 SHA256SUMS
+/manifiesto_hashes.json
 
 # Windows
 Thumbs.db

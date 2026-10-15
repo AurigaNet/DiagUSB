@@ -1096,6 +1096,81 @@ def test_identidad_equipo_comparacion():
         ws.BASELINE_PATH = old
 
 
+def test_integridad_colectores():
+    import diagusb.core.integridad as integ
+
+    tmp = Path(tempfile.mkdtemp(prefix="diagusb_int_"))
+    ps1 = tmp / "get_demo.ps1"
+    ps1.write_text("Write-Output '{}'\n", encoding="utf-8")
+    h = integ.hash_archivo(ps1)
+
+    guardado = (integ._manifiesto, integ._cargado, integ._avisado)
+    try:
+        # hash correcto
+        integ._manifiesto = {"get_demo.ps1": h}
+        integ._cargado = True
+        ok, motivo = integ.verificar(ps1)
+        assert ok and motivo == ""
+
+        # archivo alterado
+        ps1.write_text("Write-Output 'tampered'\n", encoding="utf-8")
+        ok, motivo = integ.verificar(ps1)
+        assert not ok and motivo == integ.MENSAJE_MODIFICADO
+
+        # manifiesto ausente -> modo desarrollo, no bloquea
+        integ._manifiesto = None
+        integ._cargado = True
+        integ._avisado = True
+        ok, motivo = integ.verificar(ps1)
+        assert ok and motivo == ""
+    finally:
+        integ._manifiesto, integ._cargado, integ._avisado = guardado
+
+
+def test_run_diagnostic_integridad_fallida():
+    import diagusb.web_server as ws
+
+    class FakeInteg:
+        MENSAJE_MODIFICADO = "Integridad: el colector fue modificado"
+
+        @staticmethod
+        def verificar(ruta):
+            return False, FakeInteg.MENSAJE_MODIFICADO
+
+        @staticmethod
+        def localizar_common(ruta):
+            return None
+
+    old = ws.integridad
+    ws.integridad = FakeInteg
+    try:
+        diag = ws.run_diagnostic("disco")
+        assert diag["integridad_fallida"]
+        assert diag["error_count"] >= 1
+        mensajes = [r["query"]["message"] for r in diag["results"]]
+        assert FakeInteg.MENSAJE_MODIFICADO in mensajes
+    finally:
+        ws.integridad = old
+
+
+def test_generar_manifiesto():
+    import importlib.util
+
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "generar_manifiesto", root / "scripts" / "generar_manifiesto.py")
+    gen = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gen)
+
+    tmp = Path(tempfile.mkdtemp(prefix="diagusb_man_")) / "manifiesto_hashes.json"
+    gen.DESTINO = tmp
+    assert gen.main() == 0
+    data = json.loads(tmp.read_text(encoding="utf-8"))
+    assert data["total"] == len(data["archivos"])
+    assert "_common.ps1" in data["archivos"]
+    assert data["total"] >= 30
+
+
 def run_tests():
     """Ejecuta todas las pruebas de esta suite."""
     tests = [
@@ -1141,6 +1216,9 @@ def run_tests():
         ("test_kb_corrupta_preservada", test_kb_corrupta_preservada),
         ("test_identidad_coincide_unitario", test_identidad_coincide_unitario),
         ("test_identidad_equipo_comparacion", test_identidad_equipo_comparacion),
+        ("test_integridad_colectores", test_integridad_colectores),
+        ("test_run_diagnostic_integridad_fallida", test_run_diagnostic_integridad_fallida),
+        ("test_generar_manifiesto", test_generar_manifiesto),
     ]
 
     passed = 0

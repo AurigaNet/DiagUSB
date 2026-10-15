@@ -29,6 +29,13 @@ if errorlevel 1 (
     )
 )
 
+echo Generando manifiesto de integridad de colectores...
+python scripts\generar_manifiesto.py
+if errorlevel 1 (
+    echo ERROR: no se pudo generar el manifiesto de hashes.
+    exit /b 1
+)
+
 echo Ejecutando PyInstaller...
 python -m PyInstaller build\diagusb.spec --noconfirm
 if errorlevel 1 (

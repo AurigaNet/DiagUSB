@@ -7,6 +7,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from diagusb.core import integridad
+
 
 class TimeExpiredExpired(Exception):
     """Excepcion cuando un collector excede el timeout."""
@@ -36,6 +38,14 @@ class CollectorExecutor:
 
         if not script_path.exists():
             return {"error": f"Script no encontrado: {script_path}"}
+
+        ok_firma, motivo = integridad.verificar(script_path)
+        if ok_firma:
+            comun = integridad.localizar_common(script_path)
+            if comun is not None:
+                ok_firma, motivo = integridad.verificar(comun)
+        if not ok_firma:
+            return {"error": motivo}
 
         try:
             result = subprocess.run(
@@ -83,6 +93,14 @@ class CollectorExecutor:
 
         if not script_path.exists():
             return {"error": f"Script no encontrado: {script_path}"}
+
+        ok_firma, motivo = integridad.verificar(script_path)
+        if ok_firma:
+            comun = integridad.localizar_common(script_path)
+            if comun is not None:
+                ok_firma, motivo = integridad.verificar(comun)
+        if not ok_firma:
+            return {"error": motivo}
 
         try:
             result = subprocess.run(

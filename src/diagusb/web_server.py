@@ -26,6 +26,7 @@ from diagusb.core.registry import discover_packages
 from diagusb.core.models import CollectorResult, QueryInfo, Snapshot, ComputerId
 from diagusb.core.comparator import compare_snapshots
 from diagusb.core import almacen
+from diagusb.core import integridad
 from diagusb.core.rules import diagnose_symptoms
 from diagusb.core import knowledge_base as kb
 from diagusb.core.informe import (
@@ -221,12 +222,26 @@ def run_diagnostic(package_name: str, symptom: str = None) -> dict:
     if not pkg:
         return {"error": f"Paquete '{package_name}' no encontrado"}
     results = []
+    integridad_fallida = []
 
     # Ejecutar colectores
     collectors_dir = Path(__file__).parent / "packages" / package_name / "collectors"
 
     if collectors_dir.exists():
         for ps_file in sorted(collectors_dir.glob("*.ps1")):
+            ok_firma, motivo = integridad.verificar(ps_file)
+            if ok_firma:
+                comun = integridad.localizar_common(ps_file)
+                if comun is not None:
+                    ok_firma, motivo = integridad.verificar(comun)
+            if not ok_firma:
+                integridad_fallida.append(ps_file.stem)
+                results.append({
+                    "collector_id": ps_file.stem,
+                    "query": {"status": "error", "message": motivo, "duration_ms": 0},
+                    "data": {},
+                })
+                continue
             raw = run_powershell(str(ps_file))
             results.extend(_normalize_results(raw))
 
@@ -276,6 +291,7 @@ def run_diagnostic(package_name: str, symptom: str = None) -> dict:
         "results": results,
         "findings": findings_json,
         "improvements": mejoras_sugeridas(results),
+        "integridad_fallida": integridad_fallida,
         "recommendations": recommendations,
         "estados_accion": ESTADOS_ACCION,
         "timestamp": datetime.now().isoformat()
@@ -715,6 +731,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .elev-banner.warn { background: #fff4e5; border: 1px solid #f0a742; color: #7a4b00; }
         .elev-banner.ok { background: #e8f5e9; border: 1px solid #4caf50; color: #1b5e20; }
 
+        .integridad-banner {
+            padding: 10px 14px;
+            border-radius: 6px;
+            margin-bottom: 14px;
+            font-size: 13px;
+            line-height: 1.5;
+            background: #fdecea;
+            border: 1px solid #e53935;
+            color: #8a1c17;
+        }
+
         /* Seccion de diferencias antes/despues */
         .diff-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
         .diff-table th, .diff-table td { border: 1px solid #444; padding: 6px 8px; text-align: left; vertical-align: top; word-break: break-word; }
@@ -755,6 +782,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
 
         <div class="elev-banner" id="elevBanner" style="display:none;"></div>
+
+        <div class="integridad-banner" id="integridadBanner" style="display:none;"></div>
         
         <!-- Buttons Section -->
         <div class="buttons-section">
@@ -1256,6 +1285,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             }
         }
         
+        function mostrarIntegridad(lista) {
+            const b = document.getElementById('integridadBanner');
+            if (!b) return;
+            if (lista && lista.length) {
+                b.textContent = 'Integridad: ' + lista.length + ' colector(es) modificado(s): ' +
+                    lista.join(', ') + '. No se ejecutaron. Regenere el kit desde una copia confiable.';
+                b.style.display = 'block';
+            } else {
+                b.style.display = 'none';
+            }
+        }
+
         function setStatus(status, text) {
             const dot = document.getElementById('statusDot');
             const textEl = document.getElementById('statusText');
@@ -1301,12 +1342,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 
                 if (data.error) {
                     hideAcciones();
+                    mostrarIntegridad([]);
                     document.getElementById('resultsContent').innerHTML = '<div class="diag-card error"><p>' + data.error + '</p></div>';
                     setStatus('error', 'Error: ' + data.error);
                 } else {
                     currentDiag = data;
                     lastDiffs = null;
                     lastComparacionForzada = false;
+                    mostrarIntegridad(data.integridad_fallida);
                     document.getElementById('diffSection').style.display = 'none';
                     const nProblemas = (data.findings || []).length;
                     renderProblemas(data.findings || []);
@@ -1366,6 +1409,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             try {
                 const response = await fetch('/api/full-scan');
                 const data = await response.json();
+                
+                const integridadTotal = [];
+                (data.diagnostics || []).forEach(dg => (dg.integridad_fallida || []).forEach(x => {
+                    if (integridadTotal.indexOf(x) === -1) integridadTotal.push(x);
+                }));
+                mostrarIntegridad(integridadTotal);
                 
                 let html = '';
                 let totalErrors = 0;
