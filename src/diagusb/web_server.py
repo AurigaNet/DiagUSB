@@ -27,6 +27,7 @@ from diagusb.core.models import CollectorResult, QueryInfo, Snapshot, ComputerId
 from diagusb.core.comparator import compare_snapshots
 from diagusb.core import almacen
 from diagusb.core import integridad
+from diagusb.core import rutas
 from diagusb.core.rules import diagnose_symptoms
 from diagusb.core import knowledge_base as kb
 from diagusb.core.informe import (
@@ -38,9 +39,10 @@ from diagusb.core.informe import (
     soluciones_para,
 )
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-BASELINE_PATH = _REPO_ROOT / "reports" / "snapshot_antes.json"
-REGISTRO_PATH = _REPO_ROOT / "config" / "registro_analisis.json"
+_REPO_ROOT = rutas.dir_base()
+DIR_BASE = _REPO_ROOT
+BASELINE_PATH = rutas.dir_reports() / "snapshot_antes.json"
+REGISTRO_PATH = rutas.dir_config() / "registro_analisis.json"
 BIND_HOST = "127.0.0.1"
 MAX_CUERPO = 10 * 1024 * 1024
 _SESSION_TOKEN = None
@@ -742,6 +744,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             color: #8a1c17;
         }
 
+        .respaldo-banner {
+            padding: 10px 14px;
+            border-radius: 6px;
+            margin-bottom: 14px;
+            font-size: 13px;
+            line-height: 1.5;
+            background: #fff8e1;
+            border: 1px solid #ffb300;
+            color: #7a5b00;
+        }
+
         /* Seccion de diferencias antes/despues */
         .diff-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
         .diff-table th, .diff-table td { border: 1px solid #444; padding: 6px 8px; text-align: left; vertical-align: top; word-break: break-word; }
@@ -784,6 +797,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="elev-banner" id="elevBanner" style="display:none;"></div>
 
         <div class="integridad-banner" id="integridadBanner" style="display:none;"></div>
+
+        <div class="respaldo-banner" id="respaldoBanner" style="display:none;"></div>
         
         <!-- Buttons Section -->
         <div class="buttons-section">
@@ -1878,6 +1893,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 const r = await fetch('/api/elevation');
                 const d = await r.json();
                 const b = document.getElementById('elevBanner');
+                const rb = document.getElementById('respaldoBanner');
+                if (rb) {
+                    if (d.respaldo) {
+                        rb.textContent = 'Aviso: la carpeta junto al ejecutable no es escribible; los datos (config/ y reports/) se guardan en ' + d.ruta_base + '.';
+                        rb.style.display = 'block';
+                    } else {
+                        rb.style.display = 'none';
+                    }
+                }
                 if (d.is_elevated === true) {
                     b.className = 'elev-banner ok';
                     b.innerHTML = '<b>Permisos de Administrador:</b> activos. Los colectores pueden leer inventario completo (software, discos, eventos).';
@@ -2066,7 +2090,9 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
 
         elif parsed.path == "/api/elevation":
             # Indica si los colectores corren con permisos de Administrador
-            result = {"is_elevated": _is_elevated()}
+            result = {"is_elevated": _is_elevated(),
+                      "respaldo": rutas.usa_respaldo(),
+                      "ruta_base": str(rutas.dir_base())}
 
             self.send_response(200)
             self.send_header("Content-type", "application/json; charset=utf-8")

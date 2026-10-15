@@ -16,6 +16,7 @@ from .core.reporter import ConsoleReporter, HtmlReporter
 from .core.rules import diagnose
 from .core.models import CollectorResult, QueryInfo
 from .core.logger import get_logger
+from .core import rutas
 
 
 BANNER = f"""
@@ -168,8 +169,8 @@ def run_package_diagnosis(pkg: dict, open_browser: bool = False, yes_flag: bool 
     diagnostic = diagnose(symptom, observations)
 
     # Generar reportes
-    reports_dir = Path("reports")
-    reports_dir.mkdir(exist_ok=True)
+    reports_dir = rutas.dir_reports()
+    reports_dir.mkdir(parents=True, exist_ok=True)
 
     # Reporte consola
     console = ConsoleReporter()
@@ -266,10 +267,10 @@ def cmd_diagnose(args):
     """Comando diagnose: Ejecuta un diagnostico directo."""
     symptom = args.symptom
     package_id = args.package or "impresion"
-    output_dir = Path(args.output_dir) if args.output_dir else Path("reports")
+    output_dir = Path(args.output_dir) if args.output_dir else rutas.dir_reports()
     open_browser = args.open
 
-    output_dir.mkdir(exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     # Configurar logging si se pidio
     logger = None

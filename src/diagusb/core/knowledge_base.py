@@ -19,10 +19,11 @@ from pathlib import Path
 from typing import Any
 
 from . import almacen
+from . import rutas
 
 # Base embebida (se distribuye con el codigo) y capa local editable en config/
 _RUTA_EMBEBIDA = Path(__file__).with_name("base_conocimiento.json")
-_RUTA_CONFIG = Path(__file__).resolve().parents[3] / "config" / "base_conocimiento.json"
+_RUTA_CONFIG = rutas.dir_config() / "base_conocimiento.json"
 
 _CAMPOS_ENTRADA = (
     "id", "titulo", "categoria", "colectores", "sintomas",

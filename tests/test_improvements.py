@@ -3,6 +3,7 @@
 """Pruebas de las mejoras: agrupacion, reglas nuevas, informe, KB editable y contadores."""
 
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -1171,6 +1172,60 @@ def test_generar_manifiesto():
     assert data["total"] >= 30
 
 
+def test_web_server_rutas_base():
+    import diagusb.web_server as ws
+    from diagusb.core import rutas
+
+    assert ws.REGISTRO_PATH == rutas.dir_config() / "registro_analisis.json"
+    assert ws.BASELINE_PATH == rutas.dir_reports() / "snapshot_antes.json"
+
+
+def test_rutas_portables():
+    import diagusb.core.rutas as rutas
+
+    rutas.resetear_cache()
+    try:
+        assert rutas.dir_base() == rutas._raiz_repositorio()
+        assert rutas.dir_config() == rutas._raiz_repositorio() / "config"
+        assert rutas.dir_reports() == rutas._raiz_repositorio() / "reports"
+        assert rutas.usa_respaldo() is False
+
+        tmp = Path(tempfile.mkdtemp(prefix="diagusb_exe_"))
+        rutas.resetear_cache()
+        old_frozen = getattr(sys, "frozen", None)
+        old_exec = sys.executable
+        sys.frozen = True
+        sys.executable = str(tmp / "diagusb.exe")
+        try:
+            assert rutas.dir_base() == tmp.resolve()
+            assert rutas.usa_respaldo() is False
+        finally:
+            if old_frozen is None:
+                del sys.frozen
+            else:
+                sys.frozen = old_frozen
+            sys.executable = old_exec
+
+        appdata = Path(tempfile.mkdtemp(prefix="diagusb_appdata_"))
+        rutas.resetear_cache()
+        old_escr = rutas._escribible
+        old_local = os.environ.get("LOCALAPPDATA")
+        rutas._escribible = lambda carpeta: False
+        os.environ["LOCALAPPDATA"] = str(appdata)
+        try:
+            assert rutas.dir_base() == appdata / "DiagUSB"
+            assert rutas.usa_respaldo() is True
+            assert rutas.dir_respaldo() == appdata / "DiagUSB"
+        finally:
+            rutas._escribible = old_escr
+            if old_local is None:
+                os.environ.pop("LOCALAPPDATA", None)
+            else:
+                os.environ["LOCALAPPDATA"] = old_local
+    finally:
+        rutas.resetear_cache()
+
+
 def run_tests():
     """Ejecuta todas las pruebas de esta suite."""
     tests = [
@@ -1219,6 +1274,8 @@ def run_tests():
         ("test_integridad_colectores", test_integridad_colectores),
         ("test_run_diagnostic_integridad_fallida", test_run_diagnostic_integridad_fallida),
         ("test_generar_manifiesto", test_generar_manifiesto),
+        ("test_web_server_rutas_base", test_web_server_rutas_base),
+        ("test_rutas_portables", test_rutas_portables),
     ]
 
     passed = 0
