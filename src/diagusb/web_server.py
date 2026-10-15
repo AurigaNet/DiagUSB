@@ -2379,8 +2379,11 @@ def run_server(port: int = 8080, elevar: bool = True,
                comando: list | None = None):
     """Ejecuta el servidor web (con elevacion automatica a Administrador)."""
 
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace",
+                               line_buffering=True)
+    except (AttributeError, ValueError):
+        pass
 
     from .core.elevation import (comando_relanzable, desactivada,
                                  elevar_servidor, is_elevado, puerto_en_uso)
@@ -2429,7 +2432,7 @@ def run_server(port: int = 8080, elevar: bool = True,
 |                                                           |
 |  Presiona Ctrl+C para detener                             |
 +===========================================================+
-        """)
+        """, flush=True)
         
         webbrowser.open(url)
         httpd.serve_forever()

@@ -1253,6 +1253,30 @@ def test_codigo_verificacion_informe():
     assert ca.encode("latin-1") in informe_a_pdf(a)
 
 
+def test_banner_flush():
+    import io
+    import diagusb.__main__ as cli
+
+    class Falso(io.StringIO):
+        def __init__(self):
+            super().__init__()
+            self.flushes = 0
+
+        def flush(self):
+            self.flushes += 1
+            super().flush()
+
+    f = Falso()
+    old = sys.stdout
+    sys.stdout = f
+    try:
+        cli.show_banner()
+    finally:
+        sys.stdout = old
+    assert f.flushes >= 1
+    assert "USB" in f.getvalue()
+
+
 def run_tests():
     """Ejecuta todas las pruebas de esta suite."""
     tests = [
@@ -1304,6 +1328,7 @@ def run_tests():
         ("test_web_server_rutas_base", test_web_server_rutas_base),
         ("test_rutas_portables", test_rutas_portables),
         ("test_codigo_verificacion_informe", test_codigo_verificacion_informe),
+        ("test_banner_flush", test_banner_flush),
     ]
 
     passed = 0

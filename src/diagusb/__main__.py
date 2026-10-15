@@ -41,7 +41,7 @@ BANNER = f"""
 
 def show_banner():
     """Muestra el banner de DiagUSB."""
-    print(BANNER)
+    print(BANNER, flush=True)
 
 
 def open_in_browser(file_path: Path) -> bool:
@@ -510,8 +510,11 @@ Ejemplos:
     args = parser.parse_args()
 
     # Consolas Windows (cp1252) no pueden imprimir el banner Unicode
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace",
+                               line_buffering=True)
+    except (AttributeError, ValueError):
+        pass
 
     show_banner()
 
