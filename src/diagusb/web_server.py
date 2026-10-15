@@ -51,6 +51,14 @@ def _token_sesion() -> str:
     return _SESSION_TOKEN
 
 
+def _paquete_seguro(package) -> str:
+    """Nombre de paquete apto para usar en un archivo (solo [A-Za-z0-9_-])."""
+    texto = "" if package is None else str(package)
+    limpio = "".join(c for c in texto
+                     if c.isascii() and (c.isalnum() or c in "_-"))
+    return limpio or "equipo"
+
+
 REGISTRO_MAX = 200
 _REGISTRO_LOCK = threading.Lock()
 
@@ -2145,15 +2153,16 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
                 observaciones=payload.get("observaciones", ""),
                 diferencias=payload.get("diferencias"),
             )
+            paquete = _paquete_seguro(diag["package"])
 
             if fmt == "doc":
                 data = informe_a_doc(informe, resultados_completos=diag.get("results"))
                 content_type = "application/msword"
-                filename = f"informe_{diag['package']}_{datetime.now():%Y%m%d_%H%M%S}.doc"
+                filename = f"informe_{paquete}_{datetime.now():%Y%m%d_%H%M%S}.doc"
             else:
                 data = informe_a_pdf(informe)
                 content_type = "application/pdf"
-                filename = f"informe_{diag['package']}_{datetime.now():%Y%m%d_%H%M%S}.pdf"
+                filename = f"informe_{paquete}_{datetime.now():%Y%m%d_%H%M%S}.pdf"
 
             self.send_response(200)
             self.send_header("Content-Type", f"{content_type}; charset=utf-8")

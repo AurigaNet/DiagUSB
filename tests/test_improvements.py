@@ -895,6 +895,35 @@ def test_limite_de_cuerpo():
         httpd.server_close()
 
 
+def test_nombre_informe_seguro():
+    import urllib.request
+    import diagusb.web_server as ws
+
+    assert ws._paquete_seguro("disco") == "disco"
+    assert ws._paquete_seguro('../../x"y') == "xy"
+    assert ws._paquete_seguro("") == "equipo"
+    assert ws._paquete_seguro(None) == "equipo"
+
+    httpd, base = _abrir_servidor()
+    try:
+        diag = _diag_minimo()
+        diag["package"] = '../../evil"\r\nX-Inject: 1'
+        cuerpo = json.dumps({"diagnostico": diag}).encode("utf-8")
+        cabeceras = dict(_cookie())
+        cabeceras["Content-Type"] = "application/json"
+        req = urllib.request.Request(base + "/api/report?format=doc",
+                                     data=cuerpo, headers=cabeceras)
+        r = urllib.request.urlopen(req, timeout=30)
+        assert r.status == 200
+        cd = r.headers.get("Content-Disposition", "")
+        assert "evil" in cd
+        assert "/" not in cd and ".." not in cd
+        assert "\r" not in cd and "\n" not in cd
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
 def run_tests():
     """Ejecuta todas las pruebas de esta suite."""
     tests = [
@@ -931,6 +960,7 @@ def run_tests():
         ("test_post_exige_json", test_post_exige_json),
         ("test_token_sesion", test_token_sesion),
         ("test_limite_de_cuerpo", test_limite_de_cuerpo),
+        ("test_nombre_informe_seguro", test_nombre_informe_seguro),
     ]
 
     passed = 0
