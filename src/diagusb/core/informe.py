@@ -534,9 +534,9 @@ _CSS_PRINT = """
 body { font-family: 'Segoe UI', Arial, sans-serif; color: #222; margin: 24px; font-size: 12px; }
 h1 { font-size: 20px; border-bottom: 2px solid #1a73e8; padding-bottom: 6px; color: #1a73e8; }
 h2 { font-size: 15px; margin-top: 22px; color: #1a73e8; border-bottom: 1px solid #ddd; padding-bottom: 3px; }
-table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+table { border-collapse: collapse; width: 100%; table-layout: fixed; word-wrap: break-word; word-break: break-all; margin: 8px 0; }
 th, td { border: 1px solid #ccc; padding: 5px 8px; text-align: left; vertical-align: top; }
-th { background: #f1f3f4; }
+th, td.th { background: #f1f3f4; font-weight: 700; }
 .kv td:first-child { background: #f8f9fa; font-weight: 600; width: 220px; }
 .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; color: #fff; font-size: 10px; font-weight: 700; }
 .problema { border: 1px solid #ddd; border-left: 5px solid #888; padding: 10px; margin: 10px 0; }
@@ -544,9 +544,29 @@ th { background: #f1f3f4; }
 .muted { color: #666; }
 .advertencia { background: #fff3cd; border: 1px solid #e0a800; color: #7a4f00; padding: 10px; margin: 10px 0; font-size: 13px; }
 .mono { font-family: Consolas, monospace; font-size: 11px; white-space: pre-wrap; }
-.firma { margin-top: 40px; display: flex; gap: 40px; }
-.firma div { flex: 1; border-top: 1px solid #333; padding-top: 4px; text-align: center; }
+.firma { width: 100%; margin-top: 40px; border-collapse: collapse; }
+.firma td { width: 50%; border: none; border-top: 1px solid #333; padding-top: 4px; text-align: center; }
 @media print { body { margin: 0; } .no-print { display: none; } }
+"""
+
+# CSS para el .doc de Word (el cuerpo HTML se reutiliza, pero Word no hereda
+# la hoja del navegador: se inyecta en el <style> del documento Office).
+_CSS_WORD = """
+body { font-family: 'Segoe UI', Arial, sans-serif; color: #222; font-size: 10pt; }
+h1 { font-size: 18pt; color: #1a73e8; border-bottom: 2px solid #1a73e8; padding-bottom: 4px; }
+h2 { font-size: 13pt; color: #1a73e8; margin-top: 16pt; border-bottom: 1px solid #ddd; padding-bottom: 2px; }
+h3 { font-size: 11pt; margin: 0 0 4pt 0; }
+table { border-collapse:collapse; width:100%; table-layout:fixed; mso-table-layout-alt:fixed; word-wrap:break-word; word-break:break-all; margin: 6pt 0; }
+td, th { border: 1px solid #999; padding: 4px; vertical-align: top; font-size: 10pt; }
+th, td.th { background: #f1f3f4; text-align: left; font-weight: 700; }
+.kv td:first-child { width: 30%; font-weight: 600; background: #f8f9fa; }
+.mono { font-family: Consolas, monospace; font-size: 9pt; white-space: pre-wrap; word-wrap:break-word; }
+.muted { color: #666; }
+.badge { display: inline-block; padding: 2px 6px; color: #fff; font-size: 8pt; font-weight: 700; }
+.problema { border-left: 4px solid #888; padding: 8px; margin: 8px 0; }
+.advertencia { background: #fff3cd; border-left: 4px solid #e0a800; color: #7a4f00; padding: 8px; }
+.firma { width: 100%; margin-top: 40px; border-collapse: collapse; }
+.firma td { width: 50%; border: none; border-top: 1px solid #333; padding-top: 4px; text-align: center; }
 """
 
 
@@ -571,6 +591,18 @@ def _fmt_valor_truncado(v: Any) -> str:
         return f"[{n} registros] " + json.dumps(v[:3], ensure_ascii=False)[:100]
     s = _fmt_valor(v)
     return s if len(s) <= 160 else s[:157] + "..."
+
+
+def _fmt_fecha(valor: Any) -> str:
+    """Fecha legible 'dd/mm/aaaa hh:mm'. Si no se puede interpretar, deja el original."""
+    texto = str(valor or "").strip()
+    if not texto:
+        return ""
+    try:
+        dt = datetime.fromisoformat(texto.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return texto
+    return dt.strftime("%d/%m/%Y %H:%M")
 
 
 def codigo_verificacion(e: InformeData) -> str:
@@ -599,19 +631,26 @@ def codigo_verificacion(e: InformeData) -> str:
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
 
 
-def informe_a_html(informe: InformeData, con_anexo: bool = True,
+def informe_a_html(informe: InformeData, con_anexo: bool = False,
                    resultados_completos: list | None = None) -> str:
     e = informe
+    n_seccion = 0
+
+    def _sec(titulo: str) -> str:
+        nonlocal n_seccion
+        n_seccion += 1
+        return f"<h2>{n_seccion}. {titulo}</h2>"
+
     out = [f"<html><head><meta charset='utf-8'><title>Informe DiagUSB</title>",
            f"<style>{_CSS_PRINT}</style></head><body>"]
     out.append(f"<h1>INFORME DE DIAGNÓSTICO - DiagUSB</h1>")
-    out.append(f"<p class='muted'>Generado: {_esc(e.generado_en)} | "
+    out.append(f"<p class='muted'>Generado: {_esc(_fmt_fecha(e.generado_en))} | "
                f"Paquete: <b>{_esc(e.paquete.get('label'))}</b> | "
                f"Síntoma: {_esc(e.paquete.get('symptom'))}</p>")
     for adv in e.advertencias:
         out.append(f"<p class='advertencia'><b>{_esc(adv)}</b></p>")
 
-    out.append("<h2>1. Datos del equipo</h2>")
+    out.append(_sec("Datos del equipo"))
     if e.equipo:
         out.append("<table class='kv'>")
         labels = [
@@ -626,7 +665,7 @@ def informe_a_html(informe: InformeData, con_anexo: bool = True,
         out.append("<p class='muted'>Sin datos de equipo.</p>")
 
     r = e.resumen
-    out.append("<h2>2. Resumen del diagnóstico</h2>")
+    out.append(_sec("Resumen del diagnóstico"))
     out.append("<table class='kv'>")
     out.append(f"<tr><td>Colectores ejecutados</td><td>{r.get('colectores_total', 0)} "
                f"(OK: {r.get('colectores_ok', 0)}, con error: {r.get('colectores_error', 0)})</td></tr>")
@@ -639,7 +678,7 @@ def informe_a_html(informe: InformeData, con_anexo: bool = True,
         out.append(f"<tr><td>Cliente / Sector</td><td>{_esc(e.cliente)}</td></tr>")
     out.append("</table>")
 
-    out.append("<h2>3. Problemas detectados y acciones del técnico</h2>")
+    out.append(_sec("Problemas detectados y acciones del técnico"))
     if not e.problemas:
         out.append("<p>No se detectaron problemas automaticamente para este paquete.</p>")
     for p in e.problemas:
@@ -681,17 +720,22 @@ def informe_a_html(informe: InformeData, con_anexo: bool = True,
         out.append("</p></div>")
 
     if e.mejoras:
-        out.append("<h2>4. Mejoras sugeridas</h2>")
-        out.append("<table><tr><th>Mejora</th><th>Detalle</th><th>Implementada</th><th>Comentario</th></tr>")
+        out.append(_sec("Mejoras sugeridas"))
+        out.append("<table><tr><td class='th' style='width:22%'>Mejora</td>"
+                   "<td class='th' style='width:48%'>Detalle</td>"
+                   "<td class='th' style='width:12%'>Implementada</td>"
+                   "<td class='th' style='width:18%'>Comentario</td></tr>")
         for m in e.mejoras:
             out.append(f"<tr><td>{_esc(m.titulo)}</td><td>{_esc(m.detalle)}</td>"
                        f"<td>{'Sí' if m.aplicada else 'No'}</td><td>{_esc(m.comentario) or '-'}</td></tr>")
         out.append("</table>")
 
     if e.diferencias:
-        out.append("<h2>5. Cambios detectados (antes vs después)</h2>")
-        out.append("<table><tr><th>Colector</th><th>Campo</th>"
-                   "<th>Antes</th><th>Después</th></tr>")
+        out.append(_sec("Cambios detectados (antes vs después)"))
+        out.append("<table><tr><td class='th' style='width:16%'>Colector</td>"
+                   "<td class='th' style='width:24%'>Campo</td>"
+                   "<td class='th' style='width:30%'>Antes</td>"
+                   "<td class='th' style='width:30%'>Después</td></tr>")
         for d in e.diferencias:
             out.append(f"<tr><td>{_esc(d.get('collector_id', ''))}</td>"
                        f"<td>{_esc(d.get('field_path', ''))}</td>"
@@ -700,14 +744,17 @@ def informe_a_html(informe: InformeData, con_anexo: bool = True,
         out.append("</table>")
 
     if e.recomendaciones:
-        out.append("<h2>6. Recomendaciones generales</h2><ul>")
+        out.append(_sec("Recomendaciones generales") + "<ul>")
         for rec in e.recomendaciones:
             out.append(f"<li>{_esc(rec)}</li>")
         out.append("</ul>")
 
-    out.append("<h2>7. Análisis por colector</h2>")
-    out.append("<table><tr><th>Colector</th><th>Estado</th><th>Duración</th>"
-               "<th>Resumen</th><th>Observaciones</th></tr>")
+    out.append(_sec("Análisis por colector"))
+    out.append("<table><tr><td class='th' style='width:16%'>Colector</td>"
+               "<td class='th' style='width:10%'>Estado</td>"
+               "<td class='th' style='width:10%'>Duración</td>"
+               "<td class='th' style='width:32%'>Resumen</td>"
+               "<td class='th' style='width:32%'>Observaciones</td></tr>")
     for c in e.colectores:
         st_color = _SEVERIDAD_COLOR.get(
             "ok" if c.status == "ok" else ("warning" if c.status in ("empty", "not_available") else "error"),
@@ -721,7 +768,7 @@ def informe_a_html(informe: InformeData, con_anexo: bool = True,
     out.append("</table>")
 
     if e.observaciones:
-        out.append("<h2>8. Observaciones generales</h2>")
+        out.append(_sec("Observaciones generales"))
         out.append(f"<p class='mono'>{_esc(e.observaciones)}</p>")
 
     if con_anexo and resultados_completos:
@@ -730,15 +777,21 @@ def informe_a_html(informe: InformeData, con_anexo: bool = True,
         out.append(_esc(json.dumps(resultados_completos, ensure_ascii=False, indent=2)[:200000]))
         out.append("</pre>")
 
-    out.append("<div class='firma'><div>Firma del técnico</div><div>Conformidad del cliente</div></div>")
+    out.append("<table class='firma'><tr><td>Firma del técnico</td>"
+               "<td>Conformidad del cliente</td></tr></table>")
     out.append(f"<p class='muted mono'>Código de verificación: {codigo_verificacion(e)}</p>")
     out.append("</body></html>")
     return "".join(out)
 
 
-def informe_a_doc(informe: InformeData, resultados_completos: list | None = None) -> bytes:
-    """Genera un archivo .doc (HTML con formato Word). Word lo abre directamente."""
-    body = informe_a_html(informe, con_anexo=True, resultados_completos=resultados_completos)
+def informe_a_doc(informe: InformeData, resultados_completos: list | None = None,
+                  con_anexo: bool = False) -> bytes:
+    """Genera un archivo .doc (HTML con formato Word). Word lo abre directamente.
+
+    El volcado JSON crudo de los colectores solo se incluye si ``con_anexo`` es
+    True (cuando el técnico lo pide); por defecto no aparece.
+    """
+    body = informe_a_html(informe, con_anexo=con_anexo, resultados_completos=resultados_completos)
     doc = (
         "<html xmlns:o='urn:schemas-microsoft-com:office:office' "
         "xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>"
@@ -746,7 +799,8 @@ def informe_a_doc(informe: InformeData, resultados_completos: list | None = None
         "<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View>"
         "<w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->"
         "<style>@page WordSection1 { size: 21cm 29.7cm; margin: 2cm; }"
-        "div.WordSection1 { page: WordSection1; }</style></head>"
+        "div.WordSection1 { page: WordSection1; }"
+        + _CSS_WORD + "</style></head>"
         "<body><div class='WordSection1'>" + body[body.find("<body>") + 6:body.rfind("</body>")] +
         "</div></body></html>"
     )
@@ -906,10 +960,16 @@ class _PdfDoc:
 def informe_a_pdf(informe: InformeData) -> bytes:
     doc = _PdfDoc()
     e = informe
+    n_seccion = 0
+
+    def _sec(titulo: str) -> str:
+        nonlocal n_seccion
+        n_seccion += 1
+        return f"{n_seccion}. {titulo}"
 
     doc.text_flow("INFORME DE DIAGNÓSTICO - DiagUSB", size=16, font="F2", color=(0.10, 0.45, 0.91))
     doc.spacer(2)
-    doc.text_flow(f"Generado: {e.generado_en}  |  Paquete: {e.paquete.get('label', '')}  |  "
+    doc.text_flow(f"Generado: {_fmt_fecha(e.generado_en)}  |  Paquete: {e.paquete.get('label', '')}  |  "
                   f"Síntoma: {e.paquete.get('symptom', '')}", size=9, font="F3", color=(0.4, 0.4, 0.4))
     doc.hrule()
 
@@ -917,7 +977,7 @@ def informe_a_pdf(informe: InformeData) -> bytes:
         doc.text_flow(adv, size=10, font="F2", color=(0.7, 0.35, 0))
         doc.spacer(2)
 
-    doc.text_flow("1. Datos del equipo", size=12, font="F2", color=(0.10, 0.45, 0.91))
+    doc.text_flow(_sec("Datos del equipo"), size=12, font="F2", color=(0.10, 0.45, 0.91))
     if e.equipo:
         labels = [
             ("Equipo", e.equipo.get("computer_name")),
@@ -932,7 +992,7 @@ def informe_a_pdf(informe: InformeData) -> bytes:
         doc.text_flow("Sin datos de equipo.", size=9, font="F3", indent=8)
     doc.spacer(4)
 
-    doc.text_flow("2. Resumen del diagnóstico", size=12, font="F2", color=(0.10, 0.45, 0.91))
+    doc.text_flow(_sec("Resumen del diagnóstico"), size=12, font="F2", color=(0.10, 0.45, 0.91))
     r = e.resumen
     doc.text_flow(f"Colectores ejecutados: {r.get('colectores_total', 0)} "
                   f"(OK: {r.get('colectores_ok', 0)}, con error: {r.get('colectores_error', 0)})",
@@ -946,7 +1006,7 @@ def informe_a_pdf(informe: InformeData) -> bytes:
         doc.text_flow(f"Cliente / Sector: {e.cliente}", size=9, indent=8)
     doc.spacer(4)
 
-    doc.text_flow("3. Problemas detectados y acciones del técnico", size=12, font="F2",
+    doc.text_flow(_sec("Problemas detectados y acciones del técnico"), size=12, font="F2",
                   color=(0.10, 0.45, 0.91))
     if not e.problemas:
         doc.text_flow("No se detectaron problemas automáticos para este paquete.",
@@ -990,7 +1050,7 @@ def informe_a_pdf(informe: InformeData) -> bytes:
         doc.spacer(4)
 
     if e.mejoras:
-        doc.text_flow("4. Mejoras sugeridas", size=12, font="F2", color=(0.10, 0.45, 0.91))
+        doc.text_flow(_sec("Mejoras sugeridas"), size=12, font="F2", color=(0.10, 0.45, 0.91))
         for m in e.mejoras:
             marca = "[X]" if m.aplicada else "[ ]"
             doc.text_flow(f"{marca} {m.titulo}", size=9, font="F2", indent=8)
@@ -1000,7 +1060,7 @@ def informe_a_pdf(informe: InformeData) -> bytes:
         doc.spacer(4)
 
     if e.diferencias:
-        doc.text_flow("5. Cambios detectados (antes vs después)", size=12, font="F2",
+        doc.text_flow(_sec("Cambios detectados (antes vs después)"), size=12, font="F2",
                       color=(0.10, 0.45, 0.91))
         for d in e.diferencias:
             doc.text_flow(
@@ -1011,12 +1071,12 @@ def informe_a_pdf(informe: InformeData) -> bytes:
         doc.spacer(4)
 
     if e.recomendaciones:
-        doc.text_flow("6. Recomendaciones generales", size=12, font="F2", color=(0.10, 0.45, 0.91))
+        doc.text_flow(_sec("Recomendaciones generales"), size=12, font="F2", color=(0.10, 0.45, 0.91))
         for rec in e.recomendaciones:
             doc.text_flow(f"- {rec}", size=9, indent=8)
         doc.spacer(4)
 
-    doc.text_flow("7. Análisis por colector", size=12, font="F2", color=(0.10, 0.45, 0.91))
+    doc.text_flow(_sec("Análisis por colector"), size=12, font="F2", color=(0.10, 0.45, 0.91))
     for c in e.colectores:
         estado = c.status
         doc.text_flow(f"{c.collector_id}  [{estado}]  ({c.duration_ms} ms)",
@@ -1028,7 +1088,7 @@ def informe_a_pdf(informe: InformeData) -> bytes:
         doc.spacer(2)
 
     if e.observaciones:
-        doc.text_flow("8. Observaciones generales", size=12, font="F2", color=(0.10, 0.45, 0.91))
+        doc.text_flow(_sec("Observaciones generales"), size=12, font="F2", color=(0.10, 0.45, 0.91))
         doc.text_flow(e.observaciones, size=9, indent=8)
 
     doc.spacer(30)
@@ -1040,5 +1100,5 @@ def informe_a_pdf(informe: InformeData) -> bytes:
     doc.text_flow(f"Código de verificación: {codigo_verificacion(e)}",
                   size=8, font="F3", indent=8, color=(0.4, 0.4, 0.4))
 
-    doc.header_every_page(f"DiagUSB - Informe: {e.paquete.get('label', '')} - {e.generado_en[:16]}")
+    doc.header_every_page(f"DiagUSB - Informe: {e.paquete.get('label', '')} - {_fmt_fecha(e.generado_en)}")
     return doc.save()

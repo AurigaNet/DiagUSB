@@ -4,6 +4,7 @@
 
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -20,6 +21,7 @@ from diagusb.core.informe import (
     InformeColector,
     InformeData,
     InformeProblema,
+    _fmt_fecha,
     _resumen_datos,
     codigo_verificacion,
     informe_a_doc,
@@ -247,6 +249,59 @@ def test_resumen_datos_humano():
     assert lineas == ["Software instalado: 2 aplicaciones"]
     lineas = _resumen_datos({"physical_memory_usage_percent": 61.5}, "memory_status")
     assert lineas == ["Uso de memoria física: 62%"]
+
+
+def test_fmt_fecha_informe():
+    assert _fmt_fecha("2026-10-15T18:48:23.123456") == "15/10/2026 18:48"
+    assert _fmt_fecha("2026-10-15T18:48:23") == "15/10/2026 18:48"
+    assert _fmt_fecha("2026-10-15T18:48:23.123456+00:00") == "15/10/2026 18:48"
+    assert _fmt_fecha("") == ""
+    assert _fmt_fecha(None) == ""
+    assert _fmt_fecha("no-es-fecha") == "no-es-fecha"
+
+
+def _numeros_seccion_html(html):
+    return [int(n) for n in re.findall(r"<h2>(\d+)\.", html)]
+
+
+def test_informe_secciones_correlativas():
+    inf = informe_desde_diagnostico(_diag_minimo())
+    html = informe_a_html(inf, con_anexo=False)
+    nums = _numeros_seccion_html(html)
+    assert nums == list(range(1, len(nums) + 1)), nums
+    assert nums[-1] == 5
+
+    sin_reco = informe_desde_diagnostico(_diag_minimo())
+    sin_reco.recomendaciones = []
+    html2 = informe_a_html(sin_reco, con_anexo=False)
+    assert _numeros_seccion_html(html2) == [1, 2, 3, 4]
+    assert "4. Análisis por colector" in html2
+
+
+def test_doc_css_y_anexo_opcional():
+    inf = informe_desde_diagnostico(_diag_minimo())
+    resultados = [{"collector_id": "logical_disks", "data": 1}]
+    texto = informe_a_doc(inf, resultados_completos=resultados).decode("utf-8")
+    for regla in ("table-layout:fixed", "word-wrap:break-word", ".mono",
+                  "Consolas", ".muted", ".firma", ".badge", "border-collapse:collapse"):
+        assert regla in texto, regla
+    assert "xmlns:w='urn:schemas-microsoft-com:office:word'" in texto
+    assert "Datos crudos de los colectores" not in texto
+
+    con = informe_a_doc(inf, resultados_completos=resultados, con_anexo=True).decode("utf-8")
+    assert "Datos crudos de los colectores" in con
+    assert "collector_id" in con
+
+
+def test_pdf_fecha_y_secciones():
+    inf = informe_desde_diagnostico(_diag_minimo())
+    inf.generado_en = "2026-10-15T18:48:23.123456"
+    texto = informe_a_pdf(inf).decode("latin-1", errors="replace")
+    assert "15/10/2026 18:48" in texto
+    nums = [int(n) for n in re.findall(
+        r"(\d+)\. (?:Datos del equipo|Resumen del diagn|Problemas detectados|Mejoras|"
+        r"Cambios|Recomendaciones|An.lisis por colector|Observaciones)", texto)]
+    assert nums == list(range(1, len(nums) + 1)), nums
 
 
 # ---------------------------------------------------------------------------
@@ -1367,6 +1422,10 @@ def run_tests():
         ("test_informe_diferencias_y_grupo", test_informe_diferencias_y_grupo),
         ("test_informe_sin_diferencias", test_informe_sin_diferencias),
         ("test_resumen_datos_humano", test_resumen_datos_humano),
+        ("test_fmt_fecha_informe", test_fmt_fecha_informe),
+        ("test_informe_secciones_correlativas", test_informe_secciones_correlativas),
+        ("test_doc_css_y_anexo_opcional", test_doc_css_y_anexo_opcional),
+        ("test_pdf_fecha_y_secciones", test_pdf_fecha_y_secciones),
         ("test_kb_guardar_y_eliminar", test_kb_guardar_y_eliminar),
         ("test_kb_valida_campos", test_kb_valida_campos),
         ("test_kb_embebida_intacta", test_kb_embebida_intacta),
