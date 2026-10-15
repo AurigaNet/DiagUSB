@@ -5,6 +5,7 @@
 
 import http.server
 import json
+import secrets
 import socketserver
 import sys
 import threading
@@ -38,6 +39,17 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 BASELINE_PATH = _REPO_ROOT / "reports" / "snapshot_antes.json"
 REGISTRO_PATH = _REPO_ROOT / "config" / "registro_analisis.json"
 BIND_HOST = "127.0.0.1"
+_SESSION_TOKEN = None
+
+
+def _token_sesion() -> str:
+    """Token de sesion (se genera una vez por proceso)."""
+    global _SESSION_TOKEN
+    if _SESSION_TOKEN is None:
+        _SESSION_TOKEN = secrets.token_urlsafe(32)
+    return _SESSION_TOKEN
+
+
 REGISTRO_MAX = 200
 _REGISTRO_LOCK = threading.Lock()
 
@@ -1820,10 +1832,67 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
         self.send_error(403, "Origen no permitido")
         return False
 
+    def _token_recibido(self):
+        params = parse_qs(urlparse(self.path).query)
+        if params.get("t"):
+            return params["t"][0]
+        for parte in self.headers.get("Cookie", "").split(";"):
+            clave, _, valor = parte.strip().partition("=")
+            if clave == "diagusb_token":
+                return valor
+        return None
+
+    def _token_valido(self):
+        return secrets.compare_digest(self._token_recibido() or "", _token_sesion())
+
+    def _servir_index(self):
+        body = HTML_TEMPLATE.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _redirigir_con_cookie(self):
+        self.send_response(302)
+        self.send_header("Location", "/")
+        self.send_header("Set-Cookie",
+                         f"diagusb_token={_token_sesion()}; "
+                         "HttpOnly; SameSite=Strict; Path=/")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _pagina_sin_token(self):
+        body = (
+            '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">'
+            "<title>DiagUSB</title></head>"
+            '<body style="font-family:system-ui,sans-serif;padding:2rem">'
+            "<h1>Acceso restringido</h1>"
+            "<p>Abra la URL con el token de sesion que muestra la consola de "
+            "DiagUSB.</p></body></html>"
+        ).encode("utf-8")
+        self.send_response(403)
+        self.send_header("Content-type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self):
         """Maneja GET requests."""
         try:
             if not self._validar_solicitud():
+                return
+            parsed = urlparse(self.path)
+            if parsed.path == "/":
+                if not self._token_valido():
+                    self._pagina_sin_token()
+                elif parse_qs(parsed.query).get("t"):
+                    self._redirigir_con_cookie()
+                else:
+                    self._servir_index()
+                return
+            if parsed.path.startswith("/api/") and not self._token_valido():
+                self._json_response({"error": "No autorizado"}, 401)
                 return
             self._handle_get()
         except Exception as e:
@@ -1914,13 +1983,6 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps(result, ensure_ascii=False).encode("utf-8"))
             
-        elif parsed.path == "/":
-            # Servir pagina principal
-            self.send_response(200)
-            self.send_header("Content-type", "text/html; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(HTML_TEMPLATE.encode("utf-8"))
-
         else:
             self.send_error(404, "No encontrado")
     
@@ -1931,6 +1993,9 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
         ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
         if ctype != "application/json":
             self.send_error(415, "Content-Type debe ser application/json")
+            return
+        if not self._token_valido():
+            self._json_response({"error": "No autorizado"}, 401)
             return
         parsed = urlparse(self.path)
         if parsed.path == "/api/report":
@@ -1948,6 +2013,9 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
         """APIs DELETE: borrado del registro de analisis."""
         try:
             if not self._validar_solicitud():
+                return
+            if not self._token_valido():
+                self._json_response({"error": "No autorizado"}, 401)
                 return
             self._handle_delete()
         except Exception as e:
@@ -2090,7 +2158,16 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def log_message(self, format, *args):
-        print(f"[DiagUSB] {args[0]}")
+        mensaje = str(args[0]) if args else ""
+        if "t=" in mensaje:
+            antes, _, resto = mensaje.partition("t=")
+            fin = len(resto)
+            for sep in ("&", " ", ";"):
+                p = resto.find(sep)
+                if p != -1:
+                    fin = min(fin, p)
+            mensaje = antes + "t=[oculto]" + resto[fin:]
+        print(f"[DiagUSB] {mensaje}")
 
 
 def run_server(port: int = 8080, elevar: bool = True,
@@ -2135,17 +2212,17 @@ def run_server(port: int = 8080, elevar: bool = True,
         sys.exit(1)
 
     with httpd:
-        url = f"http://localhost:{port}"
+        url = f"http://localhost:{port}/?t={_token_sesion()}"
         print(f"""
 +===========================================================+
+|  DiagUSB - Servidor Web Interactivo                       |
 |                                                           |
-|   DiagUSB - Servidor Web Interactivo                      |
+|  Abriendo el navegador con el token de sesion.            |
 |                                                           |
-|   Abriendo navegador en:                                  |
-|   {url:<56} |
+|  Si no abre solo, copie esta URL exacta:                  |
+|  {url}
 |                                                           |
-|   Presiona Ctrl+C para detener                            |
-|                                                           |
+|  Presiona Ctrl+C para detener                             |
 +===========================================================+
         """)
         

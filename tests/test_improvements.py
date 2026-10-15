@@ -22,6 +22,26 @@ from diagusb.core.models import CollectorResult, Finding
 from diagusb.core.rules import RuleEngine, _agrupar_findings
 
 
+def _abrir_servidor():
+    import threading
+    import socketserver
+    import diagusb.web_server as ws
+
+    class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+        allow_reuse_address = True
+        daemon_threads = True
+
+    httpd = ThreadedTCPServer((ws.BIND_HOST, 0), ws.DiagUSBHandler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    return httpd, f"http://127.0.0.1:{httpd.server_address[1]}"
+
+
+def _cookie():
+    import diagusb.web_server as ws
+    return {"Cookie": f"diagusb_token={ws._token_sesion()}"}
+
+
+
 def create_mock_result(collector_id: str, data: list | dict, status: str = "ok") -> CollectorResult:
     return CollectorResult(
         schema_version=1,
@@ -557,11 +577,12 @@ def test_api_registro_endpoints():
     httpd = None
 
     def _get(url):
-        return json.loads(urllib.request.urlopen(url, timeout=5)
+        req = urllib.request.Request(url, headers=_cookie())
+        return json.loads(urllib.request.urlopen(req, timeout=5)
                           .read().decode("utf-8"))
 
     def _delete(url):
-        req = urllib.request.Request(url, method="DELETE")
+        req = urllib.request.Request(url, method="DELETE", headers=_cookie())
         return json.loads(urllib.request.urlopen(req, timeout=5)
                           .read().decode("utf-8"))
 
@@ -645,7 +666,8 @@ def test_sin_servidor_de_archivos():
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{port}"
     try:
-        r = urllib.request.urlopen(base + "/", timeout=5)
+        r = urllib.request.urlopen(
+            urllib.request.Request(base + "/", headers=_cookie()), timeout=5)
         assert r.status == 200
         assert "text/html" in r.headers.get("Content-Type", "")
         assert "DiagUSB" in r.read().decode("utf-8")
@@ -697,7 +719,8 @@ def test_sin_cabeceras_cors():
     base = f"http://127.0.0.1:{httpd.server_address[1]}"
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     try:
-        r = urllib.request.urlopen(base + "/", timeout=5)
+        r = urllib.request.urlopen(
+            urllib.request.Request(base + "/", headers=_cookie()), timeout=5)
         assert r.headers.get("Access-Control-Allow-Origin") is None, \
             "no debe emitirse Access-Control-Allow-Origin"
     finally:
@@ -736,9 +759,11 @@ def test_validacion_host_y_origin():
         except urllib.error.HTTPError as e:
             assert e.code == 403, e.code
 
-        req = urllib.request.Request(base + "/",
-                                     headers={"Origin": f"http://127.0.0.1:{port}"})
-        assert urllib.request.urlopen(req, timeout=5).status == 200
+        headers = dict(_cookie())
+        headers["Origin"] = f"http://127.0.0.1:{port}"
+        assert urllib.request.urlopen(
+            urllib.request.Request(base + "/", headers=headers),
+            timeout=5).status == 200
     finally:
         httpd.shutdown()
         httpd.server_close()
@@ -760,7 +785,9 @@ def test_post_exige_json():
 
     def post(path, ctype=None):
         conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
-        headers = {"Content-Type": ctype} if ctype else {}
+        headers = dict(_cookie())
+        if ctype:
+            headers["Content-Type"] = ctype
         conn.request("POST", path, body="{}", headers=headers)
         r = conn.getresponse()
         r.read()
@@ -772,6 +799,58 @@ def test_post_exige_json():
         assert post("/api/snapshot", "text/plain") == 415
         assert post("/api/noexiste", "application/json") == 404
         assert post("/api/noexiste", "application/json; charset=utf-8") == 404
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_token_sesion():
+    import http.client
+    import io
+    import contextlib
+    import diagusb.web_server as ws
+
+    httpd, base = _abrir_servidor()
+    port = httpd.server_address[1]
+    token = ws._token_sesion()
+
+    def get(path, headers=None):
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        conn.request("GET", path, headers=headers or {})
+        r = conn.getresponse()
+        r.read()
+        conn.close()
+        return r
+
+    try:
+        assert get("/").status == 403
+        assert get("/api/elevation").status == 401
+
+        r = get("/?t=" + token)
+        assert r.status == 302, r.status
+        assert r.getheader("Location") == "/"
+        cookie = r.getheader("Set-Cookie") or ""
+        assert "diagusb_token=" in cookie
+        assert "HttpOnly" in cookie
+        assert "SameSite=Strict" in cookie
+        assert "Path=/" in cookie
+
+        assert get("/?t=invalido").status == 403
+
+        ck = {"Cookie": f"diagusb_token={token}"}
+        assert get("/", ck).status == 200
+        assert get("/api/elevation", ck).status == 200
+
+        bad = {"Cookie": "diagusb_token=nope"}
+        assert get("/", bad).status == 403
+        assert get("/api/elevation", bad).status == 401
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            ws.DiagUSBHandler.log_message(None, "%s", "GET /?t=SECRETOX HTTP/1.1")
+        salida = buf.getvalue()
+        assert "SECRETOX" not in salida, "el token no debe aparecer en el log"
+        assert "t=[oculto]" in salida
     finally:
         httpd.shutdown()
         httpd.server_close()
@@ -811,6 +890,7 @@ def run_tests():
         ("test_sin_cabeceras_cors", test_sin_cabeceras_cors),
         ("test_validacion_host_y_origin", test_validacion_host_y_origin),
         ("test_post_exige_json", test_post_exige_json),
+        ("test_token_sesion", test_token_sesion),
     ]
 
     passed = 0
