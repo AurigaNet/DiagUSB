@@ -1,0 +1,332 @@
+{
+  "version": 1,
+  "descripcion": "Base de conocimiento local de DiagUSB. Cada entrada describe CÓMO DEBE ESTAR un componente para que funcione bien (estado esperado), por qué importa, los pasos para lograrlo y cómo verificarlo. Los síntomas y colectores solo identifican a qué entrada llegar.",
+  "entradas": [
+    {
+      "id": "servicio_automatico_detenido",
+      "titulo": "Servicio automático que no está en ejecución",
+      "categoria": "Servicios",
+      "colectores": ["critical_services", "service_failures"],
+      "sintomas": ["servicio_detenido", "servicios_fallando"],
+      "estado_esperado": "Todos los servicios con tipo de inicio 'Automático' deben estar en estado 'Running' (En ejecución). Los servicios en 'Manual' o 'Deshabilitado' pueden estar detenidos sin problema: solo se inician cuando el sistema los necesita.",
+      "por_que_importa": "Un servicio automático detenido deja sin funcionamiento lo que brinda (red, impresión, actualizaciones, auditoría). Si no corre y nadie lo reinicia, el equipo pierde esa capacidad hasta que alguien intervenga.",
+      "soluciones": [
+        "Abrir services.msc (o Ctrl+R -> services.msc) como Administrador",
+        "Buscar el servicio afectado por su nombre (ver el detalle del problema) y abrir sus propiedades",
+        "En 'Tipo de inicio' seleccionar 'Automático' y en 'Estado' pulsar 'Iniciar'",
+        "Revisar la pestaña 'Dependencias': si falta una dependencia, iniciarla primero",
+        "Aceptar, cerrar y reiniciar el equipo para confirmar que el servicio arranca solo",
+        "Si se detiene nuevamente: revisar el Visor de Eventos (Registro de aplicaciones / Sistema) en busca del motivo"
+      ],
+      "verificacion": "En services.msc el servicio aparece 'En ejecución' con tipo de inicio 'Automático'; tras un reinicio del equipo sigue corriendo."
+    },
+    {
+      "id": "spooler_detenido",
+      "titulo": "Servicio Print Spooler caído o sucio",
+      "categoria": "Impresión",
+      "colectores": ["spooler_service"],
+      "sintomas": ["la_impresora_no_imprime"],
+      "estado_esperado": "El servicio Print Spooler (Spooler) debe estar 'En ejecución' con inicio 'Automático'. La cola de impresión debe estar vacía y la carpeta C:\\Windows\\System32\\spool\\PRINTERS sin archivos de trabajos abandonados.",
+      "por_que_importa": "Sin Spooler no existe cola de impresión: ninguna impresora local ni de red responde. Un archivo colgado en la carpeta spool bloquea todos los trabajos siguientes.",
+      "soluciones": [
+        "Detener el servicio Spooler (services.msc -> Print Spooler -> Detener)",
+        "Borrar todo el contenido de C:\\Windows\\System32\\spool\\PRINTERS (trabajos colgados)",
+        "Iniciar el servicio Spooler y ponerlo en 'Automático'",
+        "Verificar espacio libre en C: (el spooler usa temporales en el disco del sistema)",
+        "Imprimir una página de prueba desde la impresora predeterminada",
+        "Si persiste: revisar permisos de la carpeta spool y el registro de eventos del servicio"
+      ],
+      "verificacion": "El servicio Spooler figura 'En ejecución' y una impresión de prueba llega a la impresora sin quedarse en la cola."
+    },
+    {
+      "id": "impresora_predeterminada_offline",
+      "titulo": "Impresora predeterminada fuera de línea",
+      "categoria": "Impresión",
+      "colectores": ["printers"],
+      "sintomas": ["la_impresora_no_imprime"],
+      "estado_esperado": "La impresora predeterminada del usuario debe estar en línea (no marcada como 'trabajar sin conexión'), encendida y seleccionada como predeterminada del usuario.",
+      "por_que_importa": "Si la predeterminada está offline, los trabajos quedan encolados en ella y no salen, aunque otra impresora esté disponible.",
+      "soluciones": [
+        "Encender la impresora y verificar conexión (cable o WiFi)",
+        "Panel de control -> Dispositivos e impresoras -> clic derecho -> 'Establecer como impresora predeterminada'",
+        "Si aparece como 'Trabajar sin conexión': clic derecho -> desmarcar esa opción",
+        "Quitar y volver a agregar la impresora si sigue offline",
+        "Reiniciar el servicio Spooler y volver a imprimir una página de prueba"
+      ],
+      "verificacion": "La impresora aparece en línea como predeterminada y un documento de prueba se imprime de inmediato."
+    },
+    {
+      "id": "impresora_puerto_incorrecto",
+      "titulo": "Puerto de impresión incorrecto",
+      "categoria": "Impresión",
+      "colectores": ["printer_ports"],
+      "sintomas": ["la_impresora_no_imprime"],
+      "estado_esperado": "Cada impresora debe usar el puerto que apunta realmente a donde está: un puerto USB/LPT para impresoras locales o un puerto TCP/IP (o WSD activo) con la IP o nombre correcto para las de red.",
+      "por_que_importa": "Con un puerto equivocado el trabajo sale 'impreso' pero nunca llega a ningún dispositivo; es la causa más común de impresión que no falla con error.",
+      "soluciones": [
+        "Panel de control -> Dispositivos e impresoras -> clic derecho en la impresora -> Propiedades -> Puertos",
+        "Seleccionar el puerto correcto: USB para local, o TCP/IP con la IP real para red",
+        "Si no existe el puerto TCP/IP: 'Agregar puerto' -> Standard TCP/IP Port -> ingresar la IP",
+        "Verificar que la IP asignada corresponda a la impresora (imprimir una página de configuración desde el panel)",
+        "Aplicar e imprimir una página de prueba"
+      ],
+      "verificacion": "El puerto listado coincide con la IP/ubicación real de la impresora y la página de prueba llega sin demora."
+    },
+    {
+      "id": "impresora_driver_faltante",
+      "titulo": "Driver de impresión faltante o incompatible",
+      "categoria": "Impresión",
+      "colectores": ["printer_drivers"],
+      "sintomas": ["la_impresora_no_imprime"],
+      "estado_esperado": "Cada impresora instalada debe tener su driver cargado y compatible con la versión de Windows, sin advertencias en el Administrador de dispositivos.",
+      "por_que_importa": "Sin driver válido Windows no puede generar el trabajo (o lo genera en un formato que la impresora no entiende) y la cola queda en error.",
+      "soluciones": [
+        "Verificar el estado del driver: Dispositivos e impresoras -> clic derecho -> Propiedades -> Avanzado -> 'Nuevo controlador'",
+        "Descargar el driver desde el sitio del fabricante para la versión exacta de Windows",
+        "Desinstalar la impresora, eliminar el driver antiguo y volver a instalarla",
+        "Para impresoras compartidas: instalar el driver en el cliente desde 'Agregar impresora'",
+        "Actualizar Windows si el driver no está firmado para la versión actual"
+      ],
+      "verificacion": "La impresora imprime una página de prueba y no aparece ninguna advertencia en el Administrador de dispositivos."
+    },
+    {
+      "id": "trabajos_de_impresion_colgados",
+      "titulo": "Trabajos de impresión atascados en la cola",
+      "categoria": "Impresión",
+      "colectores": ["print_jobs"],
+      "sintomas": ["la_impresora_no_imprime"],
+      "estado_esperado": "La cola de impresión debe estar vacía o con trabajos en estado 'En cola' que avanzan normalmente; no deben existir trabajos en 'Error' o 'Borrando' antiguos.",
+      "por_que_importa": "Un trabajo atascado bloquea la cola completa: todos los documentos siguientes esperan indefinidamente.",
+      "soluciones": [
+        "Abrir la cola de la impresora (doble clic en el icono) y cancelar los trabajos atascados",
+        "Si no se pueden cancelar: detener el servicio Spooler, borrar C:\\Windows\\System32\\spool\\PRINTERS e iniciar el servicio",
+        "Verificar que la impresora tenga papel, tinta/toner y no esté en modo offline",
+        "Reiniciar la impresora (apagar 10 segundos) y reenviar el documento"
+      ],
+      "verificacion": "La cola queda vacía y un documento nuevo avanza hasta 'Completado'."
+    },
+    {
+      "id": "sin_conectividad",
+      "titulo": "Sin conectividad de red o internet",
+      "categoria": "Red",
+      "colectores": ["connectivity"],
+      "sintomas": ["no_hay_internet"],
+      "estado_esperado": "El equipo debe alcanzar su puerta de enlace (gateway) y el internet con latencia baja y cero pérdida de paquetes, con adaptadores habilitados y configuración IP, máscara y DNS válidas.",
+      "por_que_importa": "Sin gateway no hay comunicación fuera de la red local; sin internet no hay actualizaciones, correo, nube ni acceso remoto.",
+      "soluciones": [
+        "Verificar la configuración IP: ipconfig /all (IP, máscara, puerta de enlace y DNS presentes)",
+        "Renovar la configuración: ipconfig /release y luego ipconfig /renew",
+        "Limpiar y registrar DNS: ipconfig /flushdns y ipconfig /registerdns",
+        "Reiniciar el router/modem (apagar 30 segundos) y el adaptador de red",
+        "Probar con cable directo u otra red para descartar el medio físico",
+        "Restablecer la pila de red: netsh winsock reset y netsh int ip reset (luego reiniciar)"
+      ],
+      "verificacion": "ping al gateway y ping a 8.8.8.8 responden sin pérdida, y una página web abre en el navegador."
+    },
+    {
+      "id": "adaptador_red_desactivado",
+      "titulo": "Adaptador de red desactivado o con driver problemático",
+      "categoria": "Red",
+      "colectores": ["network_adapters", "network_drivers"],
+      "sintomas": ["no_hay_internet", "red_lenta"],
+      "estado_esperado": "El adaptador de red en uso debe estar habilitado, con estado 'Up', sin advertencias en el Administrador de dispositivos y con driver actualizado. Los adaptadores sin uso pueden quedar deshabilitados a propósito (eso no es un fallo).",
+      "por_que_importa": "Un adaptador deshabilitado o con driver roto corta toda comunicación de red del equipo, incluida la resolución de nombres.",
+      "soluciones": [
+        "Panel de control -> Centro de redes -> Cambiar configuración de adaptadores -> habilitar el adaptador (clic derecho -> Habilitar)",
+        "Administrador de dispositivos -> Red -> actualizar o revertir el driver",
+        "Desinstalar el adaptador y dejar que Windows lo reinstale al reiniciar",
+        "Probar otro cable/puerto del switch y descartar daño físico",
+        "En laptops: verificar que el botón/tecla de WiFi no esté desactivado por hardware"
+      ],
+      "verificacion": "El adaptador figura 'Habilitado / Up' con IP asignada y la conectividad se restablece."
+    },
+    {
+      "id": "dns_invalido",
+      "titulo": "Servidor DNS no responde o mal configurado",
+      "categoria": "Red",
+      "colectores": ["dns_servers"],
+      "sintomas": ["dns_no_responde", "no_hay_internet"],
+      "estado_esperado": "El equipo debe tener servidores DNS activos (del router/ISP o públicos como 1.1.1.1 / 8.8.8.8) que respondan, y resolver nombres conocidos en menos de ~1 segundo. IP 0.0.0.0 o vacía en DNS es configuración inválida.",
+      "por_que_importa": "Con IP pero sin DNS el equipo 'está en red' pero no abre nada por nombre: parece internet caído cuando solo falla la traducción de nombres.",
+      "soluciones": [
+        "ipconfig /all y anotar los servidores DNS actuales; si son 0.0.0.0 o están vacíos, hay mala configuración",
+        "Propiedades del adaptador -> IPv4 -> 'Usar las siguientes direcciones DNS' -> 1.1.1.1 y 8.8.8.8 (o los del router)",
+        "ipconfig /flushdns para limpiar la caché local",
+        "Probar: nslookup microsoft.com y ping a 1.1.1.1",
+        "Si solo falla un dominio: revisar el DNS del router o el archivo hosts (C:\\Windows\\System32\\drivers\\etc\\hosts)"
+      ],
+      "verificacion": "nslookup resuelve nombres y los sitios abren por URL sin esperas largas."
+    },
+    {
+      "id": "antivirus_desactivado",
+      "titulo": "Antivirus apagado o desactualizado",
+      "categoria": "Seguridad",
+      "colectores": ["antivirus_status", "security_center"],
+      "sintomas": ["antivirus_apagado"],
+      "estado_esperado": "El equipo debe reportar un antivirus instalado, activo (protección en tiempo real encendida) y con definiciones actualizadas (última actualización no mayor a 3-7 días). Windows Defender sirve si no hay otro.",
+      "por_que_importa": "Sin antivirus activo el equipo queda expuesto a malware y además Windows marca el centro de seguridad en rojo, lo que invalida cualquier otra conclusión de seguridad.",
+      "soluciones": [
+        "Abrir el antivirus (o Seguridad de Windows -> Protección antivirus) y activar la protección en tiempo real",
+        "Ejecutar una actualización manual de definiciones",
+        "Si el antivirus de terceros quedó sin licencia: desinstalarlo y activar Windows Defender",
+        "Revisar políticas/grupo que puedan haberlo desactivado (gpedit.msc o endpoint)",
+        "Programar un análisis completo y dejar la protección automática habilitada"
+      ],
+      "verificacion": "El centro de seguridad muestra verde en antivirus, con fecha de última actualización reciente."
+    },
+    {
+      "id": "firewall_desactivado",
+      "titulo": "Firewall de Windows desactivado",
+      "categoria": "Seguridad",
+      "colectores": ["firewall_status"],
+      "sintomas": ["firewall_apagado"],
+      "estado_esperado": "El Firewall de Windows debe estar activo en los tres perfiles (Dominio, Privado y Público), salvo que una política corporativa documentada lo haya desactivado a propósito.",
+      "por_que_importa": "El firewall es la barrera de entrada de la red; apagado, cualquier equipo de la red puede intentar conectarse a los servicios del equipo.",
+      "soluciones": [
+        "Seguridad de Windows -> Protección del firewall -> activar cada perfil desactivado",
+        "netsh advfirewall set allprofiles state on (ejecutar como Administrador) para activar los tres",
+        "Revisar si una política de grupo o endpoint lo desactivó y corregirla en origen",
+        "Si se desactivó por una aplicación puntual: crear una regla de excepción en vez de apagar todo"
+      ],
+      "verificacion": "Los tres perfiles del firewall figuran activos y la protección se mantiene tras reiniciar."
+    },
+    {
+      "id": "memoria_saturada",
+      "titulo": "Memoria RAM saturada",
+      "categoria": "Rendimiento",
+      "colectores": ["memory_status"],
+      "sintomas": ["memoria_llena", "sistema_lento"],
+      "estado_esperado": "En uso normal la RAM debe mantenerse por debajo de ~80-85%, con el archivo de paginación activo y dimensionado (Automático o de 4 a 8 GB como mínimo).",
+      "por_que_importa": "Con la RAM llena Windows recurre continuamente al disco (paginación): el equipo se pone lento aunque el CPU esté libre, y las aplicaciones pueden cerrarse por falta de memoria.",
+      "soluciones": [
+        "Cerrar aplicaciones y pestañas que no se usan (ver en el Monitor de recursos qué proceso consume memoria)",
+        "Deshabilitar programas de inicio pesados: Ctrl+Shift+Esc -> pestaña Inicio",
+        "Revisar fugas: un proceso que crece sin límite tras días de encendido -> reiniciarlo o actualizarlo",
+        "Archivo de paginación: Propiedades del sistema -> Rendimiento -> dimensionar (Automático o 4096-8192 MB fijos)",
+        "Si el equipo es lento siempre con pocas apps: ampliar la RAM física"
+      ],
+      "verificacion": "Tras la intervención el uso de RAM en reposo queda por debajo del 80% y el equipo responde sin tirones."
+    },
+    {
+      "id": "cpu_saturada",
+      "titulo": "CPU o disco con carga sostenida alta",
+      "categoria": "Rendimiento",
+      "colectores": ["system_performance", "disk_performance"],
+      "sintomas": ["sistema_lento"],
+      "estado_esperado": "En reposo el uso de CPU debe estar por debajo de ~30-40% y la cola de disco por debajo de ~2. Valores altos sostenidos (no transitorios) indican proceso con fuga, falta de recursos o disco limitante.",
+      "por_que_importa": "CPU o cola de disco altas de forma continua explican la lentitud percibida; atacar el proceso responsable devuelve la fluidez sin cambiar hardware.",
+      "soluciones": [
+        "Task Manager -> Ordenar por CPU para identificar el proceso responsable",
+        "Actualizar o reinstalar el proceso que consume CPU sin motivo (suele ser driver o servicio con bug)",
+        "Ejecutar una limpieza: temporales, actualizaciones pendientes y reinicio",
+        "Cola de disco alta: revisar procesos con mucho E/S (indexación, antivirus en pleno escaneo) y desactivarlos temporalmente",
+        "Disco mecánico con cola alta de forma habitual: migrar el sistema a SSD"
+      ],
+      "verificacion": "En reposo el Monitor de recursos muestra CPU < 40% y cola de disco < 2, y las aplicaciones abren rápido."
+    },
+    {
+      "id": "disco_sin_espacio",
+      "titulo": "Disco sin espacio libre",
+      "categoria": "Disco",
+      "colectores": ["logical_disks"],
+      "sintomas": ["disco_lleno"],
+      "estado_esperado": "Cada unidad debe conservar como mínimo un 15-20% de espacio libre (o ~20 GB). El disco del sistema (C:) nunca debe bajar del ~10% libre: Windows necesita espacio para temporales, paginación, actualizaciones y réplicas de seguridad.",
+      "por_que_importa": "Sin espacio libre no hay actualizaciones, no se escriben temporales, las aplicaciones fallan y el archivo de paginación no puede crecer: la lentitud y los errores llegan juntos.",
+      "soluciones": [
+        "Liberar temporales: limpieza de disco (cleanmgr) y borrar %TEMP%",
+        "Vaciar la papelera de reciclaje y revisar Descargas",
+        "Activar Storage Sense para limpieza automática de temporales",
+        "Mover documentos, videos y descargas a otra unidad",
+        "Desinstalar aplicaciones pesadas (Panel -> Programas) y borrar puntos de restauración antiguos",
+        "Si aún falta: ampliar la unidad o reemplazarlo por uno mayor"
+      ],
+      "verificacion": "La unidad del sistema queda con más del 15-20% libre y cleanmgr no reporta cantidades relevantes pendientes."
+    },
+    {
+      "id": "disco_degradado",
+      "titulo": "Disco físico degradado (SMART/cable)",
+      "categoria": "Disco",
+      "colectores": ["physical_disks"],
+      "sintomas": ["disco_salud"],
+      "estado_esperado": "Los discos deben reportar estado 'Healthy'/'OK' en SMART, sin sectores reasignados crecientes ni errores de medios, y con cable y alimentación firmes.",
+      "por_que_importa": "Un disco degradado sigue funcionando hasta el día en que falla: perder datos es cuestión de tiempo, por eso la respuesta prioritaria es el respaldo, no la reparación.",
+      "soluciones": [
+        "RESPALDAR los datos críticos de inmediato (prioridad máxima)",
+        "Verificar SMART completo: crystal disk info o wmic diskdrive get status",
+        "Revisar y reasentar el cable SATA y la alimentación; probar otro cable",
+        "Ejecutar chkdsk C: /f /r (pide reinicio) para intentar reparar sectores",
+        "Planificar el reemplazo del disco si SMART reporta fallas o el error se repite",
+        "Restaurar desde el respaldo una vez instalado el disco nuevo"
+      ],
+      "verificacion": "SMART en 'Healthy', chkdsk sin errores pendientes y copias de seguridad actualizadas; si se reemplazó, el disco nuevo reporta estado correcto."
+    },
+    {
+      "id": "actualizaciones_pendientes",
+      "titulo": "Actualizaciones de Windows pendientes o fallidas",
+      "categoria": "Sistema",
+      "colectores": ["pending_updates", "update_status", "update_history"],
+      "sintomas": [],
+      "estado_esperado": "Windows Update sin actualizaciones pendientes fallidas, sin reinicios diferidos sin aplicar, y con el último control de actualización hecho hace menos de ~7 días.",
+      "por_que_importa": "Las actualizaciones incluyen parches de seguridad y correcciones de errores; con ellas pendientes el equipo queda expuesto y con fallos conocidos que ya están resueltos por Microsoft.",
+      "soluciones": [
+        "Configuración -> Windows Update -> Buscar actualizaciones e instalar todo",
+        "Reiniciar para aplicar actualizaciones diferidas y repetir hasta que no quede ninguna",
+        "Si falla: ejecutar el solucionador de problemas de Windows Update",
+        "Limpiar la carpeta de distribución: detener wuauserv, borrar C:\\Windows\\SoftwareDistribution\\Download, volver a iniciar el servicio",
+        "Verificar servicios de actualización: BITS y Windows Update en Automático"
+      ],
+      "verificacion": "Windows Update reporta 'No hay actualizaciones disponibles' o 'Estás al día' tras el reinicio."
+    },
+    {
+      "id": "drivers_desactualizados",
+      "titulo": "Drivers desactualizados o con advertencias",
+      "categoria": "Sistema",
+      "colectores": ["outdated_drivers", "hardware"],
+      "sintomas": [],
+      "estado_esperado": "Todos los dispositivos del Administrador de dispositivos sin advertencias (triángulo amarillo / código 43) y con drivers vigentes, priorizando red, chipset, almacenamiento y video.",
+      "por_que_importa": "Un driver viejo o roto provoca los síntomas más variados: lentitud, pantallazos, sin red, sin audio; muchos problemas 'raros' se resuelven aquí.",
+      "soluciones": [
+        "Administrador de dispositivos -> revisar dispositivos con advertencia",
+        "Actualizar driver desde el sitio del fabricante (no solo 'buscar en Windows Update')",
+        "Si el driver nuevo genera problemas: revertir a la versión anterior",
+        "Desinstalar el dispositivo y dejar que Windows lo vuelva a detectar",
+        "En equipos de marca: usar la utilidad oficial del fabricante para chipset/red"
+      ],
+      "verificacion": "No quedan dispositivos con advertencias y los equipos críticos funcionan tras el reinicio."
+    },
+    {
+      "id": "eventos_criticos_recientes",
+      "titulo": "Eventos críticos recurrentes (BSOD, disco, servicios)",
+      "categoria": "Sistema",
+      "colectores": ["critical_events", "bsod_events", "critical_system_events"],
+      "sintomas": [],
+      "estado_esperado": "No deberían existir errores críticos recurrentes en los últimos 7 días (pantallazos azules, fallos de disco, servicios que fallan). Un evento aislado que no se repite no es problema por sí solo.",
+      "por_que_importa": "Los eventos críticos repetidos son la memoria de un fallo que sigue presente; ignorarlos es esperar a que aparezca de nuevo con el usuario enfrente.",
+      "soluciones": [
+        "Visor de Eventos -> Sistema y Aplicación -> filtrar por 'Crítico/Error' de los últimos 7 días",
+        "Buscar el patrón: mismo origen, mismo servicio o mismo driver en los eventos repetidos",
+        "Resolver la causa raíz indicada en el evento (driver, disco, servicio, memoria)",
+        "Para BSOD: anotar el código (p.ej. CRITICAL_PROCESS_DIED) y revisar el minidump",
+        "Tras corregir, monitorear que los eventos dejen de repetirse"
+      ],
+      "verificacion": "Pasados unos días de uso normal no aparecen nuevos eventos críticos del mismo origen."
+    },
+    {
+      "id": "wifi_debil",
+      "titulo": "Señal WiFi débil o interferida",
+      "categoria": "Red",
+      "colectores": ["wifi_networks", "wifi_profiles"],
+      "sintomas": ["red_lenta"],
+      "estado_esperado": "La red WiFi en uso debe reportar señal igual o superior al 40% (netsh wlan show networks) y, cuando el sistema lo informa, mejor que aproximadamente -67 dBm; en un canal poco congestionado y prefiriendo la banda de 5 GHz cerca del router (2.4 GHz solo para alcance lejano).",
+      "por_que_importa": "Señal débil o canal saturado se traduce en velocidad baja y cortes intermitentes que se confunden con problemas del ISP o del equipo.",
+      "soluciones": [
+        "Acercarse al router para confirmar que la velocidad mejora (descarta el ISP)",
+        "Cambiar de canal en el router (1/6/11 en 2.4 GHz; auto en 5 GHz) usando un escáner de redes",
+        "Priorizar la red de 5 GHz en la lista de redes conocidas",
+        "Reubicar el router o usar repetidores/mesh si el equipo queda lejos o con paredes gruesas",
+        "Olvidar y volver a conectar la red para regenerar el perfil con credenciales correctas"
+      ],
+      "verificacion": "La red conectada muestra señal ≥ 40% (o mejor que -67 dBm) y la velocidad medida se acerca a la contratada."
+    }
+  ]
+}

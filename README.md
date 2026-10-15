@@ -1,44 +1,85 @@
 # DiagUSB
 
-Copyright (C) 2026 Daniel Ricardo Novoa (AurigaNet)
+Copyright (C) 2026 Daniel Ricardo Novoa
 
-MVP en construcción, no probado en Windows real.
+DiagUSB es un kit de diagnóstico para soporte de infraestructura TI pensado para ejecutarse desde un pendrive. Diagnostica Windows 10/11 con 12 paquetes de colectores PowerShell, reglas de detección de problemas, base de conocimiento editable, informes Word/PDF en español y un registro persistente de análisis.
 
-DiagUSB es un kit de diagnóstico para soporte de infraestructura TI pensado para ejecutarse desde un pendrive. El foco inicial del MVP es el diagnóstico guiado del síntoma `la impresora no imprime` en Windows 10 y 11, con recolección en solo lectura y reportes en español.
+## Características
 
-La capa A será una herramienta de consola en Python 3.12, con colectores en PowerShell 5.1 que devuelven JSON y empaquetado `onedir` con PyInstaller. La capa B será un pendrive de arranque armado manualmente con Ventoy, SystemRescue, WinPE y memtest86+, sin redistribuir binarios de terceros en este repositorio.
+- **12 paquetes de diagnóstico**: impresión, redes cableadas, WiFi, disco, memoria, servicios, seguridad, Windows Update, drivers, eventos críticos, contexto del sistema e inventario general.
+- **Interfaz web local** (`http://localhost:8080`) con botones de diagnóstico rápido, revisión total, snapshot ANTES/DESPUÉS con comparación de cambios, y acciones del técnico.
+- **Registro persistente de análisis**: cada diagnóstico ejecutado queda guardado automáticamente en `config/registro_analisis.json`. Botón "Registro de análisis" para consultar el detalle, eliminar análisis individuales o vaciar el registro completo.
+- **Informes Word (.doc) y PDF (.pdf)** en español, con hallazgos, soluciones de la base de conocimiento, acciones del técnico, mejoras sugeridas y diferencias antes/después.
+- **Base de conocimiento local**: 19 entradas embebidas más capa editable en `config/base_conocimiento.json` (alta/edición/baja desde la interfaz, buscador por palabra clave).
+- **Auto-elevación a Administrador** (UAC): al iniciar solicita permisos; flag `--no-elevate` o variable `DIAGUSB_NO_ELEVATE=1` para desactivarla.
+- **Ejecutable portable** (`dist/diagusb/diagusb.exe`) construido con PyInstaller, sin necesidad de Python en el equipo destino.
 
-Este programa se distribuye con la esperanza de que sea útil, pero SIN NINGUNA GARANTÍA; ni siquiera la garantía implícita de COMERCIABILIDAD o IDONEIDAD PARA UN PROPÓSITO PARTICULAR. Véase `LICENSE` para más detalles.
+## Requisitos
 
-## Estado del repositorio
+- Windows 10/11 (PowerShell 5.1 incluido).
+- Para la versión portable: nada más. Para desarrollo: Python 3.12.
 
-- F0 completada: chasis, documentación legal, manifiesto de herramientas y scripts base.
-- F1 en curso: colectores PowerShell de impresión y plantilla de permisos.
-- Sigue sin validación formal sobre Windows real controlado.
-- Los reportes, reglas y el comparador todavía no están implementados.
+## Uso rápido
 
-## Alcance inicial
+Versión portable (pendrive):
 
-- Inventario y contexto de captura desde Windows.
-- Guardado de referencias por equipo.
-- Comparación determinista entre capturas.
-- Diagnóstico guiado del módulo `la impresora no imprime`.
-- Procedimiento manual para armar el pendrive de arranque.
+```
+dist\diagusb\diagusb.exe            # menú interactivo (pide Administrador)
+dist\diagusb\diagusb.exe web        # servidor web + navegador (pide Administrador)
+dist\diagusb\diagusb.exe --no-elevate web   # sin elevar
+```
+
+Desde el código (desarrollo):
+
+```
+python -m diagusb                    # menú interactivo
+python -m diagusb web                # interfaz web en http://localhost:8080
+python -m diagusb diagnose --package impresion --symptom la_impresora_no_imprime
+python -m diagusb snapshot -o antes.json        # instantánea con colectores reales
+python -m diagusb snapshot -p disco -o disco_antes.json
+python -m diagusb compare antes.json despues.json
+python -m diagusb list-packages
+```
+
+### Interfaz web
+
+1. Acepte el diálogo de Administrador (necesario para datos completos).
+2. Haga clic en un botón de diagnóstico o en "Revisión Total".
+3. Revise los hallazgos; marque estado y acciones implementadas por problema.
+4. "Guardar ANTES" → realice los cambios en el equipo → "Comparar DESPUÉS".
+5. Descargue el informe Word o PDF.
+6. Abra "Registro de análisis" para consultar el historial guardado.
+
+### Registro de análisis
+
+- Cada ejecución de diagnóstico (individual o revisión total) se guarda automáticamente en `config/registro_analisis.json` (máximo 200 entradas, se descartan las más viejas).
+- El botón "Registro de análisis" muestra el historial con buscador: ver detalle (hallazgos, soluciones, recomendaciones, colectores), eliminar análisis individual o vaciar el registro completo.
+
+## Pruebas y build
+
+```
+python tests\run_tests.py           # suite completa (sin dependencias externas)
+scripts\build_exe.cmd               # reconstruye dist\diagusb\diagusb.exe
+```
+
+## Estructura
+
+- `src/diagusb/`: paquete principal (`core/` motor, `packages/` los 12 paquetes de diagnóstico, `web_server.py` interfaz local).
+- `collectors/`: utilidades PowerShell compartidas (`_common.ps1`).
+- `config/`: datos locales (base de conocimiento editable y registro de análisis) — no versionados.
+- `docs/`: decisiones, legal, limitaciones, matriz de permisos y guía para alumnos.
+- `tests/`: pruebas unitarias (modelos, reglas, registry, KB, informes, elevación, registro).
+- `reports/`: snapshots y salidas locales — no versionado.
+- `build/`, `dist/`: salidas de PyInstaller — no versionadas.
+- `tools/`: manifiesto de herramientas externas.
+- `scripts/`: utilidades locales para el técnico.
 
 ## Restricciones del proyecto
 
-- Interfaz, informes y documentación en español (`es-AR`).
+- Interfaz, informes y documentación en español.
 - Código propio bajo `GPL-3.0-or-later`.
-- Solo biblioteca estándar de Python en la capa A.
-- Sin telemetría, sin conexiones salientes del producto final y sin modificación de la configuración del equipo analizado.
+- Solo biblioteca estándar de Python; reportlab para PDF (incluida en el exe).
+- Sin telemetría, sin conexiones salientes del producto final y sin modificación de la configuración del equipo analizado (los colectores son de solo lectura).
 - No se incluyen binarios o ISOs de terceros; ver `tools/tools.manifest.json`.
 
-## Estructura inicial
-
-- `docs/`: decisiones, legal, limitaciones, matriz de permisos y guía para alumnos.
-- `src/diagusb/`: paquete principal del proyecto.
-- `collectors/`: scripts de recolección PowerShell.
-- `tests/`: fixtures y pruebas unitarias.
-- `tools/`: manifiesto de herramientas externas.
-- `scripts/`: utilidades locales para el técnico.
-- `build/`: documentación de empaquetado.
+Este programa se distribuye con la esperanza de que sea útil, pero SIN NINGUNA GARANTÍA; ni siquiera la garantía implícita de COMERCIABILIDAD o IDONEIDAD PARA UN PROPÓSITO PARTICULAR. Véase `LICENSE` para más detalles.

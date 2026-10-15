@@ -1,0 +1,8 @@
+{
+    "version": "1.0.0",
+    "name": "servicios",
+    "label": "Servicios de Windows",
+    "description": "Diagnostico de servicios de Windows: servicios criticos, en ejecucion y fallos",
+    "symptoms": ["servicio_detenido", "servicios_fallando", "servicio_no_inicia"],
+    "collectors": {}
+}

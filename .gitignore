@@ -10,10 +10,14 @@ __pycache__/
 venv/
 
 # Build
-build/dist/
+build/
 dist/
 *.spec.tmp
 *.pyz
+
+# Datos locales (no versionar)
+/config/
+/reports/
 
 # Tools descargadas localmente
 /tools/downloads/

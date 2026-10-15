@@ -1,0 +1,8 @@
+{
+    "version": "1.0.0",
+    "name": "drivers",
+    "label": "Drivers",
+    "description": "Diagnostico de drivers: deteccion de drivers desactualizados o genericos",
+    "symptoms": ["driver_generico", "driver_antiguo"],
+    "collectors": {}
+}

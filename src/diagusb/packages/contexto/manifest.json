@@ -1,0 +1,8 @@
+{
+    "version": "1.0.0",
+    "name": "contexto",
+    "label": "Contexto del Sistema",
+    "description": "Deteccion automatica del tipo de equipo: notebook, desktop o servidor",
+    "symptoms": [],
+    "collectors": {}
+}

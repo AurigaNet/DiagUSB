@@ -1,8 +1,14 @@
-﻿# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Daniel Ricardo Novoa (AurigaNet)
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Daniel Ricardo Novoa
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# Emitir UTF-8 en stdout para que Python/navegador reciban acentos correctos
+try {
+    [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false
+} catch { }
+$OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
 function Get-DiagUsbTimestampUtc {
     return [DateTime]::UtcNow.ToString('o')
@@ -142,7 +148,12 @@ function Convert-DiagUsbDateTime {
         return $Value.ToUniversalTime().ToString('o')
     }
 
-    return ([Management.ManagementDateTimeConverter]::ToDateTime([string]$Value)).ToUniversalTime().ToString('o')
+    try {
+        return ([Management.ManagementDateTimeConverter]::ToDateTime([string]$Value)).ToUniversalTime().ToString('o')
+    }
+    catch {
+        return [string]$Value
+    }
 }
 
 function Get-DiagUsbPropertyValue {

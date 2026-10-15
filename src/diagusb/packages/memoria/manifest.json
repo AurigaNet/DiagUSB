@@ -1,0 +1,24 @@
+{
+    "version": "1.0.0",
+    "name": "memoria",
+    "label": "Memoria y Procesos",
+    "description": "Diagnostico de memoria RAM y procesos: uso, procesosTOP y rendimiento",
+    "symptoms": ["memoria_llena", "proceso_alto_cpu", "sistema_lento"],
+    "collectors": [
+        {
+            "label": "Estado de Memoria",
+            "script": "get_memory_status.ps1",
+            "id": "memory_status"
+        },
+        {
+            "label": "Procesos TOP",
+            "script": "get_top_processes.ps1",
+            "id": "top_processes"
+        },
+        {
+            "label": "Rendimiento del Sistema",
+            "script": "get_system_performance.ps1",
+            "id": "system_performance"
+        }
+    ]
+}

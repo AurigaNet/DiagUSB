@@ -1,0 +1,8 @@
+{
+    "version": "1.0.0",
+    "name": "windows_update",
+    "label": "Windows Update",
+    "description": "Diagnostico de Windows Update: actualizaciones pendientes, historial y estado",
+    "symptoms": ["updates_pendientes", "updates_fallidos", "windows_update_roto"],
+    "collectors": {}
+}

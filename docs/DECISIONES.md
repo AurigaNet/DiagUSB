@@ -15,7 +15,7 @@
 ## 2026-10-13 - Licencia del código propio
 
 - El código propio del proyecto pasa a `GPL-3.0-or-later`.
-- Se incorpora el aviso de copyright `Copyright (C) 2026 Daniel Ricardo Novoa (AurigaNet)` en la documentación principal y en cada archivo de código propio.
+- Se incorpora el aviso de copyright `Copyright (C) 2026 Daniel Ricardo Novoa` en la documentación principal y en cada archivo de código propio.
 - El proyecto no aceptará ni incorporará código de terceros con licencia incompatible con GPLv3.
 - Si en el futuro se incorpora, con aprobación explícita, código MIT de `machine_scanner` o `Apotrope`, habrá que conservar sus avisos en `THIRD_PARTY_NOTICES.md`.
 ## 2026-10-13 - Colectores de impresión F1

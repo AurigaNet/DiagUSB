@@ -1,0 +1,8 @@
+{
+    "version": "1.0.0",
+    "name": "eventos",
+    "label": "Eventos Criticos",
+    "description": "Diagnostico de eventos criticos del sistema: Blue Screens y errores",
+    "symptoms": ["blue_screen", "error_del_sistema", "apagado_inesperado"],
+    "collectors": {}
+}

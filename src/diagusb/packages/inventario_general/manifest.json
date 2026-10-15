@@ -1,0 +1,31 @@
+﻿{
+    "version":  "1.0.0",
+    "name":  "inventario_general",
+    "symptoms":  [
+
+                 ],
+    "collectors":  [
+                       {
+                           "label":  "Hardware",
+                           "script":  "get_hardware.ps1",
+                           "id":  "hardware"
+                       },
+                       {
+                           "label":  "Sistema Operativo",
+                           "script":  "get_os.ps1",
+                           "id":  "os"
+                       },
+                       {
+                           "label":  "Software Instalado",
+                           "script":  "get_installed_software.ps1",
+                           "id":  "software"
+                       },
+                       {
+                           "label":  "Parches Instalados",
+                           "script":  "get_installed_patches.ps1",
+                           "id":  "patches"
+                       }
+                   ],
+    "description":  "Ficha técnica completa del equipo: hardware, sistema operativo, software instalado y parches aplicados",
+    "label":  "Inventario General"
+}

@@ -1,0 +1,8 @@
+{
+    "version": "1.0.0",
+    "name": "seguridad",
+    "label": "Seguridad",
+    "description": "Diagnostico de seguridad: antivirus, firewall y estado del Centro de Seguridad",
+    "symptoms": ["antivirus_apagado", "firewall_apagado", "seguridad_comprometida"],
+    "collectors": {}
+}

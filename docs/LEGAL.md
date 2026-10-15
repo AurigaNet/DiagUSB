@@ -1,6 +1,6 @@
 # LEGAL
 
-Copyright (C) 2026 Daniel Ricardo Novoa (AurigaNet)
+Copyright (C) 2026 Daniel Ricardo Novoa
 
 Este programa se distribuye con la esperanza de que sea útil, pero SIN NINGUNA GARANTÍA; ni siquiera la garantía implícita de COMERCIABILIDAD o IDONEIDAD PARA UN PROPÓSITO PARTICULAR. Véase `LICENSE` para más detalles.
 
