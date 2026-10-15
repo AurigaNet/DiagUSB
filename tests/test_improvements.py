@@ -670,6 +670,19 @@ def test_sin_servidor_de_archivos():
         httpd.server_close()
 
 
+def test_bind_solo_loopback():
+    import http.server
+    import diagusb.web_server as ws
+
+    assert ws.BIND_HOST == "127.0.0.1", ws.BIND_HOST
+    httpd = http.server.HTTPServer((ws.BIND_HOST, 0), ws.DiagUSBHandler)
+    try:
+        assert httpd.server_address[0] == "127.0.0.1", httpd.server_address
+        assert httpd.server_address[0] != "0.0.0.0"
+    finally:
+        httpd.server_close()
+
+
 def run_tests():
     """Ejecuta todas las pruebas de esta suite."""
     tests = [
@@ -700,6 +713,7 @@ def run_tests():
         ("test_registro_poda_y_full_scan", test_registro_poda_y_full_scan),
         ("test_api_registro_endpoints", test_api_registro_endpoints),
         ("test_sin_servidor_de_archivos", test_sin_servidor_de_archivos),
+        ("test_bind_solo_loopback", test_bind_solo_loopback),
     ]
 
     passed = 0

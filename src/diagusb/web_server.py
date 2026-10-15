@@ -37,6 +37,7 @@ from diagusb.core.informe import (
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 BASELINE_PATH = _REPO_ROOT / "reports" / "snapshot_antes.json"
 REGISTRO_PATH = _REPO_ROOT / "config" / "registro_analisis.json"
+BIND_HOST = "127.0.0.1"
 REGISTRO_MAX = 200
 _REGISTRO_LOCK = threading.Lock()
 
@@ -2093,7 +2094,7 @@ def run_server(port: int = 8080, elevar: bool = True,
         daemon_threads = True
 
     try:
-        httpd = ThreadedTCPServer(("", port), DiagUSBHandler)
+        httpd = ThreadedTCPServer((BIND_HOST, port), DiagUSBHandler)
     except OSError:
         print(f"Error: no se pudo abrir el puerto {port}.")
         print("¿Ya hay otra instancia de DiagUSB corriendo? Cierrela e intente de nuevo.")
