@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <directory path="diagusb">
+      <pe-file path="diagusb.exe">
+        <authenticode-sign/>
+      </pe-file>
+    </directory>
+  </zip-file>
+</artifact-configuration>

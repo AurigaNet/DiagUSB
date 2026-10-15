@@ -40,7 +40,7 @@ jobs:
 
       - name: Comprimir el ejecutable sin firmar
         shell: pwsh
-        run: Compress-Archive -Path dist\diagusb -DestinationPath diagusb-unsigned.zip -Force
+        run: tar -a -c -f diagusb-unsigned.zip -C dist diagusb
 
       - name: Subir el artefacto sin firmar
         id: upload_unsigned
@@ -79,7 +79,7 @@ jobs:
         if: env.HAS_SIGNPATH == 'true'
         shell: pwsh
         run: |
-          Compress-Archive -Path dist\diagusb -DestinationPath diagusb-firmado.zip -Force
+          tar -a -c -f diagusb-firmado.zip -C dist diagusb
           $lineas = foreach ($f in @('dist\diagusb\diagusb.exe', 'dist\diagusb\_internal\manifiesto_hashes.json', 'diagusb-firmado.zip')) {
             "$((Get-FileHash -Algorithm SHA256 $f).Hash.ToLower())  $f"
           }
