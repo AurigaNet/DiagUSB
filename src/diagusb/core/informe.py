@@ -534,7 +534,7 @@ _CSS_PRINT = """
 body { font-family: 'Segoe UI', Arial, sans-serif; color: #222; margin: 24px; font-size: 12px; }
 h1 { font-size: 20px; border-bottom: 2px solid #1a73e8; padding-bottom: 6px; color: #1a73e8; }
 h2 { font-size: 15px; margin-top: 22px; color: #1a73e8; border-bottom: 1px solid #ddd; padding-bottom: 3px; }
-table { border-collapse: collapse; width: 100%; table-layout: fixed; word-wrap: break-word; word-break: break-all; margin: 8px 0; }
+table { border-collapse: collapse; width: 100%; table-layout: fixed; overflow-wrap: anywhere; margin: 8px 0; }
 th, td { border: 1px solid #ccc; padding: 5px 8px; text-align: left; vertical-align: top; }
 th, td.th { background: #f1f3f4; font-weight: 700; }
 .kv td:first-child { background: #f8f9fa; font-weight: 600; width: 220px; }
@@ -556,7 +556,7 @@ body { font-family: 'Segoe UI', Arial, sans-serif; color: #222; font-size: 10pt;
 h1 { font-size: 18pt; color: #1a73e8; border-bottom: 2px solid #1a73e8; padding-bottom: 4px; }
 h2 { font-size: 13pt; color: #1a73e8; margin-top: 16pt; border-bottom: 1px solid #ddd; padding-bottom: 2px; }
 h3 { font-size: 11pt; margin: 0 0 4pt 0; }
-table { border-collapse:collapse; width:100%; table-layout:fixed; mso-table-layout-alt:fixed; word-wrap:break-word; word-break:break-all; margin: 6pt 0; }
+table { border-collapse:collapse; width:100%; table-layout:fixed; mso-table-layout-alt:fixed; word-break:break-all; margin: 6pt 0; }
 td, th { border: 1px solid #999; padding: 4px; vertical-align: top; font-size: 10pt; }
 th, td.th { background: #f1f3f4; text-align: left; font-weight: 700; }
 .kv td:first-child { width: 30%; font-weight: 600; background: #f8f9fa; }
