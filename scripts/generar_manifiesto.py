@@ -4,8 +4,12 @@
 """Genera manifiesto_hashes.json con el SHA-256 de cada colector .ps1.
 
 Incluye todos los ``.ps1`` de ``src/diagusb/packages/**`` y el compartido
-``collectors/_common.ps1``. El archivo se escribe en la raiz del repositorio y
-PyInstaller lo empaqueta dentro de ``_internal``.
+``collectors/_common.ps1``. Por defecto el archivo se escribe en la raiz del
+repositorio y PyInstaller lo empaqueta dentro de ``_internal``.
+
+Se puede indicar una ruta de salida distinta como primer argumento (lo usa
+``scripts/armar_kit.ps1`` para escribir el manifiesto dentro del kit, donde
+``core/integridad.py`` lo busca en ``<raiz-del-kit>/manifiesto_hashes.json``).
 """
 
 from __future__ import annotations
@@ -27,7 +31,10 @@ def sha256(ruta: Path) -> str:
     return h.hexdigest()
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
+    destino = Path(args[0]).resolve() if args else DESTINO
+
     archivos: dict[str, str] = {}
     rutas = sorted((ROOT / "src" / "diagusb" / "packages").rglob("*.ps1"))
     common = ROOT / "collectors" / "_common.ps1"
@@ -42,10 +49,11 @@ def main() -> int:
         archivos[nombre] = sha256(ruta)
 
     data = {"version": 1, "total": len(archivos), "archivos": archivos}
-    DESTINO.write_text(
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    destino.write_text(
         json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8")
-    print(f"Manifiesto escrito: {DESTINO} ({len(archivos)} archivos)")
+    print(f"Manifiesto escrito: {destino} ({len(archivos)} archivos)")
     return 0
 
 
