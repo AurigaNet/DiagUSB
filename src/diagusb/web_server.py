@@ -182,27 +182,63 @@ def _parse_json_output(output: str):
     return None
 
 
-def run_powershell(script_path: str, timeout: int = 30) -> dict:
-    """Ejecuta un script PowerShell y devuelve el resultado JSON."""
+def _matar_arbol_procesos(proc) -> None:
+    """Termina el proceso y todo su arbol de hijos (taskkill /T /F).
+
+    Necesario porque al vencer el timeout hay que cerrar tambien los nietos:
+    si un hijo heredo el pipe de stdout, ``communicate`` seguiria bloqueado.
+    """
     try:
-        result = subprocess.run(
-            ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script_path],
-            capture_output=True,
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+                       capture_output=True, timeout=10)
+    except Exception:
+        pass
+    try:
+        if proc.poll() is None:
+            proc.kill()
+    except Exception:
+        pass
+
+
+def run_powershell(script_path: str, timeout: int = 30) -> dict:
+    """Ejecuta un script PowerShell y devuelve el resultado JSON.
+
+    Al vencer ``timeout`` termina el arbol de procesos completo para que la
+    duracion real no supere el limite aunque el script haya lanzado hijos.
+    """
+    try:
+        proc = subprocess.Popen(
+            ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
+             "-File", script_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=timeout,
             encoding="utf-8",
-            errors="replace"
+            errors="replace",
         )
-        data = _parse_json_output(result.stdout)
-        if data is not None:
-            return data
-        detail = (result.stderr or "").strip().splitlines()
-        message = detail[-1] if detail else "Sin salida"
-        return {"query": {"status": "error", "message": message}, "data": {}}
-    except subprocess.TimeoutExpired:
-        return {"query": {"status": "timeout", "message": f"Timeout de {timeout}s"}, "data": {}}
     except Exception as e:
         return {"query": {"status": "error", "message": str(e)}, "data": {}}
+
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _matar_arbol_procesos(proc)
+        try:
+            proc.communicate(timeout=5)
+        except Exception:
+            pass
+        return {"query": {"status": "timeout", "message": f"Timeout de {timeout}s"},
+                "data": {}}
+    except Exception as e:
+        _matar_arbol_procesos(proc)
+        return {"query": {"status": "error", "message": str(e)}, "data": {}}
+
+    data = _parse_json_output(stdout)
+    if data is not None:
+        return data
+    detail = (stderr or "").strip().splitlines()
+    message = detail[-1] if detail else "Sin salida"
+    return {"query": {"status": "error", "message": message}, "data": {}}
 
 
 def _normalize_results(raw) -> list[dict]:

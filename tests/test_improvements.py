@@ -1501,6 +1501,26 @@ def test_linea_alcance_informes():
     assert "modo estándar" in entrada["alcance"]
 
 
+def test_run_powershell_timeout_termina_arbol():
+    import tempfile
+    import time
+    import diagusb.web_server as ws
+
+    with tempfile.TemporaryDirectory() as d:
+        script = Path(d) / "duerme.ps1"
+        script.write_text(
+            '& powershell.exe -NoProfile -Command "Start-Sleep -Seconds 20"\n'
+            '\'{"query":{"status":"ok"},"data":{}}\'\n',
+            encoding="utf-8",
+        )
+        t = time.monotonic()
+        r = ws.run_powershell(str(script), timeout=2)
+        dt = time.monotonic() - t
+
+    assert (r.get("query") or {}).get("status") == "timeout", r
+    assert dt < 5.0, f"run_powershell tardo {dt:.1f}s con timeout de 2s"
+
+
 def run_tests():
     """Ejecuta todas las pruebas de esta suite."""
     tests = [
@@ -1563,6 +1583,8 @@ def run_tests():
         ("test_api_elevar_token", test_api_elevar_token),
         ("test_reglas_colector_denied", test_reglas_colector_denied),
         ("test_linea_alcance_informes", test_linea_alcance_informes),
+        ("test_run_powershell_timeout_termina_arbol",
+         test_run_powershell_timeout_termina_arbol),
     ]
 
     passed = 0
