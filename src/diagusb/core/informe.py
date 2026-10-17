@@ -9,12 +9,17 @@ el Word es un HTML con la cabecera especifica de Microsoft Word.
 import hashlib
 import html
 import json
+import math
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
 from . import knowledge_base as kb
 from .metricas import nivel_medidor as medidores_nivel
+from .graficos import (PALETA as _PALETA, arcos_bezier as _arcos_bezier,
+                       porciones as _porciones, porciones_simples as _porciones_simples,
+                       rgb_de as _rgb_de, svg_dona as _svg_dona,
+                       svg_torta as _svg_torta)
 
 SEVERIDAD_LABEL = {
     "critical": "CRÍTICO",
@@ -283,6 +288,7 @@ class InformeData:
     metricas: dict = field(default_factory=dict)
     metricas_base: dict = field(default_factory=dict)
     metricas_actual: dict = field(default_factory=dict)
+    resultados: list = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -591,6 +597,7 @@ def informe_desde_diagnostico(diag: dict, acciones: list[dict] | None = None,
         metricas=diag.get("metricas") if isinstance(diag.get("metricas"), dict) else {},
         metricas_base=metricas_base or {},
         metricas_actual=metricas_actual or {},
+        resultados=[r for r in (diag.get("results") or []) if isinstance(r, dict)],
     )
 
 
@@ -642,6 +649,19 @@ th, td.th { background: #f1f3f4; text-align: left; font-weight: 700; }
 .advertencia { background: #fff3cd; border-left: 4px solid #e0a800; color: #7a4f00; padding: 8px; }
 .firma { width: 100%; margin-top: 40px; border-collapse: collapse; }
 .firma td { width: 50%; border: none; border-top: 1px solid #333; padding-top: 4px; text-align: center; }
+.portada { page-break-after: always; }
+.portada-banda { background: #0F1F35; color: #ffffff; padding: 10pt; }
+.portada-marca { font-size: 20pt; font-weight: 700; color: #ffffff; }
+.portada-sub { font-size: 9pt; color: #b8c6db; }
+.portada-titulo { font-size: 18pt; color: #0F1F35; }
+.tarjetas { width: 100%; }
+.tarjeta { border: 1px solid #ccc; padding: 6pt; margin: 4pt 0; }
+.tarjeta-titulo { font-size: 8pt; color: #666; }
+.tarjeta-valor { font-size: 14pt; font-weight: 700; }
+.tarjeta-detalle { font-size: 8pt; color: #555; }
+.panel-grafico { width: 100%; }
+.grafico-celda { border: 1px solid #e3e7ec; padding: 6pt; margin: 4pt 0; }
+.mini-titulo { font-size: 9pt; color: #444; }
 """
 
 
@@ -689,11 +709,6 @@ _METRICAS_RGB = {
     "Crítico": (0.94, 0.29, 0.36), "Datos parciales": (0.96, 0.65, 0.14),
     "Sin datos": (0.62, 0.70, 0.80),
 }
-_SEV_GRAF = {"critical": "#EF4B5B", "error": "#F2761E", "warning": "#F5A623"}
-_SEV_GRAF_RGB = {"critical": (0.94, 0.29, 0.36), "error": (0.95, 0.46, 0.12),
-                 "warning": (0.96, 0.65, 0.14)}
-_CAT_RGB = {"ok": (0.18, 0.75, 0.44), "advertencia": (0.96, 0.65, 0.14),
-            "error": (0.94, 0.29, 0.36), "no_evaluado": (0.62, 0.70, 0.80)}
 
 
 def _color_nivel_medidor(tipo: str, pct) -> str:
@@ -735,102 +750,472 @@ def _barra_apilada_html(segmentos: list, ancho: float = 100.0) -> str:
             f"<tr>{celdas}</tr></table>")
 
 
-def _seccion_grafico_html(e: InformeData) -> list[str]:
-    """Resumen gráfico (tablas con color) con los mismos números que metricas."""
+_SINTOMAS_LABEL = {
+    "revision_total": "Revisión completa del equipo",
+    "general": "Revisión general",
+    "impresora_offline": "Impresora fuera de línea",
+    "disco_lleno": "Disco con poco espacio",
+    "driver_faltante": "Driver faltante",
+}
+
+
+def _pal(nombre: str) -> str:
+    return _PALETA.get(nombre, _PALETA["gris"])[0]
+
+
+def _pal_rgb(nombre: str) -> tuple:
+    return _PALETA.get(nombre, _PALETA["gris"])[1]
+
+
+def _tipo_legible(e: InformeData) -> str:
+    label = (e.paquete.get("label") or e.paquete.get("name") or "").strip()
+    if label.lower() in ("revisión total", "revision total", "full-scan"):
+        return "Revisión completa del equipo"
+    return label
+
+
+def _sintoma_legible(valor) -> str:
+    if not valor:
+        return ""
+    return _SINTOMAS_LABEL.get(str(valor), str(valor).replace("_", " ").capitalize())
+
+
+def _modo(e: InformeData) -> str:
+    return "Administrador" if e.equipo.get("is_elevated") else "Usuario estándar"
+
+
+def _prim(valor):
+    if isinstance(valor, dict):
+        return valor
+    if isinstance(valor, list):
+        for x in valor:
+            if isinstance(x, dict):
+                return x
+    return {}
+
+
+def _lista(valor):
+    return valor if isinstance(valor, list) else []
+
+
+def _data_de(e: InformeData, *ids):
+    for r in e.resultados:
+        if r.get("collector_id") in ids:
+            return r.get("data")
+    return None
+
+
+def _g(v, unidad="", vacio="—"):
+    if v is None or v == "":
+        return vacio
+    if isinstance(v, float):
+        v = round(v, 1)
+    return f"{v}{(' ' + unidad) if unidad else ''}"
+
+
+def _si_no(v):
+    if v is None:
+        return "—"
+    return "Sí" if v else "No"
+
+
+def _porciones_severidad(m: dict) -> list:
+    sev = (m or {}).get("severidad") or {}
+    return _porciones([
+        ("Crítico", sev.get("critical", 0), _pal("critico")),
+        ("Error", sev.get("error", 0), _pal("error")),
+        ("Advertencia", sev.get("warning", 0), _pal("advertencia")),
+    ])
+
+
+def _porciones_estado(m: dict) -> list:
+    est = (m or {}).get("estados") or ((m or {}).get("cobertura") or {}).get("estados") or {}
+    return _porciones([
+        ("OK", est.get("ok", 0), _pal("ok")),
+        ("Sin datos", est.get("sin_datos", 0), _pal("sin_datos")),
+        ("Error", est.get("error", 0) + est.get("timeout", 0), _pal("critico")),
+        ("No evaluado", est.get("denegado", 0) + est.get("no_disponible", 0),
+         _pal("no_evaluado")),
+    ])
+
+
+def _discos_medidor(m: dict) -> list:
+    med = (m or {}).get("medidores") or {}
+    return [d for d in (med.get("discos") or [])
+            if isinstance(d, dict) and d.get("usado_porcentaje") is not None]
+
+
+def _porciones_dona_disco(disco: dict) -> list:
+    pct = float(disco.get("usado_porcentaje") or 0)
+    total = disco.get("total_gb")
+    usado_gb = disco.get("usado_gb")
+    if usado_gb is None and total is not None:
+        usado_gb = round(total * pct / 100.0, 1)
+    libre_gb = disco.get("libre_gb")
+    nivel = medidores_nivel("discos", pct)
+    color = {"verde": _pal("verde"), "ambar": _pal("ambar"),
+             "rojo": _pal("rojo")}[nivel]
+    return _porciones_simples([
+        ("Usado", usado_gb if usado_gb is not None else pct, color),
+        ("Libre", libre_gb if libre_gb is not None else (100 - pct), _pal("resto")),
+    ])
+
+
+def _resumen_ejecutivo(e: InformeData) -> list[str]:
     m = e.metricas or {}
-    out: list[str] = []
-    if not m or m.get("puntaje") is None:
-        out.append("<p class='muted'>Sin puntaje: no se ejecutaron módulos en este análisis.</p>")
-        return out
-
-    color = _METRICAS_COLOR.get(m.get("etiqueta"), "#9FB3CB")
-    out.append(
-        f"<p><b>Alcance:</b> {_esc(m.get('alcance', ''))} — "
-        f"<span class='badge' style='background:{color};color:#fff;'>"
-        f"{_esc(m.get('etiqueta', ''))}</span></p>")
     cob = m.get("cobertura") or {}
-    out.append("<table class='kv'>")
-    out.append(f"<tr><td>Puntaje</td><td><b>{m.get('puntaje')}/100</b> "
-               f"{_barra_html(m.get('puntaje', 0), color)}</td></tr>")
-    out.append(f"<tr><td>Cobertura</td><td>{cob.get('porcentaje', 0)}% "
-               f"({cob.get('colectores_evaluados', cob.get('colectores_ok', 0))}/"
-               f"{cob.get('colectores_ejecutados', 0)} evaluados: "
-               f"{cob.get('colectores_ok', 0)} OK + "
-               f"{cob.get('colectores_sin_datos', 0)} sin datos)</td></tr>")
-    out.append("</table>")
-    out.append(f"<p class='muted'>{_esc(m.get('leyenda', ''))}</p>")
-
+    est = m.get("estados") or cob.get("estados") or {}
     sev = m.get("severidad") or {}
-    out.append("<h3>Hallazgos por severidad</h3>")
-    out.append("<table><tr><td class='th' style='width:22%'>Severidad</td>"
-               "<td class='th' style='width:12%'>Cantidad</td>"
-               "<td class='th' style='width:66%'>Barra</td></tr>")
-    maxsev = max(sev.get("critical", 0), sev.get("error", 0),
-                sev.get("warning", 0), 1)
-    for clave, etiqueta in (("critical", "Crítico"), ("error", "Error"),
-                            ("warning", "Advertencia")):
-        n = sev.get(clave, 0)
-        pct = (n / maxsev) * 100 if n else 0
-        out.append(f"<tr><td>{etiqueta}</td><td>{n}</td>"
-                   f"<td>{_barra_html(pct, _SEV_GRAF[clave])}</td></tr>")
-    out.append("</table>")
+    frases = []
+    tipo = _tipo_legible(e)
+    frases.append(
+        f"Análisis \"{tipo}\" ejecutado el {_fmt_fecha(e.generado_en)}"
+        + (f" sobre el equipo {e.equipo.get('computer_name')}"
+           if e.equipo.get("computer_name") else "") + ".")
+    if est:
+        frases.append(
+            f"Se ejecutaron {cob.get('colectores_ejecutados', 0)} colectores: "
+            f"{est.get('ok', 0)} OK, {est.get('sin_datos', 0)} sin datos, "
+            f"{est.get('error', 0) + est.get('timeout', 0)} con error y "
+            f"{est.get('denegado', 0) + est.get('no_disponible', 0)} no evaluados "
+            f"(cobertura {cob.get('porcentaje', 0)}%).")
+    total = sev.get("critical", 0) + sev.get("error", 0) + sev.get("warning", 0)
+    if total:
+        frases.append(
+            f"Se detectaron {total} problemas: {sev.get('critical', 0)} críticos, "
+            f"{sev.get('error', 0)} errores y {sev.get('warning', 0)} advertencias.")
+    else:
+        frases.append("No se detectaron problemas automáticos en este análisis.")
+    if m.get("puntaje") is not None:
+        frases.append(
+            f"El puntaje de salud es {m.get('puntaje')}/100 ({m.get('etiqueta', '')}).")
+    return frases[:5]
 
-    cats = m.get("categorias") or []
-    if cats:
-        out.append("<h3>Estado por paquete</h3>")
-        out.append("<table><tr><td class='th' style='width:24%'>Paquete</td>"
-                   "<td class='th' style='width:8%'>OK</td>"
-                   "<td class='th' style='width:10%'>Sin datos</td>"
-                   "<td class='th' style='width:8%'>Error</td>"
-                   "<td class='th' style='width:18%'>Hallazgos</td>"
-                   "<td class='th' style='width:32%'>Distribución</td></tr>")
-        for c in cats:
-            ok = c.get("ok", 0)
-            sin = c.get("sin_datos", 0)
-            err = c.get("error", 0) + c.get("timeout", 0)
-            ne = c.get("no_evaluado", 0)
-            hall = c.get("hallazgos") or {}
-            h_txt = (f"C {hall.get('critical', 0)} / E {hall.get('error', 0)}"
-                     f" / A {hall.get('warning', 0)}")
-            total = (ok + sin + err + ne) or 1
-            segs = [(ok / total * 100, "#2FBF71"), (sin / total * 100, "#8A99AD"),
-                    (err / total * 100, "#C62839"), (ne / total * 100, "#9FB3CB")]
-            out.append(f"<tr><td>{_esc(c.get('paquete', ''))}</td><td>{ok}</td>"
-                       f"<td>{sin}</td><td>{err}</td><td>{_esc(h_txt)}</td>"
-                       f"<td>{_barra_apilada_html(segs)}</td></tr>")
-        out.append("</table>")
 
-    med = m.get("medidores") or {}
+_MEM_TYPE = {20: "DDR", 21: "DDR2", 24: "DDR3", 26: "DDR4", 34: "DDR5"}
+_WUA_ESTADO = {1: "Detenido", 2: "Iniciando", 3: "Deteniendo", 4: "En ejecución"}
+
+
+def _gb_de_bytes(valor):
+    try:
+        return round(float(valor) / (1024 ** 3), 1)
+    except (TypeError, ValueError):
+        return None
+
+
+def _mascara_de_prefijo(prefijo):
+    try:
+        p = int(prefijo)
+    except (TypeError, ValueError):
+        return None
+    if not 0 <= p <= 32:
+        return None
+    bits = "1" * p + "0" * (32 - p)
+    return ".".join(str(int(bits[i:i + 8], 2)) for i in range(0, 32, 8))
+
+
+def _ficha_tecnica(e: InformeData) -> list:
+    ctx = _prim(_data_de(e, "system_context"))
+    hw = _prim(_data_de(e, "hardware"))
+    osd = _prim(_data_de(e, "os"))
+    mem = _prim(_data_de(e, "memory_status"))
+    eq = e.equipo
+    cs = _prim(hw.get("computer_system"))
+    so = osd.get("operating_system") or {}
+    si = osd.get("system_info") or {}
+    fabricante = cs.get("manufacturer") or si.get("manufacturer") or ctx.get("manufacturer")
+    modelo = cs.get("model") or si.get("model") or ctx.get("model")
+
+    equipo = [
+        ("Equipo", _g(eq.get("computer_name") or si.get("name"))),
+        ("Usuario", _g(eq.get("user"))),
+        ("Modo de ejecución", _modo(e)),
+        ("Sistema operativo", _g(eq.get("os") or so.get("caption") or ctx.get("os_version"))),
+        ("Versión / Build", _g(f"{so.get('version', '')} ({so.get('build_number', '')})"
+                               if so.get("version") else eq.get("os_version"))),
+        ("Arquitectura", _g(so.get("architecture") or ctx.get("os_architecture"))),
+        ("Fabricante", _g(fabricante)),
+        ("Modelo", _g(modelo)),
+        ("Tipo de equipo", _g(ctx.get("system_type") or ctx.get("form_factor"))),
+        ("Dominio / Grupo", "Dominio" if ctx.get("is_domain_member")
+         else _g(ctx.get("domain") or si.get("domain"))),
+    ]
+
+    procs = _lista(hw.get("processors"))
+    proc = procs[0] if procs else {}
+    nucleos = sum(int(p.get("number_of_cores") or 0) for p in procs) or None
+    logicos = sum(int(p.get("number_of_logical_processors") or 0) for p in procs) or None
+    ram_total = _gb_de_bytes(cs.get("total_physical_memory_bytes")) or ctx.get("total_memory_gb")
+    modulos = _lista(hw.get("physical_memory"))
+    ram_mod = None
+    if modulos:
+        partes = []
+        for m in modulos[:4]:
+            if not isinstance(m, dict):
+                continue
+            cap = _gb_de_bytes(m.get("capacity_bytes"))
+            tipo = _MEM_TYPE.get(m.get("memory_type"), "")
+            vel = m.get("speed_mhz")
+            desc = f"{cap:g} GB" if cap else "? GB"
+            if tipo:
+                desc += f" {tipo}"
+            if vel:
+                desc += f"-{int(vel)}"
+            partes.append(desc)
+        ram_mod = " + ".join(partes)
+        parte = (modulos[0].get("part_number") or "").strip() if isinstance(modulos[0], dict) else ""
+        if parte:
+            ram_mod += f" ({parte})"
+    base = _prim(hw.get("baseboards"))
+    bios = _prim(hw.get("bios"))
+    video = _prim(hw.get("video_controllers"))
+    frecuencia = proc.get("max_clock_speed_mhz") or proc.get("current_clock_speed_mhz")
+    hardware = [
+        ("Procesador", _g(proc.get("name") or ctx.get("processor_family"))),
+        ("Núcleos / Lógicos", _g(f"{nucleos} / {logicos}" if nucleos else None)),
+        ("Frecuencia", _g(frecuencia, "MHz")),
+        ("Memoria RAM", _g(ram_total, "GB")),
+        ("Módulos de memoria", _g(ram_mod)),
+        ("Placa base", _g(base.get("product") or base.get("model")) +
+         (f" ({base.get('manufacturer')})" if base.get("manufacturer") else "")),
+        ("BIOS", _g(f"{bios.get('manufacturer', '')} "
+                    f"{bios.get('bios_version') or bios.get('version', '')} "
+                    f"{(bios.get('release_date_utc') or bios.get('release_date') or '')[:10]}".strip())),
+        ("Video", _g(video.get("name"))),
+    ]
+
+    fisicos = _lista(_data_de(e, "physical_disks"))
+    discos = []
+    for d in fisicos[:6]:
+        if not isinstance(d, dict):
+            continue
+        tam = d.get("size_gb")
+        discos.append((_g(d.get("friendly_name") or d.get("model") or d.get("device_id")),
+                       f"{_g(tam, 'GB')} · {_g(d.get('bus_type') or d.get('interface_type'))} · "
+                       f"salud {_g(d.get('health_status') or d.get('status'))}"))
+    logicos_l = _lista(_data_de(e, "logical_disks"))
+    for d in logicos_l[:8]:
+        if not isinstance(d, dict):
+            continue
+        total = d.get("total_gb") if d.get("total_gb") is not None else d.get("size_gb")
+        libre = d.get("free_gb") if d.get("free_gb") is not None else d.get("free_space_gb")
+        discos.append((f"Unidad {_g(d.get('device_id'))}",
+                       f"{_g(total, 'GB')} total · {_g(libre, 'GB')} libre · "
+                       f"uso {_g(d.get('used_percent') or d.get('used_percentage'))}%"))
+
+    nets = _lista(_data_de(e, "network_adapters"))
+    ips = _prim(_data_de(e, "ip_configuration"))
+    red = []
+    for a in nets[:5]:
+        if not isinstance(a, dict):
+            continue
+        vel = a.get("speed") or a.get("speed_mbps") or a.get("link_speed")
+        vel_txt = _g(vel, "Mbps") if isinstance(vel, (int, float)) else _g(vel)
+        red.append((_g(a.get("name") or a.get("type")),
+                    f"{_g(a.get('status'))} · {vel_txt} · {_g(a.get('mac_address'))}"))
+    if ips:
+        red.append(("Interfaz", _g(ips.get("interface_alias") or ips.get("interface_name"))))
+        red.append(("Dirección IP", _g(ips.get("ipv4_address") or ips.get("ip_address"))))
+        red.append(("Máscara", _g(_mascara_de_prefijo(ips.get("ipv4_prefix"))
+                                  or ips.get("subnet_mask"))))
+        red.append(("Puerta de enlace", _g(ips.get("ipv4_gateway")
+                                           or ips.get("default_gateway"))))
+        dns = ips.get("dns_servers")
+        if isinstance(dns, list):
+            red.append(("DNS", _g(", ".join(str(x) for x in dns[:3]))))
+    if not red:
+        red.append(("Red", "—"))
+
+    av = _prim(_data_de(e, "antivirus_status"))
+    fws = _lista(_data_de(e, "firewall_status"))
+    fw_map = {str(f.get("name", "")).lower(): f for f in fws if isinstance(f, dict)}
+    sc = _prim(_data_de(e, "security_center", "security_center_status"))
+
+    def _fw(nombre):
+        f = fw_map.get(nombre)
+        if f is not None:
+            return _si_no(f.get("enabled"))
+        return "—"
+
+    seguridad = [
+        ("Antivirus", _g(av.get("display_name") or av.get("name"))),
+        ("Antivirus activo", _si_no(av.get("enabled") if av.get("enabled") is not None
+                                    else av.get("real_time_protection"))),
+        ("Firewall (dominio)", _fw("domain")),
+        ("Firewall (privado)", _fw("private")),
+        ("Firewall (público)", _fw("public")),
+        ("Centro de seguridad", _g(sc.get("display_name") or sc.get("state_description")
+                                   or sc.get("status"))),
+    ]
+
+    up = _prim(_data_de(e, "update_status", "windows_update_status"))
+    pend = _lista(_data_de(e, "pending_updates"))
+    hist = _prim(_data_de(e, "update_history"))
+    eventos = _lista(hist.get("eventos"))
+    wua = up.get("servicio_wuauserv") or {}
+    estado_wua = _WUA_ESTADO.get(wua.get("estado"), wua.get("estado"))
+    ultimo = eventos[0].get("mensaje") if eventos and isinstance(eventos[0], dict) else None
+    modulo_no = any(isinstance(x, dict) and x.get("status") == "module_not_available"
+                    for x in pend)
+    actualizaciones = [
+        ("Servicio Windows Update", _g(estado_wua or up.get("status"))),
+        ("Eventos registrados", _g(hist.get("total_eventos") if eventos else None)),
+        ("Última actividad", _g(ultimo)),
+        ("Módulo PSWindowsUpdate", "No instalado" if modulo_no else "—"),
+    ]
+
+    libre_mb = mem.get("free_physical_memory_kb")
+    rendimiento = [
+        ("Uso de memoria", _g(mem.get("physical_memory_usage_percent"), "%")),
+        ("Memoria libre", _g(round(libre_mb / 1024) if libre_mb else None, "MB")),
+        ("Tiempo encendido", _g(ctx.get("uptime_hours"), "h")),
+    ]
+
+    return [
+        ("Datos del equipo", equipo),
+        ("Hardware", hardware),
+        ("Discos", discos or [("Discos", "—")]),
+        ("Red", red),
+        ("Seguridad", seguridad),
+        ("Actualizaciones", actualizaciones),
+        ("Memoria y rendimiento", rendimiento),
+    ]
+
+
+def _detalle_corto(data, maximo: int = 5, tope: int = 160) -> list[str]:
+    """Lineas compactas 'campo: valor' de un dato crudo (tope de registros)."""
+    if not isinstance(data, (dict, list)):
+        return []
+    registros = data if isinstance(data, list) else [data]
+    lineas = []
+    for reg in registros[:maximo]:
+        if not isinstance(reg, dict):
+            texto = _fmt_valor(reg)
+        else:
+            texto = ", ".join(f"{k}: {_fmt_valor(v)}" for k, v in reg.items()
+                              if not isinstance(v, (dict, list)))
+        if not texto:
+            continue
+        lineas.append(texto if len(texto) <= tope else texto[:tope - 3] + "...")
+    return lineas
+
+
+def _anexo_tecnico(e: InformeData, paquetes: dict) -> list[dict]:
     filas = []
-    if med.get("memoria") and med["memoria"].get("usado_porcentaje") is not None:
-        filas.append(("Memoria en uso", med["memoria"]["usado_porcentaje"], "memoria"))
-    for d in med.get("discos") or []:
-        if d.get("usado_porcentaje") is not None:
-            filas.append((f"Disco {d.get('unidad', '')}", d["usado_porcentaje"], "discos"))
-    if filas:
-        out.append("<h3>Medidores</h3>")
-        out.append("<table><tr><td class='th' style='width:30%'>Recurso</td>"
-                   "<td class='th' style='width:12%'>Uso</td>"
-                   "<td class='th' style='width:58%'>Barra</td></tr>")
-        for nombre, pct, tipo in filas:
-            out.append(f"<tr><td>{_esc(nombre)}</td><td>{pct}%</td>"
-                       f"<td>{_barra_html(pct, _color_nivel_medidor(tipo, pct))}</td></tr>")
-        out.append("</table>")
-        out.append(f"<p class='muted'>{_esc(m.get('leyenda_medidores', ''))}</p>")
+    for c in e.colectores:
+        resumen = " ".join(c.resumen)[:120]
+        if len(" ".join(c.resumen)) > 120:
+            resumen += "..."
+        data = _data_de(e, c.collector_id)
+        total_reg = len(data) if isinstance(data, list) else (1 if data else 0)
+        detalle = _detalle_corto(data)
+        filas.append({
+            "colector": c.collector_id,
+            "paquete": paquetes.get(c.collector_id, ""),
+            "estado": c.status,
+            "duracion_ms": c.duration_ms,
+            "resumen": resumen,
+            "detalle": detalle,
+            "registros_restantes": max(0, total_reg - len(detalle)),
+        })
+    return filas
 
-    if e.metricas_base and e.metricas_actual:
-        out.append("<h3>Comparación antes / después</h3>")
-        out.append("<table><tr><td class='th' style='width:30%'>Momento</td>"
-                   "<td class='th' style='width:14%'>Puntaje</td>"
-                   "<td class='th' style='width:56%'>Barra</td></tr>")
-        for etiqueta, mm in (("Antes", e.metricas_base), ("Después", e.metricas_actual)):
-            val = mm.get("puntaje")
-            col = _METRICAS_COLOR.get(mm.get("etiqueta"), "#9FB3CB")
-            out.append(f"<tr><td>{etiqueta}</td>"
-                       f"<td>{'-' if val is None else val}</td>"
-                       f"<td>{_barra_html(val or 0, col)}</td></tr>")
-        out.append("</table>")
-    return out
+
+def _mapa_paquete_colector(e: InformeData) -> dict:
+    mapa = {}
+    for cat in (e.metricas or {}).get("categorias") or []:
+        pid = cat.get("paquete_id") or ""
+        for cid in cat.get("colectores") or []:
+            mapa[cid] = cat.get("paquete", "")
+        # Si la categoria no trae la lista, se resuelve por el id del paquete.
+    return mapa
+
+
+def _modelo_documento(e: InformeData) -> dict:
+    """Modelo unico de secciones que alimenta HTML, PDF y Word."""
+    m = e.metricas or {}
+    sev = m.get("severidad") or {}
+    cob = m.get("cobertura") or {}
+    mapa = _mapa_paquete_colector(e)
+    problemas_tabla = [
+        {
+            "indice": p.indice,
+            "severidad": p.severidad,
+            "titulo": p.titulo,
+            "colector": p.colector,
+            "estado": p.estado,
+        }
+        for p in e.problemas
+    ]
+    return {
+        "tipo": _tipo_legible(e),
+        "sintoma": _sintoma_legible(e.paquete.get("symptom")),
+        "fecha": _fmt_fecha(e.generado_en),
+        "codigo": codigo_verificacion(e),
+        "equipo": e.equipo,
+        "modo": _modo(e),
+        "tecnico": e.tecnico,
+        "cliente": e.cliente,
+        "metricas": m,
+        "cobertura": cob,
+        "severidad": sev,
+        "indicadores": {
+            "puntaje": m.get("puntaje"),
+            "etiqueta": m.get("etiqueta", ""),
+            "problemas": sev.get("critical", 0) + sev.get("error", 0) + sev.get("warning", 0),
+            "criticos": sev.get("critical", 0),
+            "errores": sev.get("error", 0),
+            "advertencias": sev.get("warning", 0),
+            "ok": ((m.get("estados") or {}).get("ok", 0)),
+            "sin_datos": ((m.get("estados") or {}).get("sin_datos", 0)),
+            "error": ((m.get("estados") or {}).get("error", 0)
+                      + (m.get("estados") or {}).get("timeout", 0)),
+            "cobertura": cob.get("porcentaje", 0),
+        },
+        "resumen_ejecutivo": _resumen_ejecutivo(e),
+        "torta_severidad": _porciones_severidad(m),
+        "torta_estado": _porciones_estado(m),
+        "discos": _discos_medidor(m),
+        "memoria": (m.get("medidores") or {}).get("memoria"),
+        "leyenda_medidores": m.get("leyenda_medidores", ""),
+        "categorias": m.get("categorias") or [],
+        "problemas": e.problemas,
+        "problemas_tabla": problemas_tabla,
+        "mejoras": e.mejoras,
+        "diferencias": e.diferencias,
+        "recomendaciones": e.recomendaciones,
+        "ficha_tecnica": _ficha_tecnica(e),
+        "anexo": _anexo_tecnico(e, mapa),
+        "observaciones": e.observaciones,
+        "advertencias": e.advertencias,
+        "comparacion": {
+            "base": e.metricas_base,
+            "actual": e.metricas_actual,
+        } if e.metricas_base and e.metricas_actual else None,
+        "alcance": linea_alcance(e),
+    }
+
+
+def _grafico_html_porciones(porciones_, con_svg: bool, tipo: str = "torta",
+                            titulo: str = "", centro: str = "") -> str:
+    if not porciones_:
+        return "<p class='muted'>Sin datos para graficar.</p>"
+    if con_svg:
+        if tipo == "dona":
+            return _svg_dona(porciones_, titulo=titulo, centro=centro)
+        return _svg_torta(porciones_, titulo=titulo)
+    filas = []
+    total = sum(p["valor"] for p in porciones_) or 1
+    for p in porciones_:
+        pct = p["valor"] / total * 100
+        filas.append(
+            f"<tr><td>{_esc(p['etiqueta'])}</td>"
+            f"<td>{p['valor']:g} ({round(pct, 1)}%)</td>"
+            f"<td>{_barra_html(pct, p['color'])}</td></tr>")
+    return ("<table><tr><td class='th' style='width:40%'>" + _esc(titulo) +
+            "</td><td class='th' style='width:20%'>Cantidad</td>"
+            "<td class='th' style='width:40%'>Proporción</td></tr>"
+            + "".join(filas) + "</table>")
 
 
 def codigo_verificacion(e: InformeData) -> str:
@@ -859,9 +1244,325 @@ def codigo_verificacion(e: InformeData) -> str:
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
 
 
+_LOGO_SVG = (
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' width='52' "
+    "height='52' role='img'><title>DiagUSB</title>"
+    "<rect x='4' y='4' width='56' height='56' rx='12' fill='#1769D2'/>"
+    "<rect x='16' y='14' width='32' height='36' rx='4' fill='#ffffff'/>"
+    "<rect x='21' y='20' width='22' height='4' rx='2' fill='#0F1F35'/>"
+    "<rect x='21' y='28' width='22' height='4' rx='2' fill='#2FBF71'/>"
+    "<rect x='21' y='36' width='14' height='4' rx='2' fill='#F5A623'/>"
+    "<circle cx='48' cy='48' r='9' fill='#0F1F35'/><path d='M44 48 l3 3 l6 -7' "
+    "stroke='#2FBF71' stroke-width='2.5' fill='none' stroke-linecap='round' "
+    "stroke-linejoin='round'/></svg>"
+)
+
+
+def _html_portada(doc: dict, con_svg: bool = True) -> str:
+    equipo = doc.get("equipo") or {}
+    logo = (_LOGO_SVG if con_svg else
+            "<div class='portada-logo-caja'><span>D</span></div>")
+    return (
+        "<section class='portada'>"
+        "<div class='portada-banda'>"
+        f"<div class='portada-logo'>{logo}</div>"
+        "<div><div class='portada-marca'>DiagUSB</div>"
+        "<div class='portada-sub'>Informe de diagnóstico técnico</div></div>"
+        "</div>"
+        f"<h1 class='portada-titulo'>{_esc(doc['tipo'])}</h1>"
+        f"<p class='portada-sintoma'>Motivo: {_esc(doc['sintoma'] or '—')}</p>"
+        "<table class='kv portada-kv'>"
+        f"<tr><td>Equipo</td><td>{_esc(equipo.get('computer_name') or '—')}</td></tr>"
+        f"<tr><td>Sistema operativo</td><td>{_esc(equipo.get('os') or '—')}</td></tr>"
+        f"<tr><td>Usuario</td><td>{_esc(equipo.get('user') or '—')}</td></tr>"
+        f"<tr><td>Modo</td><td>{_esc(doc['modo'])}</td></tr>"
+        f"<tr><td>Fecha</td><td>{_esc(doc['fecha'] or '—')}</td></tr>"
+        f"<tr><td>Técnico</td><td>{_esc(doc['tecnico'] or '________________________')}</td></tr>"
+        f"<tr><td>Cliente / Sector</td><td>{_esc(doc['cliente'] or '________________________')}</td></tr>"
+        f"<tr><td>Código de verificación</td><td class='mono'>{_esc(doc['codigo'])}</td></tr>"
+        "</table>"
+        "<p class='muted'>Puntaje orientativo. No reemplaza al diagnóstico profesional "
+        "ni a las pruebas de cada fabricante.</p>"
+        "</section>")
+
+
+def _html_indicadores(doc: dict) -> str:
+    ind = doc["indicadores"]
+    color = _METRICAS_COLOR.get(ind["etiqueta"], "#9FB3CB")
+    puntaje = "—" if ind["puntaje"] is None else f"{ind['puntaje']}/100"
+    tarjetas = [
+        ("Puntaje de salud", puntaje, "#0F1F35",
+         f"{ind['etiqueta']}"),
+        ("Problemas", str(ind["problemas"]), _pal("critico"),
+         f"{ind['criticos']} crítico(s), {ind['errores']} error(es), "
+         f"{ind['advertencias']} advertencia(s)"),
+        ("Colectores", f"{ind['ok']} OK", _pal("ok"),
+         f"{ind['sin_datos']} sin datos, {ind['error']} con error"),
+        ("Cobertura", f"{ind['cobertura']}%", _pal("acento"),
+         "colectores evaluados sobre ejecutados"),
+    ]
+    html = ["<div class='tarjetas'>"]
+    for titulo, valor, col, detalle in tarjetas:
+        html.append(
+            f"<div class='tarjeta' style='border-top-color:{col}'>"
+            f"<div class='tarjeta-titulo'>{_esc(titulo)}</div>"
+            f"<div class='tarjeta-valor' style='color:{col}'>{_esc(valor)}</div>"
+            f"<div class='tarjeta-detalle'>{_esc(detalle)}</div></div>")
+    html.append("</div>")
+    return "".join(html)
+
+
+def _html_resumen_linea_alcance(doc: dict) -> str:
+    return f"<p class='muted'><b>{_esc(doc['alcance'])}</b></p>"
+
+
+def _html_panel_grafico(doc: dict, con_svg: bool) -> str:
+    out = ["<div class='panel-grafico'>"]
+    out.append("<div class='grafico-celda'><h3>Problemas por severidad</h3>")
+    out.append(_grafico_html_porciones(doc["torta_severidad"], con_svg,
+                                       titulo="Problemas por severidad"))
+    out.append("</div>")
+    out.append("<div class='grafico-celda'><h3>Estado de los colectores</h3>")
+    out.append(_grafico_html_porciones(doc["torta_estado"], con_svg,
+                                       titulo="Estado de los colectores"))
+    out.append("</div>")
+
+    discos = doc["discos"]
+    out.append("<div class='grafico-celda'><h3>Ocupación de discos</h3>")
+    if discos:
+        for d in discos[:6]:
+            porc = _porciones_dona_disco(d)
+            etiqueta = f"Disco {_esc(d.get('unidad') or '')}"
+            centro = f"{d.get('usado_porcentaje')}%"
+            out.append(f"<p class='mini-titulo'>{etiqueta} — "
+                       f"{_g(d.get('total_gb'), 'GB')} total, "
+                       f"{_g(d.get('libre_gb'), 'GB')} libre</p>")
+            out.append(_grafico_html_porciones(porc, con_svg, tipo="dona",
+                                               titulo=etiqueta, centro=centro))
+    else:
+        out.append("<p class='muted'>Sin datos de discos.</p>")
+    out.append("</div>")
+
+    out.append("<div class='grafico-celda'><h3>Memoria y umbrales</h3>")
+    mem = doc.get("memoria")
+    if mem and mem.get("usado_porcentaje") is not None:
+        pct = mem["usado_porcentaje"]
+        out.append(f"<p>Memoria en uso: <b>{pct}%</b></p>")
+        out.append(f"<p>{_barra_html(pct, _color_nivel_medidor('memoria', pct))}</p>")
+    else:
+        out.append("<p class='muted'>Sin datos de memoria.</p>")
+    out.append(f"<p class='muted'>{_esc(doc.get('leyenda_medidores', ''))}</p>")
+    out.append("</div>")
+
+    comp = doc.get("comparacion")
+    if comp:
+        out.append("<div class='grafico-celda'><h3>Comparación antes / después</h3>")
+        out.append("<table><tr><td class='th'>Momento</td><td class='th'>Puntaje</td>"
+                   "<td class='th'>Barra</td></tr>")
+        for etiqueta, mm in (("Antes", comp["base"]), ("Después", comp["actual"])):
+            val = mm.get("puntaje")
+            col = _METRICAS_COLOR.get(mm.get("etiqueta"), "#9FB3CB")
+            out.append(f"<tr><td>{etiqueta}</td><td>{'-' if val is None else val}</td>"
+                       f"<td>{_barra_html(val or 0, col)}</td></tr>")
+        out.append("</table></div>")
+
+    out.append("</div>")
+    return "".join(out)
+
+
+def _html_categorias(doc: dict) -> str:
+    cats = doc["categorias"]
+    if not cats:
+        return "<p class='muted'>Sin datos por paquete.</p>"
+    out = ["<table><tr><td class='th' style='width:22%'>Paquete</td>"
+           "<td class='th' style='width:7%'>OK</td>"
+           "<td class='th' style='width:10%'>Sin datos</td>"
+           "<td class='th' style='width:7%'>Error</td>"
+           "<td class='th' style='width:16%'>Hallazgos</td>"
+           "<td class='th' style='width:38%'>Distribución</td></tr>"]
+    for c in cats:
+        ok = c.get("ok", 0)
+        sin = c.get("sin_datos", 0)
+        err = c.get("error", 0) + c.get("timeout", 0)
+        ne = c.get("no_evaluado", 0)
+        hall = c.get("hallazgos") or {}
+        total = (ok + sin + err + ne) or 1
+        segs = [(ok / total * 100, _pal("ok")), (sin / total * 100, _pal("sin_datos")),
+                (err / total * 100, _pal("critico")), (ne / total * 100, _pal("no_evaluado"))]
+        out.append(f"<tr><td>{_esc(c.get('paquete', ''))}</td><td>{ok}</td>"
+                   f"<td>{sin}</td><td>{err}</td>"
+                   f"<td>C {hall.get('critical', 0)} / E {hall.get('error', 0)} / "
+                   f"A {hall.get('warning', 0)}</td>"
+                   f"<td>{_barra_apilada_html(segs)}</td></tr>")
+    out.append("</table>")
+    return "".join(out)
+
+
+def _html_problemas(doc: dict, con_svg: bool) -> str:
+    out = []
+    for p in doc["problemas"]:
+        color = _SEVERIDAD_COLOR.get(p.severidad, "#888")
+        out.append(f"<div class='problema' style='border-left-color: {color};'>")
+        out.append(f"<h3><span class='badge' style='background: {color};'>"
+                   f"{_esc(SEVERIDAD_LABEL.get(p.severidad, p.severidad))}</span> "
+                   f"{_esc(p.titulo)}</h3>")
+        out.append(f"<p class='muted'>Colector: {_esc(p.colector)} · "
+                   f"Estado de la acción: {_esc(p.estado)}</p>")
+        if p.detalle:
+            detalle = ", ".join(f"{k}: {_fmt_valor(v)}" for k, v in p.detalle.items()
+                                if k not in ("grupo_mensajes", "grupo_total"))
+            if detalle:
+                out.append(f"<p><b>Qué ocurre:</b> {_esc(detalle)}</p>")
+        if p.estado_esperado:
+            out.append(f"<p><b>Cómo debe estar:</b> {_esc(p.estado_esperado)}</p>")
+        if p.por_que:
+            out.append(f"<p class='muted'><b>Por qué importa:</b> {_esc(p.por_que)}</p>")
+        if p.soluciones:
+            out.append("<p><b>Pasos sugeridos:</b></p><ul>")
+            for s in p.soluciones:
+                out.append(f"<li>{_esc(s)}</li>")
+            out.append("</ul>")
+        if p.verificacion:
+            out.append(f"<p><b>Verificación:</b> {_esc(p.verificacion)}</p>")
+        if p.grupo:
+            out.append(f"<p><b>Otros casos del mismo problema ({len(p.grupo)} más):</b></p><ul>")
+            for m in p.grupo:
+                out.append(f"<li>{_esc(m)}</li>")
+            out.append("</ul>")
+        if p.solucion_elegida:
+            out.append(f"<p><b>Solución aplicada:</b> {_esc(p.solucion_elegida)}</p>")
+        if p.solucion:
+            out.append(f"<p><b>Descripción de la acción:</b> {_esc(p.solucion)}</p>")
+        out.append("</div>")
+    if not doc["problemas"]:
+        out.append("<p>No se detectaron problemas automáticos en este análisis.</p>")
+    return "".join(out)
+
+
+def _html_plan_accion(doc: dict) -> str:
+    out = []
+    if doc.get("recomendaciones"):
+        out.append("<h3>Recomendaciones generales</h3><ul>")
+        for rec in doc["recomendaciones"]:
+            out.append(f"<li>{_esc(rec)}</li>")
+        out.append("</ul>")
+    out.append("<h3>Acciones pendientes</h3>")
+    out.append("<table><tr><td class='th' style='width:6%'>Hecho</td>"
+               "<td class='th' style='width:8%'>Prior.</td>"
+               "<td class='th' style='width:46%'>Acción</td>"
+               "<td class='th' style='width:40%'>Referencia</td></tr>")
+    filas = []
+    for p in doc["problemas"]:
+        sev = SEVERIDAD_LABEL.get(p.severidad, p.severidad)
+        acciones = p.soluciones or [p.recomendacion or "Revisar el problema detectado."]
+        for a in acciones[:2]:
+            filas.append((sev, a, f"Problema {p.indice} · {p.colector}"))
+    if doc["mejoras"]:
+        for m in doc["mejoras"]:
+            if not m.aplicada:
+                filas.append(("Mejora", m.titulo, m.detalle[:80]))
+    if not filas:
+        filas.append(("—", "Sin acciones pendientes.", ""))
+    for prio, accion, ref in filas:
+        out.append(f"<tr><td>☐</td><td>{_esc(prio)}</td>"
+                   f"<td>{_esc(accion)}</td><td>{_esc(ref)}</td></tr>")
+    out.append("</table>")
+    return "".join(out)
+
+
+def _html_ficha_tecnica(doc: dict) -> str:
+    out = []
+    for titulo, filas in doc["ficha_tecnica"]:
+        out.append(f"<h3>{_esc(titulo)}</h3><table class='kv'>")
+        for k, v in filas:
+            out.append(f"<tr><td>{_esc(k)}</td><td>{_esc(v)}</td></tr>")
+        out.append("</table>")
+    return "".join(out)
+
+
+def _html_anexo(doc: dict) -> str:
+    filas = doc["anexo"]
+    if not filas:
+        return "<p class='muted'>Sin colectores registrados.</p>"
+    out = ["<table><tr><td class='th' style='width:20%'>Colector</td>"
+           "<td class='th' style='width:16%'>Paquete</td>"
+           "<td class='th' style='width:10%'>Estado</td>"
+           "<td class='th' style='width:10%'>Duración</td>"
+           "<td class='th' style='width:44%'>Resumen</td></tr>"]
+    for f in filas:
+        out.append(f"<tr><td class='mono'>{_esc(f['colector'])}</td>"
+                   f"<td>{_esc(f['paquete'])}</td><td>{_esc(f['estado'])}</td>"
+                   f"<td>{f['duracion_ms']} ms</td><td>{_esc(f['resumen'])}</td></tr>")
+        for linea in f["detalle"]:
+            out.append(f"<tr><td></td><td></td><td></td><td></td>"
+                       f"<td class='mono'>{_esc(linea)}</td></tr>")
+        if f["registros_restantes"]:
+            out.append(f"<tr><td></td><td></td><td></td><td></td>"
+                       f"<td class='muted'>{f['registros_restantes']} registro(s) más "
+                       f"en el JSON del análisis.</td></tr>")
+    out.append("</table>")
+    return "".join(out)
+
+
+_CSS_REPORTE = """
+:root { --tinta:#0F1F35; --acento:#1769D2; }
+body { font-family:'Segoe UI',Arial,sans-serif; color:#222; margin:24px; font-size:12px; }
+h1 { font-size:22px; color:var(--tinta); margin:0 0 2px 0; }
+h2 { font-size:15px; color:var(--acento); border-bottom:1px solid #ddd;
+     padding-bottom:3px; margin:22px 0 8px 0; }
+h3 { font-size:12.5px; color:#333; margin:12px 0 4px 0; }
+table { border-collapse:collapse; width:100%; table-layout:fixed;
+        overflow-wrap:anywhere; margin:8px 0; }
+th, td { border:1px solid #ccc; padding:5px 8px; text-align:left;
+         vertical-align:top; }
+th, td.th { background:#f1f3f4; font-weight:700; }
+.kv td:first-child { background:#f8f9fa; font-weight:600; width:34%; }
+.badge { display:inline-block; padding:2px 8px; border-radius:10px; color:#fff;
+         font-size:10px; font-weight:700; }
+.muted { color:#666; }
+.mono { font-family:Consolas,monospace; font-size:11px; }
+.problema { border:1px solid #ddd; border-left:5px solid #888; padding:10px;
+            margin:10px 0; page-break-inside:avoid; }
+.panel-grafico { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.grafico-celda { border:1px solid #e3e7ec; border-radius:8px; padding:10px;
+                 page-break-inside:avoid; }
+.grafico-celda h3 { margin-top:0; }
+.tarjetas { display:grid; grid-template-columns:repeat(4,1fr); gap:10px;
+            margin:8px 0; }
+.tarjeta { border:1px solid #e3e7ec; border-top:4px solid var(--acento);
+           border-radius:8px; padding:8px; page-break-inside:avoid; }
+.tarjeta-titulo { font-size:10px; color:#666; text-transform:uppercase;
+                  letter-spacing:.4px; }
+.tarjeta-valor { font-size:20px; font-weight:700; margin:2px 0; }
+.tarjeta-detalle { font-size:10px; color:#555; }
+.mini-titulo { font-size:11px; color:#444; margin:6px 0 2px 0; }
+.portada { page-break-after:always; }
+.portada-banda { background:var(--tinta); color:#fff; border-radius:10px;
+                 padding:14px 16px; display:flex; align-items:center; gap:14px; }
+.portada-logo { line-height:0; }
+.portada-logo-caja { width:52px; height:52px; border-radius:12px; background:#1769D2;
+                     color:#fff; font-size:30px; font-weight:700; text-align:center;
+                     line-height:52px; }
+.portada-marca { font-size:24px; font-weight:700; }
+.portada-sub { font-size:12px; color:#b8c6db; }
+.portada-titulo { margin:20px 0 0 0; }
+.portada-sintoma { color:#555; margin-top:4px; }
+.firma { width:100%; margin-top:40px; border-collapse:collapse; }
+.firma td { width:50%; border:none; border-top:1px solid #333; padding-top:4px;
+            text-align:center; }
+@media print { body { margin:0; }
+  .portada { page-break-after:always; }
+  .grafico-celda, .problema, .tarjeta, .ficha-bloque { page-break-inside:avoid; }
+  h2 { page-break-after:avoid; }
+}
+"""
+
+
 def informe_a_html(informe: InformeData, con_anexo: bool = False,
-                   resultados_completos: list | None = None) -> str:
+                   resultados_completos: list | None = None,
+                   con_svg: bool = True) -> str:
     e = informe
+    doc = _modelo_documento(e)
     n_seccion = 0
 
     def _sec(titulo: str) -> str:
@@ -869,149 +1570,84 @@ def informe_a_html(informe: InformeData, con_anexo: bool = False,
         n_seccion += 1
         return f"<h2>{n_seccion}. {titulo}</h2>"
 
-    out = [f"<html><head><meta charset='utf-8'><title>Informe DiagUSB</title>",
-           f"<style>{_CSS_PRINT}</style></head><body>"]
-    out.append(f"<h1>INFORME DE DIAGNÓSTICO - DiagUSB</h1>")
-    out.append(f"<p class='muted'>Generado: {_esc(_fmt_fecha(e.generado_en))} | "
-               f"Paquete: <b>{_esc(e.paquete.get('label'))}</b> | "
-               f"Síntoma: {_esc(e.paquete.get('symptom'))}</p>")
-    out.append(f"<p class='muted'><b>{_esc(linea_alcance(e))}</b></p>")
-    for adv in e.advertencias:
+    out = ["<html><head><meta charset='utf-8'><title>Informe DiagUSB</title>",
+           f"<style>{_CSS_REPORTE}</style></head><body>"]
+    out.append(_html_portada(doc, con_svg))
+
+    for adv in doc["advertencias"]:
         out.append(f"<p class='advertencia'><b>{_esc(adv)}</b></p>")
 
-    out.append(_sec("Datos del equipo"))
-    if e.equipo:
-        out.append("<table class='kv'>")
-        labels = [
-            ("computer_name", "Equipo"), ("user", "Usuario"),
-            ("is_elevated", "Permisos elevados"), ("os", "Sistema operativo"),
-            ("os_version", "Version"), ("build", "Build"),
-        ]
-        for k, label in labels:
-            out.append(f"<tr><td>{label}</td><td>{_esc(_fmt_valor(e.equipo.get(k)))}</td></tr>")
-        out.append("</table>")
-    else:
-        out.append("<p class='muted'>Sin datos de equipo.</p>")
-
-    r = e.resumen
-    out.append(_sec("Resumen del diagnóstico"))
+    out.append(_sec("Datos del servicio"))
+    out.append(_html_resumen_linea_alcance(doc))
     out.append("<table class='kv'>")
-    out.append(f"<tr><td>Colectores ejecutados</td><td>{r.get('colectores_total', 0)} "
-               f"(OK: {r.get('colectores_ok', 0)}, con error: {r.get('colectores_error', 0)})</td></tr>")
-    out.append(f"<tr><td>Problemas detectados</td><td>{r.get('problemas_total', 0)} "
-               f"(Críticos: {r.get('criticos', 0)}, Errores: {r.get('errores', 0)}, "
-               f"Advertencias: {r.get('advertencias', 0)})</td></tr>")
-    if e.tecnico:
-        out.append(f"<tr><td>Técnico</td><td>{_esc(e.tecnico)}</td></tr>")
-    if e.cliente:
-        out.append(f"<tr><td>Cliente / Sector</td><td>{_esc(e.cliente)}</td></tr>")
+    equipo = doc["equipo"]
+    datos = [
+        ("Equipo", _g(equipo.get("computer_name"))),
+        ("Usuario", _g(equipo.get("user"))),
+        ("Técnico", _g(doc["tecnico"])),
+        ("Cliente / Sector", _g(doc["cliente"])),
+        ("Modo de ejecución", doc["modo"]),
+        ("Sistema operativo", _g(equipo.get("os"))),
+        ("Versión / Build", _g(f"{equipo.get('os_version', '')} ({equipo.get('build', '')})"
+                               if equipo.get("os_version") else None)),
+    ]
+    for k, v in datos:
+        out.append(f"<tr><td>{_esc(k)}</td><td>{_esc(v)}</td></tr>")
     out.append("</table>")
 
-    out.append(_sec("Resumen gráfico"))
-    out.extend(_seccion_grafico_html(e))
+    out.append(_sec("Indicadores"))
+    out.append(_html_indicadores(doc))
 
-    out.append(_sec("Problemas detectados y acciones del técnico"))
-    if not e.problemas:
-        out.append("<p>No se detectaron problemas automaticamente para este paquete.</p>")
-    for p in e.problemas:
-        color = _SEVERIDAD_COLOR.get(p.severidad, "#888")
-        out.append(f"<div class='problema' style='border-left-color: {color};'>")
-        out.append(f"<h3><span class='badge' style='background: {color};'>"
-                   f"{_esc(SEVERIDAD_LABEL.get(p.severidad, p.severidad))}</span> "
-                   f"{_esc(p.titulo)}</h3>")
-        out.append(f"<p class='muted'>Colector: {_esc(p.colector)}</p>")
-        if p.detalle:
-            detalle = ", ".join(f"{k}: {_fmt_valor(v)}" for k, v in p.detalle.items()
-                                if k not in ("grupo_mensajes", "grupo_total"))
-            if detalle:
-                out.append(f"<p><b>Detalle:</b> {_esc(detalle)}</p>")
-        if p.grupo:
-            out.append(f"<p><b>Otros casos del mismo problema "
-                       f"({len(p.grupo)} más):</b></p><ul>")
-            for m in p.grupo:
-                out.append(f"<li>{_esc(m)}</li>")
-            out.append("</ul>")
-        if p.estado_esperado:
-            out.append(f"<p><b>Cómo debe estar (estado esperado):</b> {_esc(p.estado_esperado)}</p>")
-        if p.por_que:
-            out.append(f"<p class='muted'><b>Por qué importa:</b> {_esc(p.por_que)}</p>")
-        if p.verificacion:
-            out.append(f"<p><b>Verificación:</b> {_esc(p.verificacion)}</p>")
-        if p.soluciones:
-            out.append("<p><b>Soluciones posibles:</b></p><ul>")
-            for s in p.soluciones:
-                out.append(f"<li>{_esc(s)}</li>")
-            out.append("</ul>")
-        out.append(f"<p><b>Estado:</b> {_esc(p.estado)}")
-        if p.solucion_elegida:
-            out.append(f" &nbsp;|&nbsp; <b>Solución aplicada (de la lista):</b> {_esc(p.solucion_elegida)}")
-        if p.solucion:
-            out.append(f" &nbsp;|&nbsp; <b>Descripción de la acción:</b> {_esc(p.solucion)}")
-        if not p.solucion_elegida and not p.solucion:
-            out.append(" &nbsp;|&nbsp; <i class='muted'>Acción implementada: (sin registrar)</i>")
-        out.append("</p></div>")
+    out.append(_sec("Resumen ejecutivo"))
+    out.append("<ul>")
+    for frase in doc["resumen_ejecutivo"]:
+        out.append(f"<li>{_esc(frase)}</li>")
+    out.append("</ul>")
 
-    if e.mejoras:
-        out.append(_sec("Mejoras sugeridas"))
-        out.append("<table><tr><td class='th' style='width:22%'>Mejora</td>"
-                   "<td class='th' style='width:48%'>Detalle</td>"
-                   "<td class='th' style='width:12%'>Implementada</td>"
-                   "<td class='th' style='width:18%'>Comentario</td></tr>")
-        for m in e.mejoras:
-            out.append(f"<tr><td>{_esc(m.titulo)}</td><td>{_esc(m.detalle)}</td>"
-                       f"<td>{'Sí' if m.aplicada else 'No'}</td><td>{_esc(m.comentario) or '-'}</td></tr>")
+    out.append(_sec("Panel gráfico"))
+    out.append(_html_panel_grafico(doc, con_svg))
+
+    out.append(_sec("Problemas detectados"))
+    if doc["problemas_tabla"]:
+        out.append("<table><tr><td class='th' style='width:6%'>#</td>"
+                   "<td class='th' style='width:14%'>Severidad</td>"
+                   "<td class='th' style='width:44%'>Título</td>"
+                   "<td class='th' style='width:20%'>Colector</td>"
+                   "<td class='th' style='width:16%'>Estado</td></tr>")
+        for f in doc["problemas_tabla"]:
+            out.append(f"<tr><td>{f['indice']}</td>"
+                       f"<td>{_esc(SEVERIDAD_LABEL.get(f['severidad'], f['severidad']))}</td>"
+                       f"<td>{_esc(f['titulo'])}</td><td class='mono'>{_esc(f['colector'])}</td>"
+                       f"<td>{_esc(f['estado'])}</td></tr>")
         out.append("</table>")
+    out.append(_html_problemas(doc, con_svg))
 
-    if e.diferencias:
-        out.append(_sec("Cambios detectados (antes vs después)"))
-        out.append("<table><tr><td class='th' style='width:16%'>Colector</td>"
-                   "<td class='th' style='width:24%'>Campo</td>"
-                   "<td class='th' style='width:30%'>Antes</td>"
-                   "<td class='th' style='width:30%'>Después</td></tr>")
-        for d in e.diferencias:
-            out.append(f"<tr><td>{_esc(d.get('collector_id', ''))}</td>"
-                       f"<td>{_esc(d.get('field_path', ''))}</td>"
-                       f"<td>{_esc(_fmt_valor_truncado(d.get('baseline_value')))}</td>"
-                       f"<td>{_esc(_fmt_valor_truncado(d.get('current_value')))}</td></tr>")
-        out.append("</table>")
+    out.append(_sec("Plan de acción"))
+    out.append(_html_plan_accion(doc))
 
-    if e.recomendaciones:
-        out.append(_sec("Recomendaciones generales") + "<ul>")
-        for rec in e.recomendaciones:
-            out.append(f"<li>{_esc(rec)}</li>")
-        out.append("</ul>")
+    out.append(_sec("Ficha técnica"))
+    out.append(_html_ficha_tecnica(doc))
+    if doc["categorias"]:
+        out.append("<h3>Estado por paquete</h3>")
+        out.append(_html_categorias(doc))
 
-    out.append(_sec("Análisis por colector"))
-    out.append("<table><tr><td class='th' style='width:16%'>Colector</td>"
-               "<td class='th' style='width:10%'>Estado</td>"
-               "<td class='th' style='width:10%'>Duración</td>"
-               "<td class='th' style='width:32%'>Resumen</td>"
-               "<td class='th' style='width:32%'>Observaciones</td></tr>")
-    for c in e.colectores:
-        st_color = _SEVERIDAD_COLOR.get(
-            "ok" if c.status == "ok" else ("warning" if c.status in ("empty", "not_available") else "error"),
-            "#888")
-        resumen = "<br>".join(_esc(x) for x in c.resumen) or "-"
-        obs = "<br>".join(_esc(x) for x in c.errores) or "-"
-        out.append(f"<tr><td>{_esc(c.collector_id)}</td>"
-                   f"<td><span class='badge' style='background: {st_color};'>{_esc(c.status)}</span></td>"
-                   f"<td>{c.duration_ms} ms</td><td class='mono'>{resumen}</td>"
-                   f"<td class='mono'>{obs}</td></tr>")
-    out.append("</table>")
-
-    if e.observaciones:
-        out.append(_sec("Observaciones generales"))
-        out.append(f"<p class='mono'>{_esc(e.observaciones)}</p>")
-
+    out.append(_sec("Anexo técnico"))
+    out.append(_html_anexo(doc))
     if con_anexo and resultados_completos:
-        out.append("<h2>Anexo A: Datos crudos de los colectores (JSON)</h2>")
+        out.append("<h3>Anexo A: Datos crudos de los colectores (JSON)</h3>")
         out.append("<pre class='mono'>")
-        out.append(_esc(json.dumps(resultados_completos, ensure_ascii=False, indent=2)[:200000]))
+        out.append(_esc(json.dumps(resultados_completos, ensure_ascii=False,
+                                   indent=2)[:200000]))
         out.append("</pre>")
 
+    out.append(_sec("Cierre"))
+    if doc["observaciones"]:
+        out.append(f"<p><b>Observaciones:</b> {_esc(doc['observaciones'])}</p>")
+    else:
+        out.append("<p><b>Observaciones:</b> __________________________________________</p>")
     out.append("<table class='firma'><tr><td>Firma del técnico</td>"
                "<td>Conformidad del cliente</td></tr></table>")
-    out.append(f"<p class='muted mono'>Código de verificación: {codigo_verificacion(e)}</p>")
+    out.append(f"<p class='muted mono'>Código de verificación: {_esc(doc['codigo'])}</p>")
     out.append("</body></html>")
     return "".join(out)
 
@@ -1023,7 +1659,8 @@ def informe_a_doc(informe: InformeData, resultados_completos: list | None = None
     El volcado JSON crudo de los colectores solo se incluye si ``con_anexo`` es
     True (cuando el técnico lo pide); por defecto no aparece.
     """
-    body = informe_a_html(informe, con_anexo=con_anexo, resultados_completos=resultados_completos)
+    body = informe_a_html(informe, con_anexo=con_anexo,
+                          resultados_completos=resultados_completos, con_svg=False)
     doc = (
         "<html xmlns:o='urn:schemas-microsoft-com:office:office' "
         "xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>"
@@ -1142,13 +1779,120 @@ class _PdfDoc:
             partes.append("S")
         self.ops.append(" ".join(partes))
 
-    def header_every_page(self, titulo: str):
+    def line(self, x1: float, y1: float, x2: float, y2: float,
+             color=(0.75, 0.75, 0.75), width: float = 0.7):
+        self.ops.append(
+            f"{color[0]:.3f} {color[1]:.3f} {color[2]:.3f} RG {width:g} w "
+            f"{x1:.2f} {y1:.2f} m {x2:.2f} {y2:.2f} l S")
+
+    def _pinta(self, camino: str, fill, stroke, width: float):
+        partes = []
+        if fill:
+            partes.append(f"{fill[0]:.3f} {fill[1]:.3f} {fill[2]:.3f} rg")
+        if stroke:
+            partes.append(f"{stroke[0]:.3f} {stroke[1]:.3f} {stroke[2]:.3f} "
+                          f"RG {width:g} w")
+        partes.append(camino)
+        if fill and stroke:
+            partes.append("B")
+        elif fill:
+            partes.append("f")
+        elif stroke:
+            partes.append("S")
+        self.ops.append(" ".join(partes))
+
+    def rounded_rect(self, x: float, y: float, w: float, h: float, r: float = 6,
+                     fill: tuple | None = None, stroke: tuple | None = None,
+                     width: float = 0.7):
+        """Rectangulo con esquinas redondeadas (Bezier)."""
+        r = max(0.0, min(r, w / 2, h / 2))
+        k = 0.5523 * r
+        camino = (
+            f"{x + r:.2f} {y:.2f} m "
+            f"{x + w - r:.2f} {y:.2f} l "
+            f"{x + w - r + k:.2f} {y:.2f} {x + w:.2f} {y + r - k:.2f} "
+            f"{x + w:.2f} {y + r:.2f} c "
+            f"{x + w:.2f} {y + h - r:.2f} l "
+            f"{x + w:.2f} {y + h - r + k:.2f} {x + w - r + k:.2f} {y + h:.2f} "
+            f"{x + w - r:.2f} {y + h:.2f} c "
+            f"{x + r:.2f} {y + h:.2f} l "
+            f"{x + r - k:.2f} {y + h:.2f} {x:.2f} {y + h - r + k:.2f} "
+            f"{x:.2f} {y + h - r:.2f} c "
+            f"{x:.2f} {y + r:.2f} l "
+            f"{x:.2f} {y + r - k:.2f} {x + r - k:.2f} {y:.2f} "
+            f"{x + r:.2f} {y:.2f} c h")
+        self._pinta(camino, fill, stroke, width)
+
+    def _camino_sector(self, cx, cy, r, a0, a1, r_in):
+        ops = []
+        tramos = _arcos_bezier(cx, cy, r, a0, a1)
+        if not tramos:
+            return ""
+        p0 = tramos[0][0]
+        ops.append(f"{p0[0]:.2f} {p0[1]:.2f} m")
+        for _, c1, c2, p1 in tramos:
+            ops.append(f"{c1[0]:.2f} {c1[1]:.2f} {c2[0]:.2f} {c2[1]:.2f} "
+                       f"{p1[0]:.2f} {p1[1]:.2f} c")
+        if r_in > 0:
+            rad = math.radians(a1)
+            xi = (cx + r_in * math.sin(rad), cy + r_in * math.cos(rad))
+            ops.append(f"{xi[0]:.2f} {xi[1]:.2f} l")
+            for _, c1, c2, p1 in _arcos_bezier(cx, cy, r_in, a1, a0):
+                ops.append(f"{c1[0]:.2f} {c1[1]:.2f} {c2[0]:.2f} {c2[1]:.2f} "
+                           f"{p1[0]:.2f} {p1[1]:.2f} c")
+        else:
+            ops.append(f"{cx:.2f} {cy:.2f} l")
+        ops.append("h")
+        return " ".join(ops)
+
+    def sector(self, cx: float, cy: float, r: float, a0: float, a1: float,
+               fill: tuple, r_interno: float = 0.0, stroke: tuple | None = None,
+               width: float = 0.7):
+        """Porcion de torta o de dona (0 grados = 12 en punto, horario)."""
+        camino = self._camino_sector(cx, cy, r, a0, a1, r_interno)
+        if camino:
+            self._pinta(camino, fill, stroke, width)
+
+    def text_right(self, x_derecha: float, text: str, size: float = 10,
+                   font: str = "F1", color=(0, 0, 0), y: float | None = None):
+        """Texto alineado a la derecha en ``x_derecha``."""
+        ancho = _pdf_width(text, size, font)
+        self.text(x_derecha - ancho, text, size, font, color)
+        if y is not None:
+            self._y = y
+
+    def text_center(self, cx: float, text: str, size: float = 10,
+                    font: str = "F1", color: tuple = (0, 0, 0)):
+        """Texto centrado en ``cx`` a la altura actual."""
+        ancho = _pdf_width(text, size, font)
+        self.text(cx - ancho / 2, text, size, font, color)
+
+    def text_at(self, x: float, y: float, text: str, size: float = 10,
+                font: str = "F1", color: tuple = (0, 0, 0)):
+        """Texto en coordenadas absolutas (y medida desde abajo, como el PDF)."""
+        r, g, b = color
+        self.ops.append(
+            f"BT /{font} {size:g} Tf {r:.3f} {g:.3f} {b:.3f} rg "
+            f"1 0 0 1 {x:.2f} {y:.2f} Tm ({_pdf_escape(text)}) Tj ET")
+
+    def text_center_at(self, cx: float, y: float, text: str, size: float = 10,
+                       font: str = "F1", color: tuple = (0, 0, 0)):
+        ancho = _pdf_width(text, size, font)
+        self.text_at(cx - ancho / 2, y, text, size, font, color)
+
+    def header_every_page(self, titulo: str, omitir_primera: bool = False,
+                          pie_izq: str = ""):
         """Agrega encabezado/pie a todas las paginas (llamar antes de save)."""
         for i, ops in enumerate(self.pages, 1):
+            if omitir_primera and i == 1:
+                continue
             head = [
                 f"BT /F2 8 Tf 0.35 0.35 0.35 rg 1 0 0 1 {_MARGIN:.2f} {_PAGE_H - 28:.2f} Tm ({_pdf_escape(titulo)}) Tj ET",
-                f"BT /F1 8 Tf 0.45 0.45 0.45 rg 1 0 0 1 {_PAGE_W - _MARGIN - 60:.2f} 24 Tm (Pagina {i} de {len(self.pages)}) Tj ET",
+                f"BT /F1 8 Tf 0.45 0.45 0.45 rg 1 0 0 1 {_PAGE_W - _MARGIN - 60:.2f} 24 Tm (Página {i} de {len(self.pages)}) Tj ET",
             ]
+            if pie_izq:
+                head.append(
+                    f"BT /F1 8 Tf 0.45 0.45 0.45 rg 1 0 0 1 {_MARGIN:.2f} 24 Tm ({_pdf_escape(pie_izq)}) Tj ET")
             ops[0:0] = head
 
     def save(self) -> bytes:
@@ -1233,243 +1977,375 @@ def _pdf_barra_apilada(doc: "_PdfDoc", x: float, y: float, ancho: float,
         dx += w
 
 
-def _seccion_grafico_pdf(doc: "_PdfDoc", e: InformeData):
-    """Resumen gráfico en PDF con las mismas cifras que metricas."""
-    m = e.metricas or {}
-    if not m or m.get("puntaje") is None:
-        doc.text_flow("Sin puntaje: no se ejecutaron módulos en este análisis.",
-                      size=9, font="F3", indent=8)
-        doc.spacer(4)
-        return
+def _pdf_wrap(texto, ancho: float, size: float, font: str) -> list[str]:
+    palabras = str(texto).split(" ")
+    lineas, linea = [], ""
+    for w in palabras:
+        cand = (linea + " " + w).strip()
+        if _pdf_width(cand, size, font) > ancho and linea:
+            lineas.append(linea)
+            linea = w
+        else:
+            linea = cand
+    if linea:
+        lineas.append(linea)
+    return lineas or [""]
 
-    color = _METRICAS_RGB.get(m.get("etiqueta"), (0.62, 0.70, 0.80))
-    doc.text_flow(f"Alcance: {m.get('alcance', '')}  ({m.get('etiqueta', '')})",
-                  size=9, font="F2", indent=8, color=color)
-    doc.text_flow(f"Puntaje: {m.get('puntaje')}/100", size=9, indent=16)
-    ancho = _PAGE_W - 2 * _MARGIN - 32
-    x = _MARGIN + 16
+
+def _pdf_tabla(doc: "_PdfDoc", columnas: list, filas: list, anchos: list,
+               size: float = 8.5, negrita_col0: bool = False):
+    usable = _PAGE_W - 2 * _MARGIN
+    anchos_px = [usable * a for a in anchos]
+
+    def _alto(celdas, font):
+        alt = [len(_pdf_wrap(c, w - 10, size, font)) * size * 1.25
+               for c, w in zip(celdas, anchos_px)]
+        return max(alt + [size * 1.25]) + 6
+
+    def _fila(celdas, font, sombra, negrita_col0_fila):
+        alto = _alto(celdas, font)
+        doc.ensure_space(alto + 2)
+        y0 = doc.y - alto
+        if sombra:
+            doc.rect(_MARGIN, y0, usable, alto, fill=(0.965, 0.975, 0.985))
+        doc.rect(_MARGIN, y0, usable, alto, stroke=(0.80, 0.83, 0.86), width=0.5)
+        x = _MARGIN
+        for w in anchos_px[:-1]:
+            x += w
+            doc.line(x, y0, x, y0 + alto, color=(0.85, 0.87, 0.90), width=0.4)
+        x = _MARGIN
+        for celda, w in zip(celdas, anchos_px):
+            f = "F2" if (font == "F2" or (negrita_col0_fila and celda is celdas[0])) else "F1"
+            ty = y0 + alto - 4 - size
+            for ln in _pdf_wrap(celda, w - 10, size, f):
+                doc.text_at(x + 5, ty, ln, size=size, font=f)
+                ty -= size * 1.25
+            x += w
+        doc.y = y0
+
+    if columnas:
+        _fila(columnas, "F2", True, False)
+    for i, celdas in enumerate(filas):
+        _fila(celdas, "F1", i % 2 == 1, negrita_col0)
+    doc.spacer(6)
+
+
+def _pdf_torta(doc: "_PdfDoc", cx: float, cy: float, r: float, porciones_: list,
+               r_in: float = 0.0, centro: str = ""):
+    for p in porciones_:
+        doc.sector(cx, cy, r, p["a0"], p["a1"], fill=_rgb_de(p["color"]),
+                   r_interno=r_in, stroke=(1.0, 1.0, 1.0), width=1.2)
+    if centro:
+        doc.text_center_at(cx, cy - 3, centro, size=13, font="F2",
+                           color=_pal_rgb("tinta"))
+    lx = cx + r + 18
+    ly = cy + r - 6
+    for p in porciones_:
+        doc.rect(lx, ly, 9, 9, fill=_rgb_de(p["color"]))
+        doc.text_at(lx + 13, ly + 1.5,
+                    f"{p['etiqueta']}: {p['valor']:g} ({p['porcentaje']:g}%)",
+                    size=8, font="F1")
+        ly -= 13
+
+
+def _pdf_bloque_torta(doc: "_PdfDoc", titulo: str, porciones_: list,
+                      r: float = 62):
+    doc.ensure_space(2 * r + 34)
+    doc.text_flow(titulo, size=10.5, font="F2", indent=8)
+    cy = doc.y - r - 4
+    _pdf_torta(doc, _MARGIN + 12 + r, cy, r, porciones_)
+    doc.y = cy - r - 14
+
+
+def _pdf_indicadores(doc: "_PdfDoc", modelo: dict):
+    ind = modelo["indicadores"]
+    usable = _PAGE_W - 2 * _MARGIN
+    gap = 10
+    w = (usable - 3 * gap) / 4
+    h = 62
+    tarjetas = [
+        ("PUNTAJE DE SALUD", "—" if ind["puntaje"] is None else f"{ind['puntaje']}/100",
+         _METRICAS_RGB.get(ind["etiqueta"], (0.62, 0.70, 0.80))),
+        ("PROBLEMAS", str(ind["problemas"]), _pal_rgb("critico")),
+        ("COLECTORES", f"{ind['ok']} OK", _pal_rgb("ok")),
+        ("COBERTURA", f"{ind['cobertura']}%", _pal_rgb("acento")),
+    ]
+    doc.ensure_space(h + 12)
+    y0 = doc.y - h
+    x = _MARGIN
+    for titulo, valor, col in tarjetas:
+        doc.rounded_rect(x, y0, w, h, 8, fill=(0.98, 0.99, 1.0),
+                         stroke=(0.86, 0.89, 0.92), width=0.6)
+        doc.rounded_rect(x, y0 + h - 5, w, 5, 2, fill=col)
+        doc.text_at(x + 8, y0 + h - 18, titulo, size=7.5, font="F1",
+                    color=(0.42, 0.42, 0.42))
+        doc.text_at(x + 8, y0 + 16, valor, size=15, font="F2", color=col)
+        x += w + gap
+    doc.y = y0 - 12
+
+
+def _pdf_panel_grafico(doc: "_PdfDoc", modelo: dict):
+    m = modelo["metricas"]
+    if not m or m.get("puntaje") is None and not modelo["torta_estado"]:
+        doc.text_flow("Sin datos para graficar.", size=9, font="F3", indent=8)
+        return
+    _pdf_bloque_torta(doc, "Problemas por severidad", modelo["torta_severidad"])
+    _pdf_bloque_torta(doc, "Estado de los colectores", modelo["torta_estado"])
+
+    discos = modelo["discos"]
+    if discos:
+        doc.ensure_space(20)
+        doc.text_flow("Ocupación de discos", size=10.5, font="F2", indent=8)
+        for d in discos[:6]:
+            porc = _porciones_dona_disco(d)
+            r = 38
+            doc.ensure_space(2 * r + 20)
+            doc.text_flow(
+                f"Disco {d.get('unidad', '')} — {_g(d.get('total_gb'), 'GB')} total, "
+                f"{_g(d.get('libre_gb'), 'GB')} libre", size=8.5, font="F2", indent=8)
+            cy = doc.y - r - 2
+            _pdf_torta(doc, _MARGIN + 12 + r, cy, r, porc, r_in=r - 13,
+                       centro=f"{d.get('usado_porcentaje')}%")
+            doc.y = cy - r - 10
+
+    mem = modelo.get("memoria")
     doc.ensure_space(20)
-    y = doc.y - 11
-    doc.rect(x, y, ancho, 10, fill=(0.88, 0.89, 0.91))
-    doc.rect(x, y, ancho * (m.get("puntaje") or 0) / 100.0, 10, fill=color)
-    doc.spacer(18)
-    cob = m.get("cobertura") or {}
-    doc.text_flow(f"Cobertura: {cob.get('porcentaje', 0)}%  "
-                  f"({cob.get('colectores_evaluados', cob.get('colectores_ok', 0))}/"
-                  f"{cob.get('colectores_ejecutados', 0)} evaluados: "
-                  f"{cob.get('colectores_ok', 0)} OK + "
-                  f"{cob.get('colectores_sin_datos', 0)} sin datos)",
-                  size=8, font="F3", indent=16, color=(0.4, 0.4, 0.4))
-    if m.get("leyenda"):
-        doc.text_flow(m.get("leyenda"), size=8, font="F3", indent=16,
+    doc.text_flow("Memoria", size=10.5, font="F2", indent=8)
+    ancho_barra = _PAGE_W - 2 * _MARGIN - 16 - 210
+    if mem and mem.get("usado_porcentaje") is not None:
+        _pdf_fila_barra(doc, "Memoria en uso", f"{mem['usado_porcentaje']}%",
+                        mem["usado_porcentaje"],
+                        _color_nivel_medidor_rgb("memoria", mem["usado_porcentaje"]),
+                        ancho_barra, _MARGIN + 210)
+    if modelo.get("leyenda_medidores"):
+        doc.text_flow(modelo["leyenda_medidores"], size=8, font="F3", indent=16,
                       color=(0.4, 0.4, 0.4))
 
-    sev = m.get("severidad") or {}
-    doc.text_flow("Hallazgos por severidad", size=10, font="F2", indent=8)
-    maxsev = max(sev.get("critical", 0), sev.get("error", 0),
-                 sev.get("warning", 0), 1)
-    ancho_barra = _PAGE_W - 2 * _MARGIN - 16 - 210
-    for clave, etiqueta in (("critical", "Crítico"), ("error", "Error"),
-                            ("warning", "Advertencia")):
-        n = sev.get(clave, 0)
-        pct = (n / maxsev * 100) if n else 0
-        _pdf_fila_barra(doc, etiqueta, str(n), pct, _SEV_GRAF_RGB[clave],
-                        ancho_barra, _MARGIN + 210)
-
-    cats = m.get("categorias") or []
+    cats = modelo["categorias"]
     if cats:
-        doc.text_flow("Estado por paquete", size=10, font="F2", indent=8)
+        doc.ensure_space(20)
+        doc.text_flow("Estado por paquete", size=10.5, font="F2", indent=8)
+        ancho_pkg = _PAGE_W - 2 * _MARGIN - 16
         for c in cats:
             ok = c.get("ok", 0)
             sin = c.get("sin_datos", 0)
             err = c.get("error", 0) + c.get("timeout", 0)
             ne = c.get("no_evaluado", 0)
             hall = c.get("hallazgos") or {}
-            doc.ensure_space(16)
-            doc.text(_MARGIN + 16, str(c.get("paquete", "")), size=8, font="F2")
-            doc.text(_MARGIN + 150, f"OK {ok} / s/d {sin} / err {err} "
-                                    f"| H C{hall.get('critical', 0)} "
+            doc.ensure_space(26)
+            doc.text(_MARGIN + 8, str(c.get("paquete", ""))[:40], size=8, font="F2")
+            doc.text(_MARGIN + 175, f"OK {ok} / s/d {sin} / err {err} | "
+                                    f"H C{hall.get('critical', 0)} "
                                     f"E{hall.get('error', 0)} "
                                     f"A{hall.get('warning', 0)}", size=8)
-            y = doc.y - 11
-            _pdf_barra_apilada(doc, _MARGIN + 16, y, ancho, [
-                (ok, _CAT_RGB["ok"]), (sin, (0.54, 0.60, 0.68)),
-                (err, _CAT_RGB["error"]), (ne, _CAT_RGB["no_evaluado"])])
-            doc.spacer(16)
+            y = doc.y - 12
+            _pdf_barra_apilada(doc, _MARGIN + 8, y, ancho_pkg, [
+                (ok, _pal_rgb("ok")), (sin, _pal_rgb("sin_datos")),
+                (err, _pal_rgb("critico")), (ne, _pal_rgb("no_evaluado"))])
+            doc.spacer(18)
 
-    med = m.get("medidores") or {}
-    filas = []
-    if med.get("memoria") and med["memoria"].get("usado_porcentaje") is not None:
-        filas.append(("Memoria en uso", med["memoria"]["usado_porcentaje"], "memoria"))
-    for d in med.get("discos") or []:
-        if d.get("usado_porcentaje") is not None:
-            filas.append((f"Disco {d.get('unidad', '')}", d["usado_porcentaje"], "discos"))
-    if filas:
-        doc.text_flow("Medidores", size=10, font="F2", indent=8)
-        for nombre, pct, tipo in filas:
-            _pdf_fila_barra(doc, nombre, f"{pct}%", pct,
-                            _color_nivel_medidor_rgb(tipo, pct),
-                            ancho_barra, _MARGIN + 210)
-        if m.get("leyenda_medidores"):
-            doc.text_flow(m.get("leyenda_medidores"), size=8, font="F3", indent=16,
-                          color=(0.4, 0.4, 0.4))
-
-    if e.metricas_base and e.metricas_actual:
-        doc.text_flow("Comparación antes / después", size=10, font="F2", indent=8)
-        for etiqueta, mm in (("Antes", e.metricas_base), ("Después", e.metricas_actual)):
+    comp = modelo.get("comparacion")
+    if comp:
+        doc.ensure_space(20)
+        doc.text_flow("Comparación antes / después", size=10.5, font="F2", indent=8)
+        for etiqueta, mm in (("Antes", comp["base"]), ("Después", comp["actual"])):
             val = mm.get("puntaje")
             col = _METRICAS_RGB.get(mm.get("etiqueta"), (0.62, 0.70, 0.80))
             _pdf_fila_barra(doc, etiqueta, "-" if val is None else str(val),
                             val or 0, col, ancho_barra, _MARGIN + 210)
-    doc.spacer(4)
+
+
+def _pdf_portada(doc: "_PdfDoc", modelo: dict):
+    alto = 128
+    doc.rect(0, _PAGE_H - alto, _PAGE_W, alto, fill=_pal_rgb("tinta"))
+    doc.rounded_rect(_MARGIN, _PAGE_H - 90, 52, 52, 12, fill=_pal_rgb("acento"))
+    doc.rounded_rect(_MARGIN + 13, _PAGE_H - 81, 26, 34, 3, fill=(1, 1, 1))
+    doc.rect(_MARGIN + 18, _PAGE_H - 75, 16, 3, fill=_pal_rgb("tinta"))
+    doc.rect(_MARGIN + 18, _PAGE_H - 67, 16, 3, fill=_pal_rgb("verde"))
+    doc.rect(_MARGIN + 18, _PAGE_H - 59, 10, 3, fill=_pal_rgb("advertencia"))
+    doc.text_at(_MARGIN + 68, _PAGE_H - 62, "DiagUSB", size=22, font="F2",
+                color=(1, 1, 1))
+    doc.text_at(_MARGIN + 68, _PAGE_H - 78, "Informe de diagnóstico técnico",
+                size=10, font="F1", color=(0.72, 0.78, 0.86))
+
+    doc.y = _PAGE_H - alto - 34
+    doc.text_flow(modelo["tipo"], size=20, font="F2", color=_pal_rgb("tinta"))
+    doc.text_flow(f"Motivo: {modelo['sintoma'] or '—'}", size=10, font="F3",
+                  color=(0.3, 0.3, 0.3))
+    doc.spacer(10)
+    eq = modelo["equipo"]
+    filas = [
+        ("Equipo", _g(eq.get("computer_name"))),
+        ("Sistema operativo", _g(eq.get("os"))),
+        ("Usuario", _g(eq.get("user"))),
+        ("Modo", modelo["modo"]),
+        ("Fecha", _g(modelo["fecha"])),
+        ("Técnico", _g(modelo["tecnico"], vacio="________________________")),
+        ("Cliente / Sector", _g(modelo["cliente"], vacio="________________________")),
+        ("Código de verificación", modelo["codigo"]),
+    ]
+    _pdf_tabla(doc, [], filas, [0.32, 0.68], size=9.5, negrita_col0=True)
+    doc.spacer(6)
+    doc.text_flow("Puntaje orientativo. No reemplaza al diagnóstico profesional ni a "
+                  "las pruebas de cada fabricante.", size=8.5, font="F3",
+                  color=(0.4, 0.4, 0.4))
+    doc._new_page()
 
 
 def informe_a_pdf(informe: InformeData) -> bytes:
     doc = _PdfDoc()
     e = informe
+    modelo = _modelo_documento(e)
     n_seccion = 0
+    sev_color = {"critical": _pal_rgb("critico"), "error": _pal_rgb("error"),
+                 "warning": _pal_rgb("advertencia"), "ok": _pal_rgb("ok")}
 
     def _sec(titulo: str) -> str:
         nonlocal n_seccion
         n_seccion += 1
         return f"{n_seccion}. {titulo}"
 
-    doc.text_flow("INFORME DE DIAGNÓSTICO - DiagUSB", size=16, font="F2", color=(0.10, 0.45, 0.91))
-    doc.spacer(2)
-    doc.text_flow(f"Generado: {_fmt_fecha(e.generado_en)}  |  Paquete: {e.paquete.get('label', '')}  |  "
-                  f"Síntoma: {e.paquete.get('symptom', '')}", size=9, font="F3", color=(0.4, 0.4, 0.4))
-    doc.text_flow(linea_alcance(e), size=9, font="F2", color=(0.7, 0.35, 0))
-    doc.hrule()
+    def _heading(titulo: str):
+        doc.ensure_space(30)
+        doc.spacer(4)
+        doc.text_flow(_sec(titulo), size=12.5, font="F2", color=_pal_rgb("acento"))
 
-    for adv in e.advertencias:
+    _pdf_portada(doc, modelo)
+
+    for adv in modelo["advertencias"]:
         doc.text_flow(adv, size=10, font="F2", color=(0.7, 0.35, 0))
         doc.spacer(2)
 
-    doc.text_flow(_sec("Datos del equipo"), size=12, font="F2", color=(0.10, 0.45, 0.91))
-    if e.equipo:
-        labels = [
-            ("Equipo", e.equipo.get("computer_name")),
-            ("Usuario", e.equipo.get("user")),
-            ("Permisos elevados", _fmt_valor(e.equipo.get("is_elevated"))),
-            ("Sistema operativo", e.equipo.get("os")),
-            ("Versión / Build", f"{e.equipo.get('os_version', '')} ({e.equipo.get('build', '')})"),
-        ]
-        for k, v in labels:
-            doc.text_flow(f"{k}: {v}", size=9, indent=8)
-    else:
-        doc.text_flow("Sin datos de equipo.", size=9, font="F3", indent=8)
-    doc.spacer(4)
+    _heading("Datos del servicio")
+    doc.text_flow(modelo["alcance"], size=9, font="F3", color=(0.4, 0.4, 0.4), indent=8)
+    eq = modelo["equipo"]
+    _pdf_tabla(doc, [], [
+        ("Equipo", _g(eq.get("computer_name"))),
+        ("Usuario", _g(eq.get("user"))),
+        ("Técnico", _g(modelo["tecnico"])),
+        ("Cliente / Sector", _g(modelo["cliente"])),
+        ("Modo de ejecución", modelo["modo"]),
+        ("Sistema operativo", _g(eq.get("os"))),
+        ("Versión / Build", _g(f"{eq.get('os_version', '')} ({eq.get('build', '')})"
+                               if eq.get("os_version") else None)),
+    ], [0.30, 0.70], size=9.5, negrita_col0=True)
 
-    doc.text_flow(_sec("Resumen del diagnóstico"), size=12, font="F2", color=(0.10, 0.45, 0.91))
-    r = e.resumen
-    doc.text_flow(f"Colectores ejecutados: {r.get('colectores_total', 0)} "
-                  f"(OK: {r.get('colectores_ok', 0)}, con error: {r.get('colectores_error', 0)})",
-                  size=9, indent=8)
-    doc.text_flow(f"Problemas detectados: {r.get('problemas_total', 0)} "
-                  f"(Críticos: {r.get('criticos', 0)}, Errores: {r.get('errores', 0)}, "
-                  f"Advertencias: {r.get('advertencias', 0)})", size=9, indent=8)
-    if e.tecnico:
-        doc.text_flow(f"Técnico: {e.tecnico}", size=9, indent=8)
-    if e.cliente:
-        doc.text_flow(f"Cliente / Sector: {e.cliente}", size=9, indent=8)
-    doc.spacer(4)
+    _heading("Indicadores")
+    _pdf_indicadores(doc, modelo)
 
-    doc.text_flow(_sec("Resumen gráfico"), size=12, font="F2", color=(0.10, 0.45, 0.91))
-    _seccion_grafico_pdf(doc, e)
+    _heading("Resumen ejecutivo")
+    for frase in modelo["resumen_ejecutivo"]:
+        doc.text_flow(f"- {frase}", size=9, indent=8)
 
-    doc.text_flow(_sec("Problemas detectados y acciones del técnico"), size=12, font="F2",
-                  color=(0.10, 0.45, 0.91))
+    _heading("Panel gráfico")
+    _pdf_panel_grafico(doc, modelo)
+
+    _heading("Problemas detectados")
+    if modelo["problemas_tabla"]:
+        filas = [[str(f["indice"]),
+                  SEVERIDAD_LABEL.get(f["severidad"], f["severidad"]),
+                  f["titulo"], f["colector"], f["estado"]]
+                 for f in modelo["problemas_tabla"]]
+        _pdf_tabla(doc, ["#", "Severidad", "Título", "Colector", "Estado"], filas,
+                   [0.06, 0.15, 0.40, 0.22, 0.17], size=8.5)
     if not e.problemas:
-        doc.text_flow("No se detectaron problemas automáticos para este paquete.",
+        doc.text_flow("No se detectaron problemas automáticos en este análisis.",
                       size=9, font="F3", indent=8)
     for p in e.problemas:
-        sev_color = {"critical": (0.7, 0, 0.13), "error": (0.85, 0.19, 0.15),
-                     "warning": (0.89, 0.46, 0), "ok": (0.09, 0.5, 0.22)}.get(
-            p.severidad, (0.3, 0.3, 0.3))
+        doc.ensure_space(70)
         doc.text_flow(f"[{SEVERIDAD_LABEL.get(p.severidad, p.severidad)}] {p.titulo}",
-                      size=10, font="F2", color=sev_color, indent=8)
+                      size=10, font="F2", color=sev_color.get(p.severidad, (0.3, 0.3, 0.3)),
+                      indent=8)
         doc.text_flow(f"Colector: {p.colector}", size=8, font="F3", indent=16,
                       color=(0.4, 0.4, 0.4))
         if p.detalle:
             detalle = ", ".join(f"{k}: {_fmt_valor(v)}" for k, v in p.detalle.items()
                                 if k not in ("grupo_mensajes", "grupo_total"))
             if detalle:
-                doc.text_flow(f"Detalle: {detalle}", size=9, indent=16)
-        if p.grupo:
-            doc.text_flow(f"Otros casos del mismo problema ({len(p.grupo)} más):",
-                          size=9, font="F2", indent=16)
-            for m in p.grupo:
-                doc.text_flow(f"- {m}", size=8, indent=24, color=(0.35, 0.35, 0.35))
+                doc.text_flow(f"Qué ocurre: {detalle}", size=9, indent=16)
         if p.estado_esperado:
-            doc.text_flow(f"Cómo debe estar (estado esperado): {p.estado_esperado}",
-                          size=9, font="F2", indent=16)
+            doc.text_flow(f"Cómo debe estar: {p.estado_esperado}", size=9, font="F2", indent=16)
         if p.por_que:
             doc.text_flow(f"Por qué importa: {p.por_que}", size=8, font="F3", indent=16,
                           color=(0.35, 0.35, 0.35))
-        if p.verificacion:
-            doc.text_flow(f"Verificación: {p.verificacion}", size=9, indent=16)
         if p.soluciones:
-            doc.text_flow("Soluciones posibles:", size=9, font="F2", indent=16)
+            doc.text_flow("Pasos sugeridos:", size=9, font="F2", indent=16)
             for s in p.soluciones:
                 doc.text_flow(f"- {s}", size=8, indent=24)
-        doc.text_flow(f"Estado de la acción: {p.estado}", size=9, font="F2", indent=16)
+        if p.verificacion:
+            doc.text_flow(f"Verificación: {p.verificacion}", size=9, indent=16)
+        if p.grupo:
+            doc.text_flow(f"Otros casos del mismo problema ({len(p.grupo)} más):",
+                          size=9, font="F2", indent=16)
+            for m in p.grupo[:5]:
+                doc.text_flow(f"- {m}", size=8, indent=24, color=(0.35, 0.35, 0.35))
+        doc.ensure_space(18)
+        y = doc.y - 11
+        doc.rounded_rect(_MARGIN + 16, y, 9, 9, 2, stroke=(0.4, 0.4, 0.4), width=0.7)
+        doc.text(_MARGIN + 30, f"Acción: {p.estado}", size=9, font="F2")
+        doc.spacer(13)
         if p.solucion_elegida:
-            doc.text_flow(f"Solución aplicada (de la lista): {p.solucion_elegida}",
-                          size=9, indent=16, font="F2")
-        doc.text_flow(f"Descripción de la acción: {p.solucion or '(sin registrar)'}",
-                      size=9, indent=16, font="F3" if not p.solucion else "F1")
+            doc.text_flow(f"Solución aplicada: {p.solucion_elegida}", size=9, indent=16)
+        if p.solucion:
+            doc.text_flow(f"Descripción de la acción: {p.solucion}", size=9, indent=16)
         doc.spacer(4)
 
-    if e.mejoras:
-        doc.text_flow(_sec("Mejoras sugeridas"), size=12, font="F2", color=(0.10, 0.45, 0.91))
-        for m in e.mejoras:
-            marca = "[X]" if m.aplicada else "[ ]"
-            doc.text_flow(f"{marca} {m.titulo}", size=9, font="F2", indent=8)
-            doc.text_flow(m.detalle, size=8, indent=16, color=(0.3, 0.3, 0.3))
-            if m.comentario:
-                doc.text_flow(f"Comentario: {m.comentario}", size=8, font="F3", indent=16)
-        doc.spacer(4)
+    _heading("Plan de acción")
+    if modelo["recomendaciones"]:
+        doc.text_flow("Recomendaciones generales", size=10, font="F2", indent=8)
+        for rec in modelo["recomendaciones"]:
+            doc.text_flow(f"- {rec}", size=9, indent=16)
+        doc.spacer(6)
+    doc.text_flow("Acciones pendientes", size=10, font="F2", indent=8)
+    pendientes = []
+    for p in e.problemas:
+        sev = SEVERIDAD_LABEL.get(p.severidad, p.severidad)
+        for a in (p.soluciones or [p.recomendacion or "Revisar el problema detectado."])[:2]:
+            pendientes.append(["[ ]", sev, a, f"Problema {p.indice} · {p.colector}"])
+    for m in e.mejoras:
+        if not m.aplicada:
+            pendientes.append(["[ ]", "Mejora", m.titulo, m.detalle[:80]])
+    if not pendientes:
+        pendientes = [["[ ]", "—", "Sin acciones pendientes.", ""]]
+    _pdf_tabla(doc, ["Hecho", "Prior.", "Acción", "Referencia"], pendientes,
+               [0.08, 0.12, 0.48, 0.32], size=8.5)
 
-    if e.diferencias:
-        doc.text_flow(_sec("Cambios detectados (antes vs después)"), size=12, font="F2",
-                      color=(0.10, 0.45, 0.91))
-        for d in e.diferencias:
-            doc.text_flow(
-                f"{d.get('collector_id', '')} / {d.get('field_path', '')}: "
-                f"{_fmt_valor_truncado(d.get('baseline_value'))}  ->  "
-                f"{_fmt_valor_truncado(d.get('current_value'))}",
-                size=8, indent=8)
-        doc.spacer(4)
+    _heading("Ficha técnica")
+    for titulo, filas in modelo["ficha_tecnica"]:
+        doc.ensure_space(20)
+        doc.text_flow(titulo, size=10, font="F2", indent=8)
+        _pdf_tabla(doc, [], [(k, str(v)) for k, v in filas], [0.32, 0.68],
+                   size=8.5, negrita_col0=True)
 
-    if e.recomendaciones:
-        doc.text_flow(_sec("Recomendaciones generales"), size=12, font="F2", color=(0.10, 0.45, 0.91))
-        for rec in e.recomendaciones:
-            doc.text_flow(f"- {rec}", size=9, indent=8)
-        doc.spacer(4)
+    doc._new_page()
+    _heading("Anexo técnico")
+    filas_anexo = []
+    for f in modelo["anexo"]:
+        filas_anexo.append([f["colector"], f["paquete"], f["estado"],
+                            f"{f['duracion_ms']} ms", f["resumen"]])
+        for linea in f["detalle"]:
+            filas_anexo.append(["", "", "", "", linea])
+        if f["registros_restantes"]:
+            filas_anexo.append(["", "", "", "",
+                                f"{f['registros_restantes']} registro(s) más en el JSON"])
+    _pdf_tabla(doc, ["Colector", "Paquete", "Estado", "Duración", "Resumen"],
+               filas_anexo, [0.18, 0.16, 0.10, 0.11, 0.45], size=8)
 
-    doc.text_flow(_sec("Análisis por colector"), size=12, font="F2", color=(0.10, 0.45, 0.91))
-    for c in e.colectores:
-        estado = c.status
-        doc.text_flow(f"{c.collector_id}  [{estado}]  ({c.duration_ms} ms)",
-                      size=9, font="F2", indent=8)
-        for line in c.resumen[:10]:
-            doc.text_flow(line, size=8, indent=16, color=(0.25, 0.25, 0.25))
-        for err in c.errores:
-            doc.text_flow(f"Observación: {err}", size=8, indent=16, color=(0.7, 0, 0.13))
-        doc.spacer(2)
-
-    if e.observaciones:
-        doc.text_flow(_sec("Observaciones generales"), size=12, font="F2", color=(0.10, 0.45, 0.91))
-        doc.text_flow(e.observaciones, size=9, indent=8)
-
-    doc.spacer(30)
+    _heading("Cierre")
+    doc.text_flow(f"Observaciones: {modelo['observaciones'] or '__________________________________________'}",
+                  size=9, indent=8)
+    doc.spacer(20)
     doc.text_flow("____________________________________          ____________________________________",
                   size=9, indent=8)
     doc.text_flow("Firma del técnico                                        Conformidad del cliente",
                   size=8, font="F3", indent=8, color=(0.4, 0.4, 0.4))
     doc.spacer(4)
-    doc.text_flow(f"Código de verificación: {codigo_verificacion(e)}",
+    doc.text_flow(f"Código de verificación: {modelo['codigo']}",
                   size=8, font="F3", indent=8, color=(0.4, 0.4, 0.4))
+    doc.text_flow("Informe generado por DiagUSB. El puntaje es orientativo.",
+                  size=8, font="F3", indent=8, color=(0.5, 0.5, 0.5))
 
-    doc.header_every_page(f"DiagUSB - Informe: {e.paquete.get('label', '')} - {_fmt_fecha(e.generado_en)}")
+    doc.header_every_page(f"DiagUSB - Informe: {e.paquete.get('label', '')} - "
+                          f"{_fmt_fecha(e.generado_en)}", omitir_primera=True,
+                          pie_izq=f"Código: {modelo['codigo']}")
     return doc.save()

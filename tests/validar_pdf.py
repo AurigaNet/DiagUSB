@@ -212,6 +212,48 @@ def validar_pdf(data: bytes) -> list[str]:
             else:
                 errores.append("catalogo: /Pages ausente o inexistente")
 
+    # --- contenido de paginas: no vacio y sin valores invalidos ---
+    def _stream_de(num: int):
+        off = objs.get(num)
+        if off is None:
+            return None
+        fin = data.find(b"endobj", off)
+        region = data[off:fin if fin != -1 else len(data)]
+        p = region.find(b"stream")
+        if p == -1:
+            return None
+        q = p + len(b"stream")
+        if region[q:q + 2] == b"\r\n":
+            q += 2
+        elif region[q:q + 1] in (b"\n", b"\r"):
+            q += 1
+        mlen = re.search(rb"/Length\s+(\d+)", region[:p])
+        if not mlen:
+            return None
+        return region[q:q + int(mlen.group(1))]
+
+    paginas = 0
+    for num, _ in offs:
+        cuerpo_obj = cuerpo(num)
+        mc = re.search(rb"/Contents\s+(\d+)\s+0\s+R", cuerpo_obj)
+        if not mc:
+            continue
+        paginas += 1
+        if b"/MediaBox" not in cuerpo_obj:
+            errores.append(f"pagina {num}: sin /MediaBox")
+        cs = int(mc.group(1))
+        stream = _stream_de(cs)
+        if stream is None:
+            errores.append(f"pagina {num}: contenido {cs} sin stream legible")
+            continue
+        if not stream.strip():
+            errores.append(f"pagina {num}: contenido vacio")
+        if re.search(rb"(?<![\w.])(nan|inf)(?![\w.])", stream):
+            errores.append(f"pagina {num}: contenido con valor invalido (nan/inf)")
+
+    if trailer and paginas == 0:
+        errores.append("documento: no se encontro ninguna pagina con /Contents")
+
     return errores
 
 

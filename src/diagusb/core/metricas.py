@@ -127,7 +127,7 @@ def _categorias(collectors: list, findings: list, paquetes: list | None,
         fila = {
             "paquete": label or pid or "", "paquete_id": pid or "",
             "ok": 0, "sin_datos": 0, "error": 0, "timeout": 0,
-            "denegado": 0, "no_disponible": 0,
+            "denegado": 0, "no_disponible": 0, "colectores": [],
             "hallazgos": {"critical": 0, "error": 0, "warning": 0},
         }
         filas.append(fila)
@@ -140,6 +140,7 @@ def _categorias(collectors: list, findings: list, paquetes: list | None,
             fila = _nueva(p.get("id"), p.get("label"))
             for cid in (p.get("collectors") or []):
                 mapa[str(cid)] = fila
+                fila["colectores"].append(str(cid))
     else:
         defecto = _nueva(default_id, default_label)
 
@@ -148,6 +149,8 @@ def _categorias(collectors: list, findings: list, paquetes: list | None,
         if fila is None:
             continue
         fila[estado_de(_status(r))] += 1
+        if defecto is not None and str(r.get("collector_id")) not in fila["colectores"]:
+            fila["colectores"].append(str(r.get("collector_id")))
 
     for f in findings:
         if _es_no_evaluado(f):

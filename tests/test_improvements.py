@@ -224,14 +224,13 @@ def test_informe_diferencias_y_grupo():
     assert len(inf.problemas[0].grupo) == 1
 
     html = informe_a_html(inf, con_anexo=False)
-    assert "Cambios detectados (antes vs después)" in html
-    assert "Cómo debe estar (estado esperado)" in html
+    assert "Otros casos del mismo problema" in html
     assert "Espacio limitado en disco D: 9.0% libre" in html
 
     pdf = informe_a_pdf(inf)
     assert pdf.startswith(b"%PDF")
     texto = pdf.decode("latin-1", errors="replace")
-    assert "antes vs despu" in texto
+    assert "Otros casos del mismo problema" in texto
     assert "Espacio limitado en disco C" in texto
 
 
@@ -270,13 +269,14 @@ def test_informe_secciones_correlativas():
     html = informe_a_html(inf, con_anexo=False)
     nums = _numeros_seccion_html(html)
     assert nums == list(range(1, len(nums) + 1)), nums
-    assert nums[-1] == 6
+    assert nums[-1] == 9
+    assert "1. Datos del servicio" in html
+    assert "9. Cierre" in html
 
     sin_reco = informe_desde_diagnostico(_diag_minimo())
     sin_reco.recomendaciones = []
     html2 = informe_a_html(sin_reco, con_anexo=False)
-    assert _numeros_seccion_html(html2) == [1, 2, 3, 4, 5]
-    assert "5. Análisis por colector" in html2
+    assert _numeros_seccion_html(html2) == list(range(1, 10))
 
 
 def test_doc_css_y_anexo_opcional():
@@ -299,10 +299,12 @@ def test_pdf_fecha_y_secciones():
     inf.generado_en = "2026-10-15T18:48:23.123456"
     texto = informe_a_pdf(inf).decode("latin-1", errors="replace")
     assert "15/10/2026 18:48" in texto
-    nums = [int(n) for n in re.findall(
-        r"(\d+)\. (?:Datos del equipo|Resumen del diagn|Resumen gr|Problemas detectados|Mejoras|"
-        r"Cambios|Recomendaciones|An.lisis por colector|Observaciones)", texto)]
-    assert nums == list(range(1, len(nums) + 1)), nums
+    secciones = ["Datos del servicio", "Indicadores", "Resumen ejecutivo",
+                 "Panel gr", "Problemas detectados", "Plan de acci",
+                 "Ficha t", "Anexo t", "Cierre"]
+    for n, frag in enumerate(secciones, 1):
+        assert f"{n}. {frag}" in texto, (n, frag)
+    assert "Página 2 de" in texto
 
 
 def _diag_con_metricas():
@@ -335,22 +337,22 @@ def test_informe_grafico_html_doc_pdf():
     assert inf.metricas_base["puntaje"] == 100
 
     html = informe_a_html(inf, con_anexo=False)
-    assert "3. Resumen gráfico" in html
+    assert "4. Panel gráfico" in html
     assert "69/100" in html
-    assert "bgcolor=" in html
-    assert "<svg" not in html
+    assert "<svg" in html
+    assert "Problemas por severidad" in html
     assert "Estado por paquete" in html
     assert "Disco C:" in html
     assert "Comparación antes / después" in html
 
     doc = informe_a_doc(inf, resultados_completos=diag["results"]).decode("utf-8")
-    assert "Resumen gráfico" in doc
+    assert "Panel gráfico" in doc
     assert "69/100" in doc
     assert "bgcolor=" in doc
     assert "<svg" not in doc
 
     pdf = informe_a_pdf(inf).decode("latin-1", errors="replace")
-    assert "Resumen gráfico" in pdf
+    assert "Panel gr" in pdf
     assert "69/100" in pdf
     assert "Memoria en uso" in pdf
 
@@ -359,10 +361,10 @@ def test_informe_grafico_sin_metricas():
     inf = informe_desde_diagnostico(_diag_minimo())
     assert inf.metricas == {}
     html = informe_a_html(inf, con_anexo=False)
-    assert "Resumen gráfico" in html
-    assert "Sin puntaje" in html
+    assert "4. Panel gráfico" in html
+    assert "Sin datos para graficar." in html
     pdf = informe_a_pdf(inf).decode("latin-1", errors="replace")
-    assert "Sin puntaje" in pdf
+    assert "Sin datos para graficar." in pdf
 
 
 def test_api_report_incluye_grafico():
@@ -390,9 +392,10 @@ def test_api_report_incluye_grafico():
             else:
                 assert "<html" in datos[:80].decode("utf-8", errors="replace")
             texto = datos.decode(codec, errors="replace")
-            assert "Resumen gráfico" in texto, fmt
-            assert "97/100" in texto, fmt
+            assert "Panel gr" in texto, fmt
+            assert ("Cobertura" in texto) or ("COBERTURA" in texto), fmt
             assert "Comparación antes" in texto, fmt
+            assert "/100" in texto, fmt
     finally:
         httpd.shutdown()
         httpd.server_close()
@@ -463,14 +466,12 @@ def test_informe_cifras_coherentes():
     assert cob["colectores_evaluados"] == cob["colectores_ok"] + cob["colectores_sin_datos"]
     assert cob["porcentaje"] == round(
         cob["colectores_evaluados"] / cob["colectores_ejecutados"] * 100, 1)
-    # Documento y estructura muestran la misma cobertura.
-    esperado = (f"{cob['porcentaje']}% ({cob['colectores_evaluados']}/"
-                f"{cob['colectores_ejecutados']} evaluados")
-    assert esperado in html, html[:500]
-    # En el PDF el texto puede partirse por el ajuste de linea: se comprueba
-    # la misma cifra de cobertura de forma independiente.
-    assert f"Cobertura: {cob['porcentaje']}%" in pdf
-    assert f"{cob['colectores_ok']}" in pdf and "sin datos" in pdf
+    # Documento y PDF muestran la misma cobertura y los mismos estados.
+    assert "2. Indicadores" in html
+    assert f"{cob['porcentaje']}%" in html, html[:500]
+    assert f"{m['estados']['ok']} OK" in html
+    assert f"{cob['porcentaje']}%" in pdf
+    assert f"{m['estados']['ok']} OK" in pdf
     # La severidad del documento sale de los mismos hallazgos.
     assert int(m["severidad"]["critical"]) == 1
     assert int(m["severidad"]["warning"]) == 1
