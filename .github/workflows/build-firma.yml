@@ -1,9 +1,6 @@
 name: Build y firma
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
 
 permissions:
@@ -164,47 +161,3 @@ jobs:
           "## AVISO: artefacto SIN FIRMAR" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
           "SignPath no esta configurado (falta el secret SIGNPATH_API_TOKEN)." | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
           "diagusb-SIN-FIRMAR.zip es solo para pruebas. La regla ASR de Defender 'Bloquear procesos no confiables y sin firmar que se ejecutan desde USB' bloquea las versiones sin firma." | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
-
-  release:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: windows-latest
-    permissions:
-      contents: write
-      actions: read
-    env:
-      HAS_SIGNPATH: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
-    steps:
-      - name: Descargar el artefacto firmado
-        if: env.HAS_SIGNPATH == 'true'
-        uses: actions/download-artifact@v4
-        with:
-          name: diagusb-firmado
-
-      - name: Descargar el artefacto sin firma
-        if: env.HAS_SIGNPATH != 'true'
-        uses: actions/download-artifact@v4
-        with:
-          name: diagusb-SIN-FIRMAR
-
-      - name: Publicar el release firmado
-        if: env.HAS_SIGNPATH == 'true'
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          $opciones = @('release', 'create', $env:TAG, 'diagusb-firmado.zip', 'SHA256SUMS.txt', '--title', $env:TAG, '--notes', 'Version firmada de DiagUSB.')
-          if ($env:TAG -match '-rc') { $opciones += '--prerelease' }
-          gh @opciones
-
-      - name: Publicar el release sin firma (prerelease)
-        if: env.HAS_SIGNPATH != 'true'
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          gh release create "$env:TAG" diagusb-SIN-FIRMAR.zip SHA256SUMS.txt --title "$env:TAG (SIN FIRMAR)" --prerelease --notes "Version SIN FIRMAR. Solo para pruebas. La regla ASR de Microsoft Defender 'Bloquear procesos no confiables y sin firmar que se ejecutan desde USB' bloquea esta version."

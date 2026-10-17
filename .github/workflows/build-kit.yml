@@ -1,0 +1,91 @@
+name: Build del kit
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Obtener el codigo
+        uses: actions/checkout@v4
+
+      - name: Verificar la coherencia entre el tag y la version
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          $texto = Get-Content src\diagusb\_version.py -Raw
+          if ($texto -notmatch '__version__\s*=\s*"([^"]+)"') {
+            throw 'No se pudo leer __version__ de src/diagusb/_version.py'
+          }
+          $version = $Matches[1]
+          $patron = '^v' + [regex]::Escape($version) + '(-rc[0-9]+)?$'
+          Write-Host "Tag: $env:TAG | Version declarada: $version | Patron: $patron"
+          if ($env:TAG -notmatch $patron) {
+            throw "El tag '$env:TAG' no coincide con 'v$version' ni con su candidata 'v$version-rcN' declarados en src/diagusb/_version.py"
+          }
+
+      - name: Instalar Python (misma version que el proyecto)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Mostrar la version de Python
+        run: python --version
+
+      - name: Ejecutar la suite de pruebas
+        run: python -X utf8 tests\run_tests.py
+
+      - name: Armar el kit (Python embebido + fuente)
+        shell: pwsh
+        run: scripts\armar_kit.ps1 -Salida dist\kit
+
+      - name: Probar el kit (prueba de humo)
+        shell: pwsh
+        run: scripts\probar_kit.ps1 -Kit dist\kit\DiagUSB
+
+      - name: Subir el artefacto del kit
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagusb-kit
+          path: dist\kit\DiagUSB-kit-*.zip
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Descargar el artefacto del kit
+        uses: actions/download-artifact@v4
+        with:
+          name: diagusb-kit
+
+      - name: Calcular el SHA-256 y publicar el release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          $zip = (Get-ChildItem -Filter 'DiagUSB-kit-*.zip' | Select-Object -First 1).FullName
+          if (-not $zip) { throw 'No se encontro el zip del kit.' }
+          $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
+          "$hash  $([System.IO.Path]::GetFileName($zip))" | Set-Content -Encoding ascii SHA256SUMS.txt
+          Get-Content SHA256SUMS.txt
+          $opciones = @('release', 'create', $env:TAG, $zip, 'SHA256SUMS.txt', '--title', $env:TAG, '--notes', 'Kit de DiagUSB (Python embebido + codigo fuente).')
+          if ($env:TAG -match '-rc') { $opciones += '--prerelease' }
+          gh @opciones
