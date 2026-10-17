@@ -128,6 +128,130 @@ def _metricas_de_results(results: list, package: str, package_label: str) -> dic
     })
 
 
+def _metricas_de_reporte(diag: dict) -> dict:
+    """Recalcula las metricas del informe desde los hallazgos y colectores.
+
+    No se confia en las metricas que llegan del navegador: se recalculan con
+    ``calcular_metricas`` usando los ``results`` y ``findings`` que el endpoint
+    ya recibio en el diagnostico.
+    """
+    diag = diag or {}
+    findings = [f for f in (diag.get("findings") or []) if isinstance(f, dict)]
+    return calcular_metricas({
+        "package": diag.get("package"),
+        "package_label": diag.get("package_label"),
+        "results": diag.get("results") or [],
+        "findings": findings,
+    })
+
+
+def _entero_metricas(valor, tope: int = 10 ** 6):
+    if isinstance(valor, bool) or not isinstance(valor, int):
+        return None
+    if valor < 0 or valor > tope:
+        return None
+    return valor
+
+
+def _porcentaje_metricas(valor):
+    if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+        return None
+    if valor < 0 or valor > 100:
+        return None
+    return round(float(valor), 1)
+
+
+def _texto_metricas(valor, limite: int) -> str:
+    if not isinstance(valor, str):
+        return ""
+    limpio = "".join(c for c in valor if c >= " " and c != "\x7f")
+    if "<" in limpio or ">" in limpio:
+        return ""
+    return limpio[:limite]
+
+
+def _metricas_validadas(metricas) -> dict:
+    """Valida metricas de la comparacion (base/actual) llegadas del navegador.
+
+    Solo conserva tipos y rangos validos; descarta lo invalido sin romper el
+    informe. Los textos se acotan y se rechazan si traen marcado HTML.
+    """
+    if not isinstance(metricas, dict):
+        return {}
+    out: dict = {}
+    if "puntaje" in metricas:
+        if metricas.get("puntaje") is None:
+            out["puntaje"] = None
+        else:
+            p = _entero_metricas(metricas.get("puntaje"), 100)
+            if p is not None:
+                out["puntaje"] = p
+    for clave, limite in (("etiqueta", 40), ("alcance", 200), ("leyenda", 200)):
+        t = _texto_metricas(metricas.get(clave), limite)
+        if t:
+            out[clave] = t
+    sev = metricas.get("severidad")
+    if isinstance(sev, dict):
+        s = {}
+        for k in ("critical", "error", "warning", "ok"):
+            n = _entero_metricas(sev.get(k))
+            if n is not None:
+                s[k] = n
+        if s:
+            out["severidad"] = s
+    cob = metricas.get("cobertura")
+    if isinstance(cob, dict):
+        c = {}
+        for k in ("modulos_ejecutados", "colectores_ejecutados", "colectores_ok",
+                  "colectores_vacios", "con_error", "denegados", "no_evaluados"):
+            n = _entero_metricas(cob.get(k))
+            if n is not None:
+                c[k] = n
+        pct = _porcentaje_metricas(cob.get("porcentaje"))
+        if pct is not None:
+            c["porcentaje"] = pct
+        if c:
+            out["cobertura"] = c
+    cats = metricas.get("categorias")
+    if isinstance(cats, list):
+        lista = []
+        for c in cats[:50]:
+            if not isinstance(c, dict):
+                continue
+            fila = {"paquete": _texto_metricas(c.get("paquete"), 80)}
+            for k in ("ok", "advertencia", "error", "no_evaluado"):
+                n = _entero_metricas(c.get(k))
+                if n is not None:
+                    fila[k] = n
+            lista.append(fila)
+        if lista:
+            out["categorias"] = lista
+    med = metricas.get("medidores")
+    if isinstance(med, dict):
+        mm = {}
+        mem = med.get("memoria")
+        if isinstance(mem, dict):
+            pct = _porcentaje_metricas(mem.get("usado_porcentaje"))
+            if pct is not None:
+                mm["memoria"] = {"usado_porcentaje": pct}
+        discos = med.get("discos")
+        if isinstance(discos, list):
+            ds = []
+            for d in discos[:50]:
+                if not isinstance(d, dict):
+                    continue
+                pct = _porcentaje_metricas(d.get("usado_porcentaje"))
+                if pct is None:
+                    continue
+                ds.append({"unidad": _texto_metricas(d.get("unidad"), 40),
+                           "usado_porcentaje": pct})
+            if ds:
+                mm["discos"] = ds
+        if mm:
+            out["medidores"] = mm
+    return out
+
+
 def _metricas_de_full_scan(diagnostics: list) -> dict:
     """Metricas combinadas de una revision total (un modulo por paquete)."""
     combinado = {
@@ -998,9 +1122,11 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
 
         try:
             payload = self._read_payload()
-            diag = payload.get("diagnostico") or {}
+            diag = dict(payload.get("diagnostico") or {})
             if not diag.get("package"):
                 raise ValueError("Falta el diagnostico")
+
+            diag["metricas"] = _metricas_de_reporte(diag)
 
             informe = informe_desde_diagnostico(
                 diag,
@@ -1011,8 +1137,8 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
                 observaciones=payload.get("observaciones", ""),
                 diferencias=payload.get("diferencias"),
                 comparacion_forzada=bool(payload.get("comparacion_forzada")),
-                metricas_base=payload.get("metricas_base"),
-                metricas_actual=payload.get("metricas_actual"),
+                metricas_base=_metricas_validadas(payload.get("metricas_base")),
+                metricas_actual=_metricas_validadas(payload.get("metricas_actual")),
             )
             paquete = _paquete_seguro(diag["package"])
 

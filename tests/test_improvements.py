@@ -391,7 +391,39 @@ def test_api_report_incluye_grafico():
                 assert "<html" in datos[:80].decode("utf-8", errors="replace")
             texto = datos.decode(codec, errors="replace")
             assert "Resumen gráfico" in texto, fmt
-            assert "69/100" in texto, fmt
+            assert "97/100" in texto, fmt
+            assert "Comparación antes" in texto, fmt
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_api_report_metricas_recalculadas():
+    import urllib.request
+
+    diag = _diag_minimo()
+    diag["metricas"] = {"puntaje": 999, "etiqueta": "<script>alert(1)</script>"}
+    cuerpo = json.dumps({
+        "diagnostico": diag,
+        "metricas_base": {"puntaje": 999, "etiqueta": "<script>x</script>"},
+        "metricas_actual": {"puntaje": -5, "severidad": {"error": 3}},
+    }).encode("utf-8")
+    httpd, base = _abrir_servidor()
+    try:
+        for fmt, codec in (("doc", "utf-8"), ("pdf", "latin-1")):
+            cabeceras = dict(_cookie())
+            cabeceras["Content-Type"] = "application/json"
+            req = urllib.request.Request(
+                base + "/api/report?format=" + fmt, data=cuerpo,
+                headers=cabeceras, method="POST")
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                assert resp.status == 200, resp.status
+                datos = resp.read()
+            texto = datos.decode(codec, errors="replace")
+            assert "999/100" not in texto, fmt
+            assert "<script>" not in texto, fmt
+            assert "&lt;script&gt;" not in texto, fmt
+            assert "97/100" in texto, fmt
     finally:
         httpd.shutdown()
         httpd.server_close()
@@ -1820,6 +1852,7 @@ def run_tests():
         ("test_informe_grafico_html_doc_pdf", test_informe_grafico_html_doc_pdf),
         ("test_informe_grafico_sin_metricas", test_informe_grafico_sin_metricas),
         ("test_api_report_incluye_grafico", test_api_report_incluye_grafico),
+        ("test_api_report_metricas_recalculadas", test_api_report_metricas_recalculadas),
         ("test_kb_guardar_y_eliminar", test_kb_guardar_y_eliminar),
         ("test_kb_valida_campos", test_kb_valida_campos),
         ("test_kb_embebida_intacta", test_kb_embebida_intacta),
