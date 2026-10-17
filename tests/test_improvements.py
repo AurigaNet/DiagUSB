@@ -1646,6 +1646,46 @@ def test_pagina_desde_static():
     assert "btnKb" in html and "btnRegistro" in html
 
 
+def test_atributos_cuerpo_escapados():
+    import diagusb.web_server as ws
+
+    attrs = ws._atributos_cuerpo('0.1.0"><script>alert(1)</script>',
+                                 '127.0.0.1:8080', 'C:\\datos & <x>')
+    assert '<script>' not in attrs
+    assert '&quot;' in attrs and '&lt;script&gt;' in attrs and '&amp;' in attrs
+    page = ws._inyectar_atributos('<body><p>x</p></body>', attrs)
+    assert page.startswith('<body data-version="')
+    assert page.count('<body') == 1
+
+
+def test_pagina_inyectada_datos():
+    import diagusb.web_server as ws
+
+    page = ws._inyectar_atributos(
+        ws._cargar_pagina(),
+        ws._atributos_cuerpo('0.1.0', '127.0.0.1:8080', 'C:\\Users\\X\\DiagUSB'))
+    assert 'data-version="0.1.0"' in page
+    assert 'data-hostport="127.0.0.1:8080"' in page
+    assert 'data-datadir="C:\\Users\\X\\DiagUSB"' in page
+
+
+def test_modulos_y_fetch_sin_cambios():
+    import re
+    import diagusb.web_server as ws
+
+    html = ws._cargar_pagina()
+    assert html.count('class="mod-btn') == 15
+    assert "runDiagnostic('inventario_general')" in html
+    assert 'http://' not in html and 'https://' not in html
+    js = (Path(ws.__file__).with_name("static") / "app.js").read_text(encoding="utf-8")
+    destinos = [u for _, u in re.findall(r"fetch\(\s*(['\"])(.*?)\1", js)]
+    assert len(destinos) == 14, destinos
+    assert set(destinos) == {
+        '/api/snapshot', '/api/compare', '/api/report?format=',
+        '/api/diagnose?package=', '/api/full-scan', '/api/knowledge',
+        '/api/registro?id=', '/api/registro', '/api/elevation', '/api/elevar'}
+
+
 def test_run_powershell_timeout_termina_arbol():
     import tempfile
     import time
@@ -1731,6 +1771,9 @@ def run_tests():
         ("test_datos_limitados_alcance", test_datos_limitados_alcance),
         ("test_physical_disks_usb_no_limita", test_physical_disks_usb_no_limita),
         ("test_pagina_desde_static", test_pagina_desde_static),
+        ("test_atributos_cuerpo_escapados", test_atributos_cuerpo_escapados),
+        ("test_pagina_inyectada_datos", test_pagina_inyectada_datos),
+        ("test_modulos_y_fetch_sin_cambios", test_modulos_y_fetch_sin_cambios),
         ("test_run_powershell_timeout_termina_arbol",
          test_run_powershell_timeout_termina_arbol),
     ]

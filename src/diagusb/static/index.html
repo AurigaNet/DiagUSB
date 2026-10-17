@@ -7,199 +7,342 @@
     <style>@@DIAGUSB_CSS@@    </style>
 </head>
 <body>
-    <div class="container">
-        <!-- Header -->
-        <div class="header">
-            <h1>DiagUSB</h1>
-            <p class="subtitle">Herramienta de Diagnóstico Interactiva v0.1.0</p>
-        </div>
-
-        <div class="elev-banner" id="elevBanner" style="display:none;"></div>
-
-        <div class="integridad-banner" id="integridadBanner" style="display:none;"></div>
-
-        <div class="respaldo-banner" id="respaldoBanner" style="display:none;"></div>
-        
-        <!-- Buttons Section -->
-        <div class="buttons-section">
-            <h2>Diagnósticos Rápidos</h2>
-            
-            <div class="btn-grid">
-                <button class="btn btn-full" onclick="runFullScan()">
-                    <span class="btn-icon">🔍</span>
-                    <span class="btn-label">Revisión Total</span>
-                </button>
-                
-                <button class="btn btn-impresion" onclick="runDiagnostic('impresion')">
-                    <span class="btn-icon">🖨️</span>
-                    <span class="btn-label">Impresión</span>
-                </button>
-                
-                <button class="btn btn-redes" onclick="runDiagnostic('redes')">
-                    <span class="btn-icon">🌐</span>
-                    <span class="btn-label">Red Cableada</span>
-                </button>
-                
-                <button class="btn btn-wifi" onclick="runDiagnostic('wifi')">
-                    <span class="btn-icon">📶</span>
-                    <span class="btn-label">WiFi</span>
-                </button>
-                
-                <button class="btn btn-disco" onclick="runDiagnostic('disco')">
-                    <span class="btn-icon">💾</span>
-                    <span class="btn-label">Disco</span>
-                </button>
-                
-                <button class="btn btn-memoria" onclick="runDiagnostic('memoria')">
-                    <span class="btn-icon">🧠</span>
-                    <span class="btn-label">Memoria</span>
-                </button>
-                
-                <button class="btn btn-servicios" onclick="runDiagnostic('servicios')">
-                    <span class="btn-icon">⚙️</span>
-                    <span class="btn-label">Servicios</span>
-                </button>
-                
-                <button class="btn btn-seguridad" onclick="runDiagnostic('seguridad')">
-                    <span class="btn-icon">🔒</span>
-                    <span class="btn-label">Seguridad</span>
-                </button>
-                
-                <button class="btn btn-windows" onclick="runDiagnostic('windows_update')">
-                    <span class="btn-icon">🔄</span>
-                    <span class="btn-label">Windows Update</span>
-                </button>
-                
-                <button class="btn btn-drivers" onclick="runDiagnostic('drivers')">
-                    <span class="btn-icon">📦</span>
-                    <span class="btn-label">Drivers</span>
-                </button>
-                
-                <button class="btn btn-eventos" onclick="runDiagnostic('eventos')">
-                    <span class="btn-icon">📋</span>
-                    <span class="btn-label">Eventos Críticos</span>
-                </button>
-                
-                <button class="btn btn-contexto" onclick="runDiagnostic('contexto')">
-                    <span class="btn-icon">💻</span>
-                    <span class="btn-label">Contexto Sistema</span>
-                </button>
-                
-                <button class="btn btn-kb btn-full" id="btnKb" onclick="toggleKb()">
-                    <span class="btn-icon">📖</span>
-                    <span class="btn-label">Base de Conocimiento</span>
-                </button>
-                
-                <button class="btn btn-registro btn-full" id="btnRegistro" onclick="toggleRegistro()">
-                    <span class="btn-icon">🗂️</span>
-                    <span class="btn-label">Registro de análisis</span>
-                </button>
-            </div>
-        </div>
-        
-        <!-- Results Section -->
-        <div class="results-section">
-            <div class="results-header">
-                <h2>Resultados</h2>
-                <div class="results-actions">
-                    <button class="btn-small btn-word" id="btnWord" style="display:none;" onclick="downloadReport('doc')">Descargar Word</button>
-                    <button class="btn-small btn-pdf" id="btnPdf" style="display:none;" onclick="downloadReport('pdf')">Descargar PDF</button>
-                    <button class="btn-small btn-snap" id="btnSnapAntes" style="display:none;" onclick="saveSnapshotAntes()">Guardar ANTES</button>
-                    <button class="btn-small btn-snap" id="btnSnapCompara" style="display:none;" onclick="compareSnapshot()">Comparar DESPUÉS</button>
-                    <button class="btn-small btn-copy" onclick="copyResults()">Copiar</button>
-                    <button class="btn-small btn-clear" onclick="clearResults()">Limpiar</button>
-                </div>
-            </div>
-            
-            <div class="status-bar">
-                <div class="status-dot" id="statusDot"></div>
-                <span id="statusText">Listo para ejecutar diagnósticos</span>
-            </div>
-            
-            <div class="results-content" id="resultsContent">
-                <div class="results-empty">
-                    <div class="results-empty-icon">🔧</div>
-                    <p>Haga clic en un botón para ejecutar un diagnóstico</p>
+    <div class="app">
+        <!-- Barra lateral -->
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-logo">DX</div>
+                <div class="brand-text">
+                    <span class="brand-name">DiagUSB</span>
+                    <span class="brand-sub">Diagnóstico Interactivo</span>
                 </div>
             </div>
 
-            <div class="acciones-section" id="diffSection" style="display:none;">
-                <h3>Comparación antes / después</h3>
-                <div id="diffTabla"></div>
+            <nav class="nav" id="navPrincipal">
+                <button class="nav-item activo" data-view="inicio">
+                    <svg viewBox="0 0 24 24" class="nav-icon"><path d="M4 11l8-7 8 7"/><path d="M6 10v10h12V10"/></svg>
+                    <span>Inicio</span>
+                </button>
+                <button class="nav-item" data-view="diagnosticos">
+                    <svg viewBox="0 0 24 24" class="nav-icon"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
+                    <span>Diagnósticos</span>
+                </button>
+                <button class="nav-item" data-view="historial">
+                    <svg viewBox="0 0 24 24" class="nav-icon"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                    <span>Historial</span>
+                </button>
+                <button class="nav-item" data-view="configuracion">
+                    <svg viewBox="0 0 24 24" class="nav-icon"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15" cy="17" r="2"/></svg>
+                    <span>Configuración</span>
+                </button>
+                <button class="nav-item" data-view="acerca">
+                    <svg viewBox="0 0 24 24" class="nav-icon"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="8" r="0.8"/></svg>
+                    <span>Acerca de</span>
+                </button>
+            </nav>
+
+            <div class="permisos-card" id="permisosCard">
+                <div class="permisos-titulo">Permisos</div>
+                <div class="permisos-estado" id="permisosEstado">Comprobando…</div>
+                <div class="permisos-detalle" id="permisosDetalle">—</div>
             </div>
-            
-            <div class="acciones-section" id="accionesSection" style="display:none;">
-                <h3 id="accionesTitulo">Acciones del técnico - Generación de informe</h3>
-                <div id="problemasLista"></div>
-                <div class="acciones-campos">
-                    <label>Tecnico
-                        <input id="tecnico" type="text" placeholder="Nombre del técnico">
-                    </label>
-                    <label>Cliente / Sector
-                        <input id="cliente" type="text" placeholder="Cliente o área">
-                    </label>
+        </aside>
+
+        <!-- Contenido -->
+        <main class="main">
+            <header class="topbar">
+                <div class="topbar-titulo">
+                    <h1 id="viewTitulo">Inicio</h1>
+                    <p class="topbar-sub" id="viewSub">Resumen gráfico del estado del equipo</p>
                 </div>
-                <div id="mejorasLista"></div>
-                <label style="display:block; margin-top:12px; font-size:12px; color:#aaa;">
-                    Observaciones generales
-                    <textarea id="observaciones" rows="3" placeholder="Notas adicionales del trabajo realizado..."></textarea>
-                </label>
-                <p class="acciones-hint">Complete el estado y la acción implementada para cada problema; quedarán registradas en el informe Word/PDF.</p>
-            </div>
-            
-            <div class="acciones-section" id="kbSection" style="display:none;">
-                <h3>Base de conocimiento local</h3>
-                <p class="acciones-hint">Cómo debe estar cada componente para que funcione bien, cómo lograrlo y cómo comprobarlo. Busque por síntoma, componente o palabra clave.</p>
-                <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
-                    <input id="kbSearch" class="kb-search" type="text" placeholder="Buscar... (ej: impresora, firewall, disco, sin internet, memoria)" style="flex:1;">
-                    <button class="btn-small btn-copy" id="btnKbNueva" onclick="openKbForm(null)">+ Nueva entrada</button>
+                <div class="status-bar">
+                    <div class="status-dot" id="statusDot"></div>
+                    <span id="statusText">Listo para ejecutar diagnósticos</span>
                 </div>
-                <div class="kb-form" id="kbForm">
-                    <h4 id="kbFormTitulo" style="margin-bottom:4px;">Nueva entrada</h4>
-                    <label>ID (minúsculas y guiones bajos, ej: spooler_sucio)
-                        <input id="kbf_id" type="text"></label>
-                    <label>Título
-                        <input id="kbf_titulo" type="text"></label>
-                    <label>Categoría
-                        <input id="kbf_categoria" type="text" placeholder="Servicios, Red, Disco, Impresión..."></label>
-                    <label>Colectores asociados (separados por coma)
-                        <input id="kbf_colectores" type="text" placeholder="critical_services, service_failures"></label>
-                    <label>Síntomas asociados (separados por coma)
-                        <input id="kbf_sintomas" type="text" placeholder="servicio_detenido, no_hay_internet"></label>
-                    <label>Cómo debe estar (estado esperado)
-                        <textarea id="kbf_estado_esperado"></textarea></label>
-                    <label>Por qué importa
-                        <textarea id="kbf_por_que_importa"></textarea></label>
-                    <label>Soluciones (una por línea)
-                        <textarea id="kbf_soluciones"></textarea></label>
-                    <label>Verificación (cómo comprobar que quedó bien)
-                        <textarea id="kbf_verificacion"></textarea></label>
-                    <div class="kb-form-actions">
-                        <button class="btn-small btn-word" onclick="saveKbForm()">Guardar</button>
-                        <button class="btn-small btn-clear" onclick="closeKbForm()">Cancelar</button>
+            </header>
+
+            <div class="elev-banner" id="elevBanner" style="display:none;"></div>
+            <div class="integridad-banner" id="integridadBanner" style="display:none;"></div>
+            <div class="respaldo-banner" id="respaldoBanner" style="display:none;"></div>
+
+            <!-- Vista: Inicio -->
+            <section class="view" id="viewInicio">
+                <div class="grid-paneles">
+                    <div class="panel panel-gauge" id="panelGauge">
+                        <div class="panel-head">
+                            <h2 class="panel-title" id="gaugeTitulo">Puntaje de salud</h2>
+                            <span class="panel-nota" id="gaugeAlcance"></span>
+                        </div>
+                        <div class="gauge-cuerpo" id="gaugeCuerpo">
+                            <p class="sin-datos">Sin datos. Ejecute un diagnóstico.</p>
+                        </div>
+                    </div>
+
+                    <div class="panel panel-severidad" id="panelSeveridad">
+                        <div class="panel-head">
+                            <h2 class="panel-title">Hallazgos por severidad</h2>
+                        </div>
+                        <div class="severidad-cuerpo" id="severidadCuerpo">
+                            <p class="sin-datos">Sin datos.</p>
+                        </div>
+                    </div>
+
+                    <div class="panel panel-categorias" id="panelCategorias">
+                        <div class="panel-head">
+                            <h2 class="panel-title">Estado por categoría</h2>
+                        </div>
+                        <div class="categorias-cuerpo" id="categoriasCuerpo">
+                            <p class="sin-datos">Sin datos.</p>
+                        </div>
+                    </div>
+
+                    <div class="panel panel-medidores" id="panelMedidores">
+                        <div class="panel-head">
+                            <h2 class="panel-title">Medidores</h2>
+                        </div>
+                        <div class="medidores-cuerpo" id="medidoresCuerpo">
+                            <p class="sin-datos">Sin datos.</p>
+                        </div>
+                    </div>
+
+                    <div class="panel panel-tendencia" id="panelTendencia">
+                        <div class="panel-head">
+                            <h2 class="panel-title" id="tendenciaTitulo">Tendencia</h2>
+                            <span class="panel-nota" id="tendenciaNota"></span>
+                        </div>
+                        <div class="tendencia-cuerpo" id="tendenciaCuerpo">
+                            <p class="sin-datos">Aún no hay historial suficiente.</p>
+                        </div>
+                    </div>
+
+                    <div class="panel panel-actividad" id="panelActividad">
+                        <div class="panel-head">
+                            <h2 class="panel-title">Actividad reciente</h2>
+                        </div>
+                        <div class="actividad-cuerpo" id="actividadCuerpo">
+                            <p class="sin-datos">Todavía no hay análisis registrados.</p>
+                        </div>
                     </div>
                 </div>
-                <div id="kbLista"></div>
-            </div>
-            
-            <div class="acciones-section" id="registroSection" style="display:none;">
-                <h3>Registro de análisis</h3>
-                <p class="acciones-hint">Todo diagnóstico que ejecute queda guardado automáticamente aquí de forma persistente. Puede consultar el detalle, eliminar análisis individuales o vaciar el registro completo.</p>
-                <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
-                    <input id="regSearch" class="kb-search" type="text" placeholder="Buscar... (paquete, síntoma, problema)" oninput="filterRegistro()" style="flex:1;">
-                    <button class="btn-small btn-copy" onclick="loadRegistro(true)">Actualizar</button>
-                    <button class="btn-small btn-clear" id="btnRegVaciar" onclick="vaciarRegistro()" style="display:none;">Vaciar registro</button>
+            </section>
+
+            <!-- Vista: Diagnósticos -->
+            <section class="view" id="viewDiagnosticos" style="display:none;">
+                <div class="panel">
+                    <div class="panel-head">
+                        <h2 class="panel-title">Módulos de diagnóstico</h2>
+                        <span class="panel-nota">Elija un módulo para ejecutar sus colectores</span>
+                    </div>
+                    <div class="btn-grid">
+                        <button class="mod-btn mod-revision" onclick="runFullScan()">
+                            <span class="mod-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg></span>
+                            <span class="mod-label">Revisión Total</span>
+                        </button>
+
+                        <button class="mod-btn mod-impresion" onclick="runDiagnostic('impresion')">
+                            <span class="mod-icon"><svg viewBox="0 0 24 24"><path d="M6 9V3h12v6"/><rect x="4" y="9" width="16" height="8" rx="1.5"/><rect x="7" y="14" width="10" height="6"/></svg></span>
+                            <span class="mod-label">Impresión</span>
+                        </button>
+
+                        <button class="mod-btn mod-redes" onclick="runDiagnostic('redes')">
+                            <span class="mod-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg></span>
+                            <span class="mod-label">Red Cableada</span>
+                        </button>
+
+                        <button class="mod-btn mod-wifi" onclick="runDiagnostic('wifi')">
+                            <span class="mod-icon"><svg viewBox="0 0 24 24"><path d="M4 9a12 12 0 0 1 16 0"/><path d="M7 12.5a8 8 0 0 1 10 0"/><path d="M9.6 16a4 4 0 0 1 4.8 0"/><circle cx="12" cy="19" r="1"/></svg></span>
+                            <span class="mod-label">WiFi</span>
+                        </button>
+
+                        <button class="mod-btn mod-disco" onclick="runDiagnostic('disco')">
+                            <span class="mod-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="12" cy="12" r="3.4"/><circle cx="12" cy="12" r="0.7"/></svg></span>
+                            <span class="mod-label">Disco</span>
+                        </button>
+
+                        <button class="mod-btn mod-memoria" onclick="runDiagnostic('memoria')">
+                            <span class="mod-icon"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5"/><rect x="9.5" y="9.5" width="5" height="5"/><path d="M9 6V3M15 6V3M9 21v-3M15 21v-3M6 9H3M6 15H3M21 9h-3M21 15h-3"/></svg></span>
+                            <span class="mod-label">Memoria</span>
+                        </button>
+
+                        <button class="mod-btn mod-servicios" onclick="runDiagnostic('servicios')">
+                            <span class="mod-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg></span>
+                            <span class="mod-label">Servicios</span>
+                        </button>
+
+                        <button class="mod-btn mod-seguridad" onclick="runDiagnostic('seguridad')">
+                            <span class="mod-icon"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg></span>
+                            <span class="mod-label">Seguridad</span>
+                        </button>
+
+                        <button class="mod-btn mod-windows" onclick="runDiagnostic('windows_update')">
+                            <span class="mod-icon"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/></svg></span>
+                            <span class="mod-label">Windows Update</span>
+                        </button>
+
+                        <button class="mod-btn mod-drivers" onclick="runDiagnostic('drivers')">
+                            <span class="mod-icon"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 3v18M4 7.5l8 4.5 8-4.5"/></svg></span>
+                            <span class="mod-label">Drivers</span>
+                        </button>
+
+                        <button class="mod-btn mod-eventos" onclick="runDiagnostic('eventos')">
+                            <span class="mod-icon"><svg viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg></span>
+                            <span class="mod-label">Eventos Críticos</span>
+                        </button>
+
+                        <button class="mod-btn mod-contexto" onclick="runDiagnostic('contexto')">
+                            <span class="mod-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></span>
+                            <span class="mod-label">Contexto Sistema</span>
+                        </button>
+
+                        <button class="mod-btn mod-inventario" onclick="runDiagnostic('inventario_general')">
+                            <span class="mod-icon"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 3h6v2H9zM9 8h6M9 12h6M9 16h4"/></svg></span>
+                            <span class="mod-label">Inventario General</span>
+                        </button>
+
+                        <button class="mod-btn mod-kb" id="btnKb" onclick="toggleKb()">
+                            <span class="mod-icon"><svg viewBox="0 0 24 24"><path d="M5 4a2 2 0 0 1 2-2h11v18H7a2 2 0 0 0-2 2z"/><path d="M5 20a2 2 0 0 1 2-2h11"/></svg></span>
+                            <span class="mod-label">Base de Conocimiento</span>
+                        </button>
+
+                        <button class="mod-btn mod-registro" id="btnRegistro" onclick="irARegistro()">
+                            <span class="mod-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"/></svg></span>
+                            <span class="mod-label">Registro de análisis</span>
+                        </button>
+                    </div>
                 </div>
-                <div id="regLista"></div>
+
+                <div class="panel results-section">
+                    <div class="results-header">
+                        <h2 class="panel-title">Resultados</h2>
+                        <div class="results-actions">
+                            <button class="btn-small btn-word" id="btnWord" style="display:none;" onclick="downloadReport('doc')">Descargar Word</button>
+                            <button class="btn-small btn-pdf" id="btnPdf" style="display:none;" onclick="downloadReport('pdf')">Descargar PDF</button>
+                            <button class="btn-small btn-snap" id="btnSnapAntes" style="display:none;" onclick="saveSnapshotAntes()">Guardar ANTES</button>
+                            <button class="btn-small btn-snap" id="btnSnapCompara" style="display:none;" onclick="compareSnapshot()">Comparar DESPUÉS</button>
+                            <button class="btn-small btn-copy" onclick="copyResults()">Copiar</button>
+                            <button class="btn-small btn-clear" onclick="clearResults()">Limpiar</button>
+                        </div>
+                    </div>
+
+                    <div class="results-content" id="resultsContent">
+                        <div class="results-empty">
+                            <span class="results-empty-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg></span>
+                            <p>Elija un módulo para ejecutar un diagnóstico</p>
+                        </div>
+                    </div>
+
+                    <div class="acciones-section" id="diffSection" style="display:none;">
+                        <h3>Comparación antes / después</h3>
+                        <div id="diffTabla"></div>
+                    </div>
+
+                    <div class="acciones-section" id="accionesSection" style="display:none;">
+                        <h3 id="accionesTitulo">Acciones del técnico - Generación de informe</h3>
+                        <div id="problemasLista"></div>
+                        <div class="acciones-campos">
+                            <label>Técnico
+                                <input id="tecnico" type="text" placeholder="Nombre del técnico">
+                            </label>
+                            <label>Cliente / Sector
+                                <input id="cliente" type="text" placeholder="Cliente o área">
+                            </label>
+                        </div>
+                        <div id="mejorasLista"></div>
+                        <label class="obs-label">
+                            Observaciones generales
+                            <textarea id="observaciones" rows="3" placeholder="Notas adicionales del trabajo realizado..."></textarea>
+                        </label>
+                        <p class="acciones-hint">Complete el estado y la acción implementada para cada problema; quedarán registradas en el informe Word/PDF.</p>
+                    </div>
+
+                    <div class="acciones-section" id="kbSection" style="display:none;">
+                        <h3>Base de conocimiento local</h3>
+                        <p class="acciones-hint">Cómo debe estar cada componente para que funcione bien, cómo lograrlo y cómo comprobarlo. Busque por síntoma, componente o palabra clave.</p>
+                        <div class="fila-herramientas">
+                            <input id="kbSearch" class="kb-search" type="text" placeholder="Buscar... (ej: impresora, firewall, disco, sin internet, memoria)" style="flex:1;">
+                            <button class="btn-small btn-copy" id="btnKbNueva" onclick="openKbForm(null)">+ Nueva entrada</button>
+                        </div>
+                        <div class="kb-form" id="kbForm">
+                            <h4 id="kbFormTitulo">Nueva entrada</h4>
+                            <label>ID (minúsculas y guiones bajos, ej: spooler_sucio)
+                                <input id="kbf_id" type="text"></label>
+                            <label>Título
+                                <input id="kbf_titulo" type="text"></label>
+                            <label>Categoría
+                                <input id="kbf_categoria" type="text" placeholder="Servicios, Red, Disco, Impresión..."></label>
+                            <label>Colectores asociados (separados por coma)
+                                <input id="kbf_colectores" type="text" placeholder="critical_services, service_failures"></label>
+                            <label>Síntomas asociados (separados por coma)
+                                <input id="kbf_sintomas" type="text" placeholder="servicio_detenido, no_hay_internet"></label>
+                            <label>Cómo debe estar (estado esperado)
+                                <textarea id="kbf_estado_esperado"></textarea></label>
+                            <label>Por qué importa
+                                <textarea id="kbf_por_que_importa"></textarea></label>
+                            <label>Soluciones (una por línea)
+                                <textarea id="kbf_soluciones"></textarea></label>
+                            <label>Verificación (cómo comprobar que quedó bien)
+                                <textarea id="kbf_verificacion"></textarea></label>
+                            <div class="kb-form-actions">
+                                <button class="btn-small btn-word" onclick="saveKbForm()">Guardar</button>
+                                <button class="btn-small btn-clear" onclick="closeKbForm()">Cancelar</button>
+                            </div>
+                        </div>
+                        <div id="kbLista"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Vista: Historial -->
+            <section class="view" id="viewHistorial" style="display:none;">
+                <div class="panel">
+                    <div class="panel-head">
+                        <h2 class="panel-title">Registro de análisis</h2>
+                        <span class="panel-nota">Todo diagnóstico ejecutado queda guardado automáticamente</span>
+                    </div>
+                    <p class="acciones-hint">Puede consultar el detalle, eliminar análisis individuales o vaciar el registro completo.</p>
+                    <div class="fila-herramientas">
+                        <input id="regSearch" class="kb-search" type="text" placeholder="Buscar... (paquete, síntoma, problema)" oninput="filterRegistro()" style="flex:1;">
+                        <button class="btn-small btn-copy" onclick="loadRegistro()">Actualizar</button>
+                        <button class="btn-small btn-clear" id="btnRegVaciar" onclick="vaciarRegistro()" style="display:none;">Vaciar registro</button>
+                    </div>
+                    <div id="regLista"></div>
+                </div>
+            </section>
+
+            <!-- Vista: Configuración -->
+            <section class="view" id="viewConfiguracion" style="display:none;">
+                <div class="panel">
+                    <div class="panel-head">
+                        <h2 class="panel-title">Permisos de Administrador</h2>
+                    </div>
+                    <div class="config-estado" id="configPermisos">Comprobando…</div>
+                    <p class="acciones-hint">Con permisos de Administrador los colectores pueden leer el inventario completo (software instalado, discos, eventos de seguridad). Sin ellos, algunos datos aparecen como limitados o no evaluados.</p>
+                    <div class="config-fila"><span>Estado del proceso</span><b id="configProceso">—</b></div>
+                    <div class="config-fila"><span>Carpeta de datos</span><b id="configDatos">—</b></div>
+                </div>
+            </section>
+
+            <!-- Vista: Acerca de -->
+            <section class="view" id="viewAcerca" style="display:none;">
+                <div class="panel">
+                    <div class="panel-head">
+                        <h2 class="panel-title">Acerca de DiagUSB</h2>
+                    </div>
+                    <p class="acerca-desc">Herramienta de diagnóstico interactiva para Windows. Ejecuta colectores de solo lectura y presenta hallazgos, recomendaciones y un puntaje orientativo.</p>
+                    <div class="config-fila"><span>Versión</span><b id="acercaVersion">—</b></div>
+                    <div class="config-fila"><span>Servidor</span><b id="acercaHost">—</b></div>
+                    <div class="config-fila"><span>Carpeta de datos</span><b id="acercaDir">—</b></div>
+                    <p class="acerca-puntaje" id="acercaPuntaje"></p>
+                    <p class="acerca-legal">DiagUSB v0.1.0 · Copyright (C) 2026 Daniel Ricardo Novoa · GPL-3.0-or-later</p>
+                </div>
+            </section>
+
+            <div class="footer">
+                <p>DiagUSB v0.1.0 | Copyright (C) 2026 Daniel Ricardo Novoa | GPL-3.0-or-later</p>
             </div>
-        </div>
-        
-        <!-- Footer -->
-        <div class="footer">
-            <p>DiagUSB v0.1.0 | Copyright (C) 2026 Daniel Ricardo Novoa | GPL-3.0-or-later</p>
-        </div>
+        </main>
     </div>
-    
+
     <script>@@DIAGUSB_JS@@    </script>
 </body>
 </html>

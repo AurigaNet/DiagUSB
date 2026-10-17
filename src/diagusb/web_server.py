@@ -3,6 +3,7 @@
 # Copyright (C) 2026 Daniel Ricardo Novoa
 """Servidor web interactivo para DiagUSB."""
 
+import html as _html
 import http.server
 import json
 import re
@@ -23,6 +24,7 @@ from urllib.parse import urlparse, parse_qs
 # Agregar src al path (padre de diagusb/)
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from diagusb._version import __version__
 from diagusb.core.registry import discover_packages
 from diagusb.core.models import CollectorResult, QueryInfo, Snapshot, ComputerId
 from diagusb.core.comparator import compare_snapshots
@@ -532,6 +534,25 @@ def _cargar_pagina() -> str:
     return _PAGINA_CACHE
 
 
+def _atributos_cuerpo(version: str, hostport: str, datadir: str) -> str:
+    """Atributos ``data-*`` del ``<body>`` con los valores escapados.
+
+    ``html.escape(..., quote=True)`` neutraliza comillas y ``<``/``>``/``&``
+    para que un valor con caracteres especiales no rompa la pagina.
+    """
+    pares = (("version", version), ("hostport", hostport),
+             ("datadir", datadir))
+    return "".join(
+        f' data-{nombre}="{_html.escape("" if valor is None else str(valor), quote=True)}"'
+        for nombre, valor in pares
+    )
+
+
+def _inyectar_atributos(pagina: str, attrs: str) -> str:
+    """Inserta ``attrs`` en la primera etiqueta ``<body>`` de la pagina."""
+    return pagina.replace("<body>", "<body" + attrs + ">", 1)
+
+
 def _puerto_libre(desde: int) -> int | None:
     """Primer puerto local libre a partir de ``desde`` + 1."""
     for puerto in range(int(desde) + 1, int(desde) + 60):
@@ -599,7 +620,13 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
         return secrets.compare_digest(self._token_recibido() or "", _token_sesion())
 
     def _servir_index(self):
-        body = _cargar_pagina().encode("utf-8")
+        try:
+            host, puerto = self.server.server_address[0], self.server.server_address[1]
+            hostport = f"{host}:{puerto}"
+        except Exception:
+            hostport = ""
+        attrs = _atributos_cuerpo(__version__, hostport, str(rutas.dir_base()))
+        body = _inyectar_atributos(_cargar_pagina(), attrs).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))

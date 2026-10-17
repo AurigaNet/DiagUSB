@@ -4,10 +4,17 @@
         let lastDiffs = null;
         let lastComparacionForzada = false;
 
+        const DIAGUSB = (document.body && document.body.dataset) ? document.body.dataset : {};
+
         function escHtml(s) {
             const d = document.createElement('div');
             d.textContent = s == null ? '' : String(s);
             return d.innerHTML;
+        }
+
+        function setTexto(id, valor) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = valor;
         }
 
         function formKey(f) {
@@ -89,17 +96,17 @@
             document.getElementById('btnSnapCompara').style.display = 'none';
             document.getElementById('diffSection').style.display = 'none';
         }
-        
+
         function renderProblemas(findings) {
             const section = document.getElementById('accionesSection');
             const titulo = document.getElementById('accionesTitulo');
             const lista = document.getElementById('problemasLista');
             const mejorasLista = document.getElementById('mejorasLista');
-            const colores = {critical: '#b00020', error: '#d93025', warning: '#e37400', ok: '#188038'};
-            const sevLabel = {critical: 'CRITICO', error: 'ERROR', warning: 'ADVERTENCIA', ok: 'OK'};
+            const colores = {critical: '#EF4B5B', error: '#F2761E', warning: '#F5A623', ok: '#2FBF71'};
+            const sevLabel = {critical: 'CRÍTICO', error: 'ERROR', warning: 'ADVERTENCIA', ok: 'OK'};
             const estados = (currentDiag && currentDiag.estados_accion) ||
                 ['Pendiente', 'Resuelto', 'Resuelto parcialmente', 'No reproducido', 'Requiere repuestos', 'Derivado / escalar'];
-            
+
             if (!findings || findings.length === 0) {
                 lista.innerHTML = '';
                 titulo.textContent = 'Acciones del técnico - Generación de informe';
@@ -153,15 +160,14 @@
                 });
                 lista.innerHTML = html;
             }
-            
-            // Mejoras sugeridas
+
             const mejoras = (currentDiag && currentDiag.improvements) || [];
             if (mejoras.length === 0) {
                 mejorasLista.innerHTML = '';
             } else {
                 let mh = '<div class="mejoras-title">Mejoras sugeridas (marque las que implementó):</div>';
                 mejoras.forEach((m, i) => {
-                    mh += '<div class="problema-item" style="border-left-color:#4facfe;">';
+                    mh += '<div class="problema-item" style="border-left-color:#22B8F0;">';
                     mh += '<label class="opcion"><input type="checkbox" id="mejora_' + i + '"> <span><b>' +
                         escHtml(m.titulo) + '</b></span></label>';
                     mh += '<div class="acciones-hint">' + escHtml(m.detalle) + '</div>';
@@ -178,7 +184,7 @@
             document.getElementById('btnSnapCompara').style.display = '';
             applyForm();
         }
-        
+
         function collectPayload() {
             const findings = (currentDiag && currentDiag.findings) || [];
             const acciones = findings.map((f, i) => {
@@ -234,7 +240,7 @@
             lastDiffs = diffs || [];
             let html = '<div class="acciones-hint">Snapshot de referencia: ' + escHtml(baselineEn || '-') + '</div>';
             if (!lastDiffs.length) {
-                html += '<div class="diff-sin-cambios">✓ Sin cambios entre el estado ANTES y el actual.</div>';
+                html += '<div class="diff-sin-cambios">Sin cambios entre el estado ANTES y el actual.</div>';
             } else {
                 html += '<table class="diff-table"><tr><th>Colector</th><th>Campo</th><th>Antes</th><th>Después</th></tr>';
                 lastDiffs.forEach(d => {
@@ -274,6 +280,9 @@
                 if (!resp.ok) throw new Error(d.error || ('HTTP ' + resp.status));
                 lastComparacionForzada = !!d.equipos_distintos;
                 renderDiff(d.diferencias || [], d.baseline_en);
+                if (d.metricas_base && d.metricas_actual) {
+                    renderMetricas(d.metricas_actual);
+                }
                 let texto = 'Comparación lista: ' + (lastDiffs ? lastDiffs.length : 0) + ' diferencia(s). Incluirán en el informe.';
                 if (lastComparacionForzada) {
                     texto = 'ADVERTENCIA: comparación entre equipos distintos. ' + texto;
@@ -285,7 +294,7 @@
                 setStatus('error', 'Error al comparar: ' + e.message);
             }
         }
-        
+
         async function downloadReport(format) {
             if (!currentDiag) {
                 alert('Ejecute primero un diagnóstico individual (no la Revisión Total).');
@@ -317,7 +326,7 @@
                 setStatus('error', 'Error al generar informe: ' + e.message);
             }
         }
-        
+
         function mostrarIntegridad(lista) {
             const b = document.getElementById('integridadBanner');
             if (!b) return;
@@ -336,11 +345,11 @@
             dot.className = 'status-dot ' + status;
             textEl.textContent = text;
         }
-        
+
         function showLoading(message) {
             return '<div class="loading"><div class="spinner"></div><p class="loading-text">' + message + '</p></div>';
         }
-        
+
         function formatJson(data) {
             try {
                 return JSON.stringify(data, null, 2);
@@ -348,7 +357,7 @@
                 return String(data);
             }
         }
-        
+
         function getStatusBadge(ok, errors, problems, empty) {
             problems = problems || 0;
             empty = empty || 0;
@@ -358,25 +367,26 @@
             if (empty > 0) return '<span class="diag-badge warning">Sin datos: ' + empty + '</span>';
             return '<span class="diag-badge warning">Sin datos</span>';
         }
-        
+
         async function runDiagnostic(package) {
             if (isRunning) return;
             isRunning = true;
-            
-            const buttons = document.querySelectorAll('.btn:not(#btnKb):not(#btnRegistro)');
+            mostrarVista('diagnosticos');
+
+            const buttons = document.querySelectorAll('.mod-btn:not(#btnKb):not(#btnRegistro)');
             buttons.forEach(b => b.disabled = true);
-            
+
             setStatus('running', 'Ejecutando diagnóstico de ' + package + '...');
             document.getElementById('resultsContent').innerHTML = showLoading('Ejecutando colectores...');
-            
+
             try {
                 const response = await fetch('/api/diagnose?package=' + encodeURIComponent(package));
                 const data = await response.json();
-                
+
                 if (data.error) {
                     hideAcciones();
                     mostrarIntegridad([]);
-                    document.getElementById('resultsContent').innerHTML = '<div class="diag-card error"><p>' + data.error + '</p></div>';
+                    document.getElementById('resultsContent').innerHTML = '<div class="diag-card error"><p>' + escHtml(data.error) + '</p></div>';
                     setStatus('error', 'Error: ' + data.error);
                 } else {
                     currentDiag = data;
@@ -386,9 +396,10 @@
                     document.getElementById('diffSection').style.display = 'none';
                     const nProblemas = (data.findings || []).length;
                     renderProblemas(data.findings || []);
+                    renderMetricas(data.metricas);
                     let html = '<div class="diag-card ' + ((data.error_count > 0 || nProblemas > 0) ? 'warning' : 'success') + '">';
                     html += '<div class="diag-header">';
-                    html += '<span class="diag-title">' + data.package_label + '</span>';
+                    html += '<span class="diag-title">' + escHtml(data.package_label) + '</span>';
                     html += getStatusBadge(data.ok_count, data.error_count, nProblemas, data.empty_count);
                     html += '</div>';
                     html += '<div class="diag-stats">';
@@ -397,58 +408,67 @@
                     html += '<span>Errores: ' + data.error_count + '</span>';
                     html += '<span>Sin datos: ' + (data.empty_count || 0) + '</span>';
                     html += '<span>Problemas: ' + nProblemas + '</span>';
-                    html += '<span>' + data.timestamp + '</span>';
+                    html += '<span>' + escHtml(data.timestamp) + '</span>';
                     html += '</div>';
-                    
-                    // Mostrar resultados expandidos
+
                     for (const result of data.results) {
-                        const status = result.query?.status || 'unknown';
+                        const status = (result.query && result.query.status) || 'unknown';
                         const cardClass = status === 'ok' ? 'success' : (status === 'error' ? 'error' : 'warning');
                         html += '<div class="diag-card ' + cardClass + '" style="margin-top: 12px; border-left-width: 2px;">';
                         html += '<div class="diag-header">';
-                        html += '<span class="diag-title">' + (result.collector_id || 'unknown') + '</span>';
-                        html += '<span class="diag-badge ' + (status === 'ok' ? 'ok' : 'error') + '">' + status + '</span>';
+                        html += '<span class="diag-title">' + escHtml(result.collector_id || 'unknown') + '</span>';
+                        html += '<span class="diag-badge ' + (status === 'ok' ? 'ok' : 'error') + '">' + escHtml(status) + '</span>';
                         html += '</div>';
-                        html += '<div class="diag-json">' + formatJson(result.data || result) + '</div>';
+                        html += '<div class="diag-json">' + escHtml(formatJson(result.data || result)) + '</div>';
                         html += '</div>';
                     }
-                    
+
                     html += '</div>';
                     document.getElementById('resultsContent').innerHTML = html;
                     setStatus('ready', 'Diagnóstico completado: ' + data.package_label +
                         (data.registro_id ? ' · guardado en registro' : ''));
+                    loadRegistro();
                 }
             } catch (e) {
                 hideAcciones();
-                document.getElementById('resultsContent').innerHTML = '<div class="diag-card error"><p>Error: ' + e.message + '</p></div>';
+                document.getElementById('resultsContent').innerHTML = '<div class="diag-card error"><p>Error: ' + escHtml(e.message) + '</p></div>';
                 setStatus('error', 'Error de conexión');
             }
-            
+
             buttons.forEach(b => b.disabled = false);
             isRunning = false;
         }
-        
+
         async function runFullScan() {
             if (isRunning) return;
             isRunning = true;
             hideAcciones();
-            
-            const buttons = document.querySelectorAll('.btn:not(#btnKb):not(#btnRegistro)');
+            mostrarVista('diagnosticos');
+
+            const buttons = document.querySelectorAll('.mod-btn:not(#btnKb):not(#btnRegistro)');
             buttons.forEach(b => b.disabled = true);
-            
+
             setStatus('running', 'Ejecutando revisión total del equipo...');
             document.getElementById('resultsContent').innerHTML = showLoading('Ejecutando todos los diagnósticos...');
-            
+
             try {
                 const response = await fetch('/api/full-scan');
                 const data = await response.json();
-                
+
+                if (data.error) {
+                    document.getElementById('resultsContent').innerHTML = '<div class="diag-card error"><p>' + escHtml(data.error) + '</p></div>';
+                    setStatus('error', 'Error: ' + data.error);
+                    buttons.forEach(b => b.disabled = false);
+                    isRunning = false;
+                    return;
+                }
+
                 const integridadTotal = [];
                 (data.diagnostics || []).forEach(dg => (dg.integridad_fallida || []).forEach(x => {
                     if (integridadTotal.indexOf(x) === -1) integridadTotal.push(x);
                 }));
                 mostrarIntegridad(integridadTotal);
-                
+
                 let html = '';
                 let totalErrors = 0;
                 let totalOk = 0;
@@ -460,7 +480,7 @@
                 const allResults = [];
                 const allRecommendations = [];
                 const seenMejoras = {};
-                
+
                 for (const diag of data.diagnostics) {
                     const errors = diag.error_count || 0;
                     const ok = diag.ok_count || 0;
@@ -470,7 +490,7 @@
                     totalEmpty += (diag.empty_count || 0);
                     totalProblems += problems;
                     totalCollectors += diag.collectors_count || (diag.results || []).length;
-                    
+
                     (diag.results || []).forEach(r => allResults.push(r));
                     (diag.findings || []).forEach(f => {
                         const c = Object.assign({}, f);
@@ -486,11 +506,11 @@
                     (diag.recommendations || []).forEach(rc => {
                         if (allRecommendations.indexOf(rc) === -1) allRecommendations.push(rc);
                     });
-                    
+
                     const cardClass = (errors > 0 || problems > 0) ? 'warning' : 'success';
                     html += '<div class="diag-card ' + cardClass + '">';
                     html += '<div class="diag-header">';
-                    html += '<span class="diag-title">' + diag.package_label + '</span>';
+                    html += '<span class="diag-title">' + escHtml(diag.package_label) + '</span>';
                     html += getStatusBadge(ok, errors, problems, diag.empty_count);
                     html += '</div>';
                     html += '<div class="diag-stats">';
@@ -499,21 +519,19 @@
                     html += '<span>Sin datos: ' + (diag.empty_count || 0) + '</span>';
                     html += '<span>Problemas: ' + problems + '</span>';
                     html += '</div>';
-                    
-                    // Mostrar colectores con problemas
+
                     for (const result of diag.results) {
-                        const status = result.query?.status || 'unknown';
+                        const status = (result.query && result.query.status) || 'unknown';
                         if (status === 'error') {
                             html += '<div class="diag-json" style="margin-top: 8px; padding: 8px;">';
-                            html += '<strong>' + (result.collector_id || 'unknown') + ':</strong> ' + formatJson(result.data || result);
+                            html += '<strong>' + escHtml(result.collector_id || 'unknown') + ':</strong> ' + escHtml(formatJson(result.data || result));
                             html += '</div>';
                         }
                     }
-                    
+
                     html += '</div>';
                 }
-                
-                // Resumen
+
                 html = '<div class="diag-card ' + ((totalErrors > 0 || totalProblems > 0) ? 'warning' : 'success') + '" style="margin-bottom: 20px;">' +
                     '<div class="diag-header">' +
                     '<span class="diag-title">RESUMEN TOTAL</span>' +
@@ -528,7 +546,6 @@
                     '</div>' +
                     '</div>' + html;
 
-                // Seccion de acciones del tecnico e informe (igual que un diagnostico individual)
                 lastDiffs = null;
                 lastComparacionForzada = false;
                 document.getElementById('diffSection').style.display = 'none';
@@ -548,36 +565,299 @@
                     timestamp: data.timestamp
                 };
                 renderProblemas(allFindings);
-                
+                renderMetricas(data.metricas);
+
                 document.getElementById('resultsContent').innerHTML = html;
                 setStatus('ready', 'Revisión total completada' +
                     (data.registro_id ? ' · guardado en registro' : ''));
+                loadRegistro();
             } catch (e) {
-                document.getElementById('resultsContent').innerHTML = '<div class="diag-card error"><p>Error: ' + e.message + '</p></div>';
+                document.getElementById('resultsContent').innerHTML = '<div class="diag-card error"><p>Error: ' + escHtml(e.message) + '</p></div>';
                 setStatus('error', 'Error de conexión');
             }
-            
+
             buttons.forEach(b => b.disabled = false);
             isRunning = false;
         }
-        
+
         function copyResults() {
             const content = document.getElementById('resultsContent').innerText;
             navigator.clipboard.writeText(content).then(() => {
                 alert('Resultados copiados al portapapeles');
             });
         }
-        
+
         function clearResults() {
             hideAcciones();
-            document.getElementById('resultsContent').innerHTML = 
-                '<div class="results-empty"><div class="results-empty-icon">🔧</div><p>Haga clic en un botón para ejecutar un diagnóstico</p></div>';
+            document.getElementById('resultsContent').innerHTML =
+                '<div class="results-empty"><span class="results-empty-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg></span><p>Elija un módulo para ejecutar un diagnóstico</p></div>';
             setStatus('ready', 'Listo para ejecutar diagnósticos');
         }
-        
+
+        // ---------------------------------------------------------------
+        // Navegacion entre vistas
+        // ---------------------------------------------------------------
+        const TITULOS = {
+            inicio: ['Inicio', 'Resumen gráfico del estado del equipo'],
+            diagnosticos: ['Diagnósticos', 'Ejecute módulos y revise los resultados'],
+            historial: ['Historial', 'Análisis guardados en el registro'],
+            configuracion: ['Configuración', 'Permisos y carpetas de datos'],
+            acerca: ['Acerca de', 'Información del programa']
+        };
+
+        function mostrarVista(nombre) {
+            const vistas = document.querySelectorAll('.view');
+            vistas.forEach(v => { v.style.display = 'none'; });
+            const target = document.getElementById('view' + nombre.charAt(0).toUpperCase() + nombre.slice(1));
+            if (target) target.style.display = 'block';
+            document.querySelectorAll('#navPrincipal .nav-item').forEach(b => {
+                b.classList.toggle('activo', b.getAttribute('data-view') === nombre);
+            });
+            const t = TITULOS[nombre] || TITULOS.inicio;
+            setTexto('viewTitulo', t[0]);
+            setTexto('viewSub', t[1]);
+        }
+
+        function irARegistro() {
+            mostrarVista('historial');
+            loadRegistro();
+        }
+
+        function toggleKb() {
+            const sec = document.getElementById('kbSection');
+            const btn = document.getElementById('btnKb');
+            const abierto = sec.style.display === 'block';
+            if (abierto) {
+                sec.style.display = 'none';
+                btn.classList.remove('btn-open');
+                closeKbForm();
+            } else {
+                if (!kbEntradas.length) loadKnowledge();
+                sec.style.display = 'block';
+                btn.classList.add('btn-open');
+                sec.scrollIntoView({behavior: 'smooth', block: 'start'});
+            }
+        }
+
+        // ---------------------------------------------------------------
+        // Graficas (SVG propio, sin librerias externas)
+        // ---------------------------------------------------------------
+        const COLOR_ETIQUETA = {Bueno: '#2FBF71', 'Atención': '#F5A623', 'Crítico': '#EF4B5B', 'Datos parciales': '#F5A623', 'Sin datos': '#9FB3CB'};
+
+        function renderMetricas(m) {
+            if (!m) return;
+            renderGauge(m);
+            renderSeveridad(m);
+            renderCategorias(m);
+            renderMedidores(m);
+        }
+
+        function renderGauge(m) {
+            setTexto('gaugeTitulo', m.alcance || 'Puntaje');
+            const sub = document.getElementById('gaugeAlcance');
+            if (sub) sub.textContent = m.leyenda || '';
+            const cuerpo = document.getElementById('gaugeCuerpo');
+            const nota = (m.alcance && m.alcance.indexOf('paquete') !== -1)
+                ? 'Este puntaje no refleja el estado general del equipo.' : '';
+            if (m.puntaje == null) {
+                cuerpo.innerHTML = '<p class="sin-datos">Sin datos. No se ejecutaron módulos.</p>';
+                return;
+            }
+            const color = COLOR_ETIQUETA[m.etiqueta] || '#9FB3CB';
+            const r = 78, cx = 100, cy = 100;
+            const frac = Math.max(0, Math.min(1, m.puntaje / 100));
+            const ang = Math.PI * (1 - frac);
+            const ex = cx + r * Math.cos(ang);
+            const ey = cy - r * Math.sin(ang);
+            const bg = 'M ' + (cx - r) + ' ' + cy + ' A ' + r + ' ' + r + ' 0 0 1 ' + (cx + r) + ' ' + cy;
+            const val = 'M ' + (cx - r) + ' ' + cy + ' A ' + r + ' ' + r + ' 0 0 1 ' + ex.toFixed(2) + ' ' + ey.toFixed(2);
+            const cobertura = (m.cobertura && m.cobertura.porcentaje != null) ? m.cobertura.porcentaje + '%' : '—';
+            const c = m.cobertura || {};
+            cuerpo.innerHTML =
+                '<div class="gauge-figura">' +
+                  '<svg width="200" height="112" viewBox="0 0 200 112">' +
+                    '<path d="' + bg + '" stroke="#1C3250" stroke-width="16" fill="none" stroke-linecap="round"/>' +
+                    '<path d="' + val + '" stroke="' + color + '" stroke-width="16" fill="none" stroke-linecap="round"/>' +
+                  '</svg>' +
+                  '<div class="gauge-valor" style="color:' + color + '">' + m.puntaje + '<small>/100</small></div>' +
+                '</div>' +
+                '<div class="gauge-etiqueta" style="color:' + color + '">' + escHtml(m.etiqueta || '') + '</div>' +
+                '<div class="gauge-cobertura">Cobertura: <b>' + cobertura + '</b> (' + (c.colectores_ok || 0) +
+                    '/' + (c.colectores_ejecutados || 0) + ' colectores OK)</div>' +
+                (nota ? '<div class="gauge-cobertura">' + nota + '</div>' : '');
+        }
+
+        function donaSvg(segmentos, totalCentro) {
+            const r = 54, cx = 70, cy = 70, grosor = 16;
+            const C = 2 * Math.PI * r;
+            const suma = segmentos.reduce((a, s) => a + s.valor, 0);
+            let offset = 0;
+            let partes = '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="#1C3250" stroke-width="' + grosor + '"/>';
+            if (suma > 0) {
+                segmentos.forEach(s => {
+                    const len = (s.valor / suma) * C;
+                    partes += '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' + s.color +
+                        '" stroke-width="' + grosor + '" stroke-dasharray="' + len.toFixed(2) + ' ' + (C - len).toFixed(2) +
+                        '" stroke-dashoffset="' + (-offset).toFixed(2) + '" transform="rotate(-90 ' + cx + ' ' + cy + ')"/>';
+                    offset += len;
+                });
+            }
+            return '<svg width="140" height="140" viewBox="0 0 140 140">' + partes +
+                '<text x="' + cx + '" y="' + (cy + 2) + '" text-anchor="middle" fill="#E6EEF8" font-size="26" font-weight="700" stroke="none">' +
+                totalCentro + '</text>' +
+                '<text x="' + cx + '" y="' + (cy + 20) + '" text-anchor="middle" fill="#9FB3CB" font-size="10" stroke="none">hallazgos</text>' +
+                '</svg>';
+        }
+
+        function renderSeveridad(m) {
+            const el = document.getElementById('severidadCuerpo');
+            const s = (m && m.severidad) || {critical: 0, error: 0, warning: 0};
+            const total = (s.critical || 0) + (s.error || 0) + (s.warning || 0);
+            const segmentos = [
+                {valor: s.critical || 0, color: '#EF4B5B'},
+                {valor: s.error || 0, color: '#F2761E'},
+                {valor: s.warning || 0, color: '#F5A623'}
+            ];
+            const leyenda =
+                '<div class="item"><span class="punto sev-critical"></span>Crítico<span class="n">' + (s.critical || 0) + '</span></div>' +
+                '<div class="item"><span class="punto sev-error"></span>Error<span class="n">' + (s.error || 0) + '</span></div>' +
+                '<div class="item"><span class="punto sev-warning"></span>Advertencia<span class="n">' + (s.warning || 0) + '</span></div>';
+            el.innerHTML = donaSvg(segmentos, total) + '<div class="severidad-leyenda">' + leyenda + '</div>' +
+                (total === 0 ? '<div class="gauge-cobertura">Sin hallazgos de problema.</div>' : '');
+        }
+
+        function renderCategorias(m) {
+            const el = document.getElementById('categoriasCuerpo');
+            const cats = (m && m.categorias) || [];
+            if (!cats.length) { el.innerHTML = '<p class="sin-datos">Sin datos.</p>'; return; }
+            let html = '';
+            cats.forEach(c => {
+                const ok = c.ok || 0, adv = c.advertencia || 0, err = c.error || 0, ne = c.no_evaluado || 0;
+                const total = ok + adv + err + ne || 1;
+                const pct = v => (v / total * 100).toFixed(1) + '%';
+                html += '<div class="categoria">';
+                html += '<div class="nombre"><span>' + escHtml(c.paquete || 'Análisis') + '</span>' +
+                    '<span>' + ok + ' OK · ' + adv + ' adv. · ' + err + ' error · ' + ne + ' n/e</span></div>';
+                html += '<div class="barra">';
+                if (ok) html += '<span class="barra-ok" style="width:' + pct(ok) + '" title="OK: ' + ok + '"></span>';
+                if (adv) html += '<span class="barra-advertencia" style="width:' + pct(adv) + '" title="Advertencia: ' + adv + '"></span>';
+                if (err) html += '<span class="barra-error" style="width:' + pct(err) + '" title="Error: ' + err + '"></span>';
+                if (ne) html += '<span class="barra-noevaluado" style="width:' + pct(ne) + '" title="No evaluado: ' + ne + '"></span>';
+                html += '</div></div>';
+            });
+            html += '<div class="acciones-hint">OK / Advertencia / Error / No evaluado por paquete.</div>';
+            el.innerHTML = html;
+        }
+
+        function nivel(pct) {
+            if (pct >= 90) return 'rojo';
+            if (pct >= 75) return 'naranja';
+            if (pct >= 60) return 'ambar';
+            return 'ok';
+        }
+
+        function renderMedidores(m) {
+            const el = document.getElementById('medidoresCuerpo');
+            const med = (m && m.medidores) || {};
+            let html = '';
+            if (med.memoria && med.memoria.usado_porcentaje != null) {
+                const p = med.memoria.usado_porcentaje;
+                html += '<div class="medidor"><div class="nombre"><span>Memoria en uso</span><span>' + p + '%</span></div>' +
+                    '<div class="pista"><span class="nivel-' + nivel(p) + '" style="width:' + Math.min(100, p) + '%"></span></div></div>';
+            }
+            (med.discos || []).forEach(d => {
+                if (d.usado_porcentaje == null) return;
+                html += '<div class="medidor"><div class="nombre"><span>Disco ' + escHtml(d.unidad || '') +
+                    '</span><span>' + d.usado_porcentaje + '%</span></div>' +
+                    '<div class="pista"><span class="nivel-' + nivel(d.usado_porcentaje) + '" style="width:' + Math.min(100, d.usado_porcentaje) + '%"></span></div></div>';
+            });
+            el.innerHTML = html || '<p class="sin-datos">Sin datos.</p>';
+        }
+
+        function alcanceDeEntrada(e) {
+            if (!e) return 'Análisis';
+            if (e.tipo === 'full-scan' || e.paquete === 'full-scan') return 'Revisión total';
+            return e.paquete_label || e.paquete || 'Análisis';
+        }
+
+        function renderActividad(lista) {
+            const el = document.getElementById('actividadCuerpo');
+            if (!el) return;
+            if (!lista || !lista.length) {
+                el.innerHTML = '<p class="sin-datos">Todavía no hay análisis registrados.</p>';
+                return;
+            }
+            let html = '';
+            lista.slice(0, 6).forEach(e => {
+                const fecha = (e.fecha || '').replace('T', ' ').slice(0, 16);
+                const col = (e.puntaje == null) ? '#9FB3CB' : (e.puntaje >= 85 ? '#2FBF71' : (e.puntaje >= 60 ? '#F5A623' : '#EF4B5B'));
+                html += '<div class="act-item">' +
+                    '<span class="act-paq">' + escHtml(alcanceDeEntrada(e)) + '</span>' +
+                    '<span class="act-puntaje" style="color:' + col + '">' + (e.puntaje == null ? '—' : e.puntaje) + '</span>' +
+                    '<span class="act-fecha">' + escHtml(fecha) + '</span>' +
+                    '</div>';
+            });
+            el.innerHTML = html;
+        }
+
+        function renderTendencia(lista) {
+            const el = document.getElementById('tendenciaCuerpo');
+            const nota = document.getElementById('tendenciaNota');
+            if (!el) return;
+            if (!lista || !lista.length) {
+                el.innerHTML = '<p class="sin-datos">Aún no hay historial suficiente.</p>';
+                if (nota) nota.textContent = '';
+                return;
+            }
+            const ult = lista[0];
+            const tipo = ult.tipo, paquete = ult.paquete;
+            const puntos = lista
+                .filter(e => e.tipo === tipo && e.paquete === paquete && e.puntaje != null)
+                .slice(0, 10)
+                .reverse();
+            if (nota) nota.textContent = 'Tendencia: ' + alcanceDeEntrada(ult) + ' (últimos ' + puntos.length + ')';
+            if (puntos.length < 2) {
+                el.innerHTML = '<p class="sin-datos">Aún no hay historial suficiente.</p>';
+                return;
+            }
+            const W = 600, H = 140, padX = 30, padY = 20;
+            const n = puntos.length;
+            const paso = (W - padX * 2) / (n - 1);
+            const y = v => H - padY - (v / 100) * (H - padY * 2);
+            let linea = '', area = '';
+            puntos.forEach((p, i) => {
+                const x = padX + i * paso;
+                const yy = y(p.puntaje);
+                linea += (i === 0 ? 'M ' : 'L ') + x.toFixed(1) + ' ' + yy.toFixed(1) + ' ';
+                area += (i === 0 ? 'M ' : 'L ') + x.toFixed(1) + ' ' + yy.toFixed(1) + ' ';
+            });
+            const first = padX, last = padX + (n - 1) * paso;
+            area = area.trim() + ' L ' + last.toFixed(1) + ' ' + (H - padY) + ' L ' + first.toFixed(1) + ' ' + (H - padY) + ' Z';
+            let circulos = '', etiquetas = '';
+            puntos.forEach((p, i) => {
+                const x = padX + i * paso;
+                const yy = y(p.puntaje);
+                circulos += '<circle class="spark-punto" cx="' + x.toFixed(1) + '" cy="' + yy.toFixed(1) + '" r="3.5"/>';
+                if (i === 0 || i === n - 1) {
+                    etiquetas += '<text class="spark-txt" x="' + x.toFixed(1) + '" y="' + (yy - 8).toFixed(1) + '" text-anchor="middle">' + p.puntaje + '</text>';
+                    etiquetas += '<text class="spark-txt" x="' + x.toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle">' +
+                        escHtml((p.fecha || '').slice(5, 10)) + '</text>';
+                }
+            });
+            el.innerHTML = '<svg class="spark" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' +
+                '<line class="spark-eje" x1="' + padX + '" y1="' + y(100) + '" x2="' + (W - padX) + '" y2="' + y(100) + '"/>' +
+                '<line class="spark-eje" x1="' + padX + '" y1="' + y(0) + '" x2="' + (W - padX) + '" y2="' + y(0) + '"/>' +
+                '<path class="spark-area" d="' + area + '"/>' +
+                '<path class="spark-linea" d="' + linea.trim() + '"/>' +
+                circulos + etiquetas + '</svg>';
+        }
+
+        // ---------------------------------------------------------------
+        // Base de conocimiento
+        // ---------------------------------------------------------------
         let kbEntradas = [];
         let kbRender = [];
-        
+
         function renderKb(lista) {
             const el = document.getElementById('kbLista');
             if (!el) return;
@@ -597,7 +877,7 @@
                 html += '<h4>' + escHtml(e.titulo || e.id) + '</h4>';
                 html += '<div class="kb-body">';
                 if (e.estado_esperado) html += '<div><b>Cómo debe estar:</b> ' + escHtml(e.estado_esperado) + '</div>';
-                if (e.por_que_importa) html += '<div class="kb-muted" style="color:#aaa; margin-top:4px;"><b>Por qué importa:</b> ' + escHtml(e.por_que_importa) + '</div>';
+                if (e.por_que_importa) html += '<div class="kb-muted" style="color:#9FB3CB; margin-top:4px;"><b>Por qué importa:</b> ' + escHtml(e.por_que_importa) + '</div>';
                 if (e.soluciones && e.soluciones.length) {
                     html += '<div style="margin-top:6px;"><b>Solución:</b><ol>';
                     e.soluciones.forEach(s => { html += '<li>' + escHtml(s) + '</li>'; });
@@ -613,7 +893,7 @@
             });
             el.innerHTML = html;
         }
-        
+
         function filterKb() {
             const q = ((document.getElementById('kbSearch') || {}).value || '').trim().toLowerCase();
             if (!q) { renderKb(kbEntradas); return; }
@@ -621,7 +901,7 @@
                 JSON.stringify(e).toLowerCase().indexOf(q) !== -1);
             renderKb(lista);
         }
-        
+
         async function loadKnowledge() {
             try {
                 const r = await fetch('/api/knowledge');
@@ -631,22 +911,6 @@
             } catch (e) {
                 const el = document.getElementById('kbLista');
                 if (el) el.innerHTML = '<p class="acciones-hint">No se pudo cargar la base de conocimiento.</p>';
-            }
-        }
-        
-        function toggleKb() {
-            const sec = document.getElementById('kbSection');
-            const btn = document.getElementById('btnKb');
-            const abierto = sec.style.display === 'block';
-            if (abierto) {
-                sec.style.display = 'none';
-                btn.classList.remove('btn-open');
-                closeKbForm();
-            } else {
-                if (!kbEntradas.length) loadKnowledge();
-                sec.style.display = 'block';
-                btn.classList.add('btn-open');
-                sec.scrollIntoView({behavior: 'smooth', block: 'start'});
             }
         }
 
@@ -669,11 +933,6 @@
             document.getElementById('kbf_verificacion').value = entrada ? (entrada.verificacion || '') : '';
             form.classList.add('open');
             form.scrollIntoView({behavior: 'smooth', block: 'nearest'});
-        }
-
-        function openKbFormById(id) {
-            const e = kbEntradas.find(x => x.id === id);
-            if (e) openKbForm(e);
         }
 
         function closeKbForm() {
@@ -741,7 +1000,7 @@
         // Registro persistente de análisis
         // ---------------------------------------------------------------
         let regEntradas = [];
-        
+
         function renderRegistro(lista) {
             const el = document.getElementById('regLista');
             if (!el) return;
@@ -762,7 +1021,8 @@
                 const tipo = e.tipo === 'full-scan' ? 'Revisión total' : 'Paquete';
                 html += '<div class="kb-card">';
                 html += '<div class="kb-cat">' + escHtml(tipo) + ' · ' + escHtml(fecha) + '</div>';
-                html += '<h4>' + escHtml(e.paquete_label || e.paquete || '-') + '</h4>';
+                html += '<h4>' + escHtml(e.paquete_label || e.paquete || '-') +
+                    (e.puntaje == null ? '' : ' <span class="badge-grupo">' + e.puntaje + '/100</span>') + '</h4>';
                 html += '<div class="kb-body">';
                 html += '<div><b>Síntoma:</b> ' + escHtml(e.sintoma || '-') + '</div>';
                 html += '<div style="margin-top:4px;">Colectores OK: ' + (c.ok || 0) +
@@ -783,7 +1043,7 @@
             el.querySelectorAll('[data-reg-det]').forEach(b =>
                 b.addEventListener('click', () => toggleRegDetalle(b.getAttribute('data-reg-det'), b)));
         }
-        
+
         async function toggleRegDetalle(id, btn) {
             const cont = document.getElementById('regdet_' + id);
             if (!cont) return;
@@ -803,8 +1063,9 @@
                         h += '<div class="acciones-hint">Sin problemas detectados en ese análisis.</div>';
                     }
                     findings.forEach(f => {
-                        const color = f.severity === 'error' ? '#ff6b6b' :
-                                     (f.severity === 'warning' ? '#ffd166' : '#8ef0a0');
+                        const color = f.severity === 'critical' ? '#EF4B5B' :
+                                     (f.severity === 'error' ? '#F2761E' :
+                                     (f.severity === 'warning' ? '#F5A623' : '#2FBF71'));
                         h += '<div style="margin-bottom:6px; border-left:3px solid ' + color + '; padding-left:8px;">';
                         h += '<b style="color:' + color + '; text-transform:uppercase; font-size:11px;">' +
                             escHtml(f.severity || '') + '</b> ';
@@ -836,25 +1097,27 @@
             cont.style.display = 'block';
             btn.textContent = 'Ocultar';
         }
-        
+
         async function loadRegistro() {
             try {
                 const r = await fetch('/api/registro');
                 const d = await r.json();
                 regEntradas = d.entradas || [];
-                const lbl = document.querySelector('#btnRegistro .btn-label');
+                const lbl = document.querySelector('#btnRegistro .mod-label');
                 if (lbl) {
                     lbl.textContent = regEntradas.length ?
                         ('Registro de análisis (' + regEntradas.length + ')') :
                         'Registro de análisis';
                 }
+                renderTendencia(regEntradas);
+                renderActividad(regEntradas);
                 filterRegistro();
             } catch (e) {
                 const el = document.getElementById('regLista');
                 if (el) el.innerHTML = '<p class="acciones-hint">No se pudo cargar el registro.</p>';
             }
         }
-        
+
         function filterRegistro() {
             const q = ((document.getElementById('regSearch') || {}).value || '').trim().toLowerCase();
             if (!q) { renderRegistro(regEntradas); return; }
@@ -862,22 +1125,7 @@
                 JSON.stringify(e).toLowerCase().indexOf(q) !== -1);
             renderRegistro(lista);
         }
-        
-        function toggleRegistro() {
-            const sec = document.getElementById('registroSection');
-            const btn = document.getElementById('btnRegistro');
-            const abierto = sec.style.display === 'block';
-            if (abierto) {
-                sec.style.display = 'none';
-                btn.classList.remove('btn-open');
-            } else {
-                loadRegistro();
-                sec.style.display = 'block';
-                btn.classList.add('btn-open');
-                sec.scrollIntoView({behavior: 'smooth', block: 'start'});
-            }
-        }
-        
+
         async function eliminarRegistro(id) {
             if (!confirm('¿Eliminar este análisis del registro?')) return;
             try {
@@ -890,7 +1138,7 @@
                 setStatus('error', 'Error al eliminar: ' + e.message);
             }
         }
-        
+
         async function vaciarRegistro() {
             if (!regEntradas.length) return;
             if (!confirm('¿Eliminar TODOS los análisis del registro (' + regEntradas.length +
@@ -905,13 +1153,20 @@
                 setStatus('error', 'Error al vaciar: ' + e.message);
             }
         }
-        
+
+        // ---------------------------------------------------------------
+        // Elevacion / permisos
+        // ---------------------------------------------------------------
         async function loadElevation() {
             try {
                 const r = await fetch('/api/elevation');
                 const d = await r.json();
                 const b = document.getElementById('elevBanner');
                 const rb = document.getElementById('respaldoBanner');
+                const pe = document.getElementById('permisosEstado');
+                const pd = document.getElementById('permisosDetalle');
+                const cp = document.getElementById('configProceso');
+                const ce = document.getElementById('configPermisos');
                 if (rb) {
                     if (d.respaldo) {
                         rb.textContent = 'Aviso: la carpeta junto al ejecutable no es escribible; los datos (config/ y reports/) se guardan en ' + d.ruta_base + '.';
@@ -924,6 +1179,10 @@
                     b.className = 'elev-banner ok';
                     b.innerHTML = '<b>Permisos de Administrador:</b> activos. Los colectores pueden leer inventario completo (software, discos, eventos).';
                     b.style.display = 'block';
+                    if (pe) { pe.className = 'permisos-estado ok'; pe.textContent = 'Administrador activo'; }
+                    if (pd) pd.textContent = 'Inventario completo disponible.';
+                    if (cp) cp.textContent = 'Administrador';
+                    if (ce) { ce.className = 'config-estado ok'; ce.textContent = 'Se ejecuta con permisos de Administrador.'; }
                 } else if (d.is_elevated === false) {
                     b.className = 'elev-banner warn';
                     b.innerHTML = '<b>Modo estándar:</b> datos limitados: installed_software (requiere administrador); ' +
@@ -931,8 +1190,15 @@
                         '<button type="button" class="elev-btn" id="elevBtn">Dar permisos de administrador</button>' +
                         '<div class="elev-msg" id="elevMsg"></div>';
                     b.style.display = 'block';
+                    if (pe) { pe.className = 'permisos-estado warn'; pe.textContent = 'Modo estándar'; }
+                    if (pd) pd.textContent = 'Algunos datos aparecen limitados.';
+                    if (cp) cp.textContent = 'Usuario estándar';
+                    if (ce) { ce.className = 'config-estado warn'; ce.textContent = 'Se ejecuta en modo estándar (datos limitados).'; }
                     const eb = document.getElementById('elevBtn');
                     if (eb) eb.addEventListener('click', solicitarElevacion);
+                } else {
+                    if (pe) { pe.className = 'permisos-estado'; pe.textContent = 'No se pudo determinar'; }
+                    if (pd) pd.textContent = '—';
                 }
             } catch (e) {}
         }
@@ -961,7 +1227,25 @@
             }
         }
 
+        // ---------------------------------------------------------------
+        // Inicializacion
+        // ---------------------------------------------------------------
+        function inicializarAcerca() {
+            setTexto('acercaVersion', DIAGUSB.version || '—');
+            setTexto('acercaHost', DIAGUSB.hostport || '—');
+            setTexto('acercaDir', DIAGUSB.datadir || '—');
+            setTexto('configDatos', DIAGUSB.datadir || '—');
+            const ap = document.getElementById('acercaPuntaje');
+            if (ap) {
+                ap.textContent = 'El puntaje orientativo resta 15, 8 y 3 puntos por hallazgo ' +
+                    'crítico, error y advertencia respectivamente, solo sobre los módulos ejecutados. ' +
+                    'Un análisis de un paquete no refleja el estado general del equipo.';
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('#navPrincipal .nav-item').forEach(b =>
+                b.addEventListener('click', () => mostrarVista(b.getAttribute('data-view'))));
             const s = document.getElementById('kbSearch');
             if (s) s.addEventListener('input', filterKb);
             ['tecnico', 'cliente', 'observaciones'].forEach(id => {
@@ -988,5 +1272,7 @@
                     openKbForm(e);
                 }
             });
+            inicializarAcerca();
             loadElevation();
+            loadRegistro();
         });
