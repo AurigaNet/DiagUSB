@@ -849,7 +849,7 @@ def test_validacion_host_y_origin():
 def test_post_exige_json():
     import threading
     import socketserver
-    import http.client
+    import socket
     import diagusb.web_server as ws
 
     class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
@@ -861,15 +861,34 @@ def test_post_exige_json():
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
 
     def post(path, ctype=None):
-        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
-        headers = dict(_cookie())
+        lineas = [
+            f"POST {path} HTTP/1.1",
+            f"Host: 127.0.0.1:{port}",
+            f"Cookie: diagusb_token={ws._token_sesion()}",
+            "Connection: close",
+        ]
         if ctype:
-            headers["Content-Type"] = ctype
-        conn.request("POST", path, body="{}", headers=headers)
-        r = conn.getresponse()
-        r.read()
-        conn.close()
-        return r.status
+            lineas.append(f"Content-Type: {ctype}")
+        lineas.append("Content-Length: 2")
+        lineas.append("")
+        lineas.append("{}")
+        pedido = "\r\n".join(lineas).encode("ascii")
+
+        s = socket.create_connection(("127.0.0.1", port), timeout=5)
+        try:
+            s.sendall(pedido)
+            datos = b""
+            while True:
+                try:
+                    trozo = s.recv(4096)
+                except (ConnectionResetError, ConnectionAbortedError):
+                    break
+                if not trozo:
+                    break
+                datos += trozo
+        finally:
+            s.close()
+        return int(datos.split(b" ", 2)[1])
 
     try:
         assert post("/api/snapshot") == 415
