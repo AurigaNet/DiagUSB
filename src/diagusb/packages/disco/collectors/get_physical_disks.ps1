@@ -20,10 +20,49 @@ if (-not $__diagusb_common) {
 . $__diagusb_common
 
 $result = New-DiagUsbCollectorResult -CollectorId 'physical_disks' -ScriptBlock {
-    $physicalDisks = Get-PhysicalDisk -ErrorAction Stop
+    $physicalDisks = @(Get-PhysicalDisk -ErrorAction Stop)
+
+    $jobs = [ordered]@{}
+    foreach ($disk in $physicalDisks) {
+        if ("$($disk.BusType)" -eq 'USB') { continue }
+        $devId = "$($disk.DeviceId)"
+        $jobs[$devId] = Start-Job -ScriptBlock {
+            param($target)
+            $d = @(Get-PhysicalDisk -ErrorAction SilentlyContinue) |
+                Where-Object { "$($_.DeviceId)" -eq $target } | Select-Object -First 1
+            if ($null -eq $d) { return }
+            @(Get-StorageReliabilityCounter -PhysicalDisk $d -ErrorAction SilentlyContinue) |
+                Select-Object -First 1
+        } -ArgumentList "$($disk.DeviceId)"
+    }
+
+    $completados = @{}
+    if ($jobs.Count -gt 0) {
+        foreach ($job in @(Wait-Job -Job @($jobs.Values) -Timeout 10)) {
+            $completados[$job.Id] = $true
+        }
+    }
+
+    $counters = @{}
+    $vencidos = @{}
+    foreach ($devId in $jobs.Keys) {
+        $job = $jobs[$devId]
+        if ($completados.ContainsKey($job.Id)) {
+            $counters[$devId] = @(Receive-Job -Job $job -ErrorAction SilentlyContinue) |
+                Select-Object -First 1
+        }
+        else {
+            $vencidos[$devId] = $true
+        }
+    }
+    foreach ($job in $jobs.Values) {
+        Stop-Job -Job $job -ErrorAction SilentlyContinue | Out-Null
+        Remove-Job -Job $job -Force -ErrorAction SilentlyContinue | Out-Null
+    }
 
     $items = @()
     foreach ($disk in $physicalDisks) {
+        $devId = "$($disk.DeviceId)"
         $busType = "$($disk.BusType)"
         $counter = $null
         $motivo = $null
@@ -31,30 +70,12 @@ $result = New-DiagUsbCollectorResult -CollectorId 'physical_disks' -ScriptBlock 
         if ($busType -eq 'USB') {
             $motivo = 'no aplica a unidades USB'
         }
+        elseif ($vencidos.ContainsKey($devId)) {
+            $motivo = 'sin respuesta en 10 s'
+        }
         else {
-            $job = Start-Job -ScriptBlock {
-                param($devId)
-                $d = @(Get-PhysicalDisk -ErrorAction SilentlyContinue) |
-                    Where-Object { "$($_.DeviceId)" -eq $devId } | Select-Object -First 1
-                if ($null -eq $d) { return }
-                @(Get-StorageReliabilityCounter -PhysicalDisk $d -ErrorAction SilentlyContinue) |
-                    Select-Object -First 1
-            } -ArgumentList "$($disk.DeviceId)"
-            $listo = $false
-            try {
-                $listo = [bool](Wait-Job -Job $job -Timeout 10)
-                if ($listo) {
-                    $counter = @(Receive-Job -Job $job -ErrorAction SilentlyContinue) | Select-Object -First 1
-                }
-            }
-            finally {
-                Stop-Job -Job $job -ErrorAction SilentlyContinue | Out-Null
-                Remove-Job -Job $job -Force -ErrorAction SilentlyContinue | Out-Null
-            }
-            if (-not $listo) {
-                $motivo = 'sin respuesta en 10 s'
-            }
-            elseif ($null -eq $counter) {
+            $counter = $counters[$devId]
+            if ($null -eq $counter) {
                 $motivo = 'sin datos de confiabilidad'
             }
         }

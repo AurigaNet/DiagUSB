@@ -403,8 +403,9 @@ def _limitado_de(collector_id: str, data: Any, status: str) -> str:
     """Razon por la que un colector devolvio datos parciales ('' si completo).
 
     Un colector puede terminar en ``ok`` y aun asi no haber leido todo: por
-    falta de permisos (``installed_software``) o porque un dato no esta
-    disponible (``physical_disks`` sin fiabilidad en USB o por tiempo agotado).
+    falta de permisos (``installed_software``) o porque un disco no-USB no
+    aporto su fiabilidad (``physical_disks``). Las unidades USB se excluyen:
+    su falta de fiabilidad es esperada y no cuenta como dato limitado.
     """
     if status != "ok":
         return ""
@@ -414,8 +415,11 @@ def _limitado_de(collector_id: str, data: Any, status: str) -> str:
             return "requiere administrador"
     if collector_id == "physical_disks":
         for x in (data if isinstance(data, list) else [data]):
-            if isinstance(x, dict) and x.get("reliability") is None \
-                    and x.get("reliability_motivo"):
+            if not isinstance(x, dict) or x.get("reliability") is not None:
+                continue
+            if str(x.get("bus_type") or "").upper() == "USB":
+                continue
+            if x.get("reliability_motivo"):
                 return "confiabilidad no disponible"
     return ""
 

@@ -1570,8 +1570,9 @@ def test_datos_limitados_alcance():
     assert not [f for f in findings_ok if (f.details or {}).get("datos_limitados")]
 
 
-def test_physical_disks_usb_y_tope():
+def test_physical_disks_usb_no_limita():
     import diagusb.web_server as ws
+    from diagusb.core.informe import _limitado_de
 
     ruta = (Path(ws.__file__).parent / "packages" / "disco" / "collectors"
             / "get_physical_disks.ps1")
@@ -1583,35 +1584,51 @@ def test_physical_disks_usb_y_tope():
     assert "sin respuesta en 10 s" in texto
     assert "reliability" in texto
 
-    diag = {
+    # Armado en paralelo: los jobs se lanzan en un bucle y se esperan con un
+    # unico Wait-Job global (no uno por disco); sin discos no-USB no hay jobs.
+    assert texto.count("Start-Job") == 1
+    assert texto.count("Wait-Job") == 1
+    assert texto.index("Start-Job") < texto.index("Wait-Job")
+    assert "if ($jobs.Count -gt 0)" in texto
+
+    usb = {"device_id": "3", "friendly_name": "USB pen", "bus_type": "USB",
+           "reliability": None, "reliability_motivo": "no aplica a unidades USB"}
+    sata_ok = {"device_id": "0", "friendly_name": "SSD", "bus_type": "SATA",
+               "reliability": {"temperature": 36}, "reliability_motivo": None}
+    sata_falla = {"device_id": "1", "friendly_name": "HDD", "bus_type": "SATA",
+                  "reliability": None,
+                  "reliability_motivo": "sin respuesta en 10 s"}
+
+    # El USB con su motivo NO cuenta como dato limitado.
+    assert _limitado_de("physical_disks", [usb], "ok") == ""
+    # USB + no-USB con fiabilidad: tampoco.
+    assert _limitado_de("physical_disks", [usb, sata_ok], "ok") == ""
+    # Un no-USB sin fiabilidad si cuenta.
+    assert _limitado_de("physical_disks", [usb, sata_ok, sata_falla], "ok") == \
+        "confiabilidad no disponible"
+
+    base = {
         "timestamp": "2026-01-01T00:00:00",
         "package": "disco", "package_label": "Disco", "symptom": "general",
         "is_elevated": True,
         "results": [
             {"collector_id": "physical_disks", "query": {"status": "ok"},
-             "data": [
-                 {"device_id": "0", "friendly_name": "SSD", "bus_type": "SATA",
-                  "reliability": {"temperature": 36}, "reliability_motivo": None},
-                 {"device_id": "3", "friendly_name": "USB pen", "bus_type": "USB",
-                  "reliability": None,
-                  "reliability_motivo": "no aplica a unidades USB"}],
-             "context": {"computer_name": "PC-01", "is_elevated": True}},
-        ],
+             "data": [usb, sata_ok],
+             "context": {"computer_name": "PC-01", "is_elevated": True}}],
         "findings": [],
     }
-    inf = informe_desde_diagnostico(diag)
+    linea = linea_alcance(informe_desde_diagnostico(base))
+    assert "datos limitados" not in linea, linea
+    assert "no evaluados: ninguno" in linea
+    assert "physical_disks" not in linea
+    assert "datos limitados" not in informe_a_html(informe_desde_diagnostico(base))
+    assert "datos limitados" not in ws._entrada_registro(base, "diagnostico")["alcance"]
+
+    con_falla = dict(base)
+    con_falla["results"] = [dict(base["results"][0], data=[usb, sata_ok, sata_falla])]
     esperado = "datos limitados: physical_disks (confiabilidad no disponible)"
-    assert esperado in linea_alcance(inf), linea_alcance(inf)
-    assert esperado in informe_a_html(inf)
-
-    entrada = ws._entrada_registro(diag, "diagnostico")
-    assert esperado in entrada["alcance"]
-
-    diag2 = dict(diag)
-    diag2["results"] = [dict(diag["results"][0], data=[
-        {"device_id": "0", "reliability": {"temperature": 36},
-         "reliability_motivo": None}])]
-    assert "datos limitados" not in linea_alcance(informe_desde_diagnostico(diag2))
+    assert esperado in linea_alcance(informe_desde_diagnostico(con_falla))
+    assert esperado in ws._entrada_registro(con_falla, "diagnostico")["alcance"]
 
 
 def test_run_powershell_timeout_termina_arbol():
@@ -1697,7 +1714,7 @@ def run_tests():
         ("test_reglas_colector_denied", test_reglas_colector_denied),
         ("test_linea_alcance_informes", test_linea_alcance_informes),
         ("test_datos_limitados_alcance", test_datos_limitados_alcance),
-        ("test_physical_disks_usb_y_tope", test_physical_disks_usb_y_tope),
+        ("test_physical_disks_usb_no_limita", test_physical_disks_usb_no_limita),
         ("test_run_powershell_timeout_termina_arbol",
          test_run_powershell_timeout_termina_arbol),
     ]
