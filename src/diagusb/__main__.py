@@ -2,10 +2,13 @@
 # Copyright (C) 2026 Daniel Ricardo Novoa
 """Punto de entrada principal de DiagUSB."""
 
+import sys
+
+sys.dont_write_bytecode = True
+
 import argparse
 import os
 import subprocess
-import sys
 from pathlib import Path
 from datetime import datetime
 
