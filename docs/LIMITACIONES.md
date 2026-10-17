@@ -9,13 +9,13 @@ Documento de limitaciones y estado actual del proyecto.
 - Sistema de paquetes con manifiestos JSON (F0)
 - 12 paquetes de colectores PowerShell validados en Windows 10 (impresion, redes, wifi, disco, memoria, servicios, seguridad, windows_update, drivers, eventos, contexto, inventario_general)
 - Nucleo Python: executor, models, rules, comparator, reporter, registry, knowledge_base (KB embebida de 19 entradas + capa local editable)
-- Informes Word (.doc) y PDF (.pdf) en español, con hallazgos, soluciones, acciones del tecnico, mejoras sugeridas y diferencias antes/despues
-- Interfaz web local (UI completa: diagnosticos rapidos, revision total, snapshot ANTES/DESPUES + comparacion, editor de KB, registro de analisis)
+- Informes Word (.doc) y PDF (.pdf) en español, con un resumen gráfico de métricas (puntaje, severidad, categorías, medidores y comparación antes/despues), hallazgos, soluciones, acciones del tecnico, mejoras sugeridas y diferencias antes/despues
+- Interfaz web local (barra lateral y tema oscuro; diagnosticos rapidos, revision total, snapshot ANTES/DESPUES + comparacion, editor de KB, registro de analisis y panel de inicio con graficas de metricas)
 - Arranque sin UAC: la elevacion a Administrador es a pedido (boton "Dar permisos de administrador" en la interfaz web, o flag `--elevar`); por defecto corre en modo estandar
 - Kit portable con Python embebido (`DiagUSB-kit-<version>.zip`, armado con `scripts\armar_kit.ps1`), verificado con prueba de humo (`scripts\probar_kit.ps1`: integridad SHA-256, firma PSF del interprete, diagnostico real y PDF)
 - Ejecutable portable con PyInstaller (`dist\diagusb\diagusb.exe`) como variante opcional, verificado con diagnose y reportes
 - Registro persistente de analisis (`config/registro_analisis.json`): auto-guardado, consulta, borrado individual y borrado total
-- Suite de pruebas unitarias (84 pruebas)
+- Suite de pruebas unitarias (110 pruebas)
 
 ### Pendiente de validacion
 - Windows 11 (validado hasta ahora en Windows 10)
@@ -37,6 +37,7 @@ Documento de limitaciones y estado actual del proyecto.
 - El registro de analisis conserva hasta 200 entradas; se descartan automaticamente las mas viejas
 
 ### Funcionalidad
+- La tendencia (evolucion del puntaje entre analisis) se muestra solo en la interfaz web (pestana Historial); todavia NO se incluye en los informes Word/PDF.
 - Los colectores de seguridad (eventos) y algunos inventarios requieren permisos de Administrador para datos completos (en modo estandar se ven parciales o como 'No evaluado (requiere administrador)')
 - La verificacion de conectividad de red esta limitada (no hace ping real en el colector)
 - `Get-WindowsFeature` (roles de servidor) no existe en Windows 10: `windows_features` queda vacio en estaciones
