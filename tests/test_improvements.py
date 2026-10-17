@@ -1631,6 +1631,21 @@ def test_physical_disks_usb_no_limita():
     assert esperado in ws._entrada_registro(con_falla, "diagnostico")["alcance"]
 
 
+def test_pagina_desde_static():
+    import diagusb.web_server as ws
+
+    html = ws._cargar_pagina()
+    assert "@@DIAGUSB" not in html
+    base = Path(ws.__file__).with_name("static")
+    for nombre in ("index.html", "app.css", "app.js"):
+        assert (base / nombre).is_file(), nombre
+    for pkg in ("impresion", "redes", "wifi", "disco", "memoria", "servicios",
+                "seguridad", "windows_update", "drivers", "eventos", "contexto"):
+        assert f"runDiagnostic('{pkg}')" in html, pkg
+    assert "runFullScan()" in html
+    assert "btnKb" in html and "btnRegistro" in html
+
+
 def test_run_powershell_timeout_termina_arbol():
     import tempfile
     import time
@@ -1715,6 +1730,7 @@ def run_tests():
         ("test_linea_alcance_informes", test_linea_alcance_informes),
         ("test_datos_limitados_alcance", test_datos_limitados_alcance),
         ("test_physical_disks_usb_no_limita", test_physical_disks_usb_no_limita),
+        ("test_pagina_desde_static", test_pagina_desde_static),
         ("test_run_powershell_timeout_termina_arbol",
          test_run_powershell_timeout_termina_arbol),
     ]

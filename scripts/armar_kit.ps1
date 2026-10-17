@@ -123,7 +123,11 @@ New-Item -ItemType Directory -Path (Split-Path -Parent $srcDst) -Force | Out-Nul
 Copy-Item -LiteralPath (Join-Path $Repo 'src\diagusb') -Destination $srcDst -Recurse
 Get-ChildItem -LiteralPath $srcDst -Recurse -Directory -Filter '__pycache__' |
     Remove-Item -Recurse -Force
-Write-Host "Codigo fuente copiado en: $srcDst"
+$staticIdx = Join-Path $srcDst 'static\index.html'
+if (-not (Test-Path -LiteralPath $staticIdx)) {
+    throw "Falta la interfaz web (static\index.html) en el codigo del kit: $staticIdx"
+}
+Write-Host "Codigo fuente copiado en: $srcDst (interfaz static incluida)"
 
 # 3b) colectores compartidos: src\collectors\_common.ps1 (el walk de los .ps1
 #     y core/integridad.py buscan '<ancestro>\collectors\_common.ps1')

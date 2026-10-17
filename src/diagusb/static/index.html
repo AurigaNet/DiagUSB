@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DiagUSB - Diagnóstico Interactivo</title>
+    <style>@@DIAGUSB_CSS@@    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>DiagUSB</h1>
+            <p class="subtitle">Herramienta de Diagnóstico Interactiva v0.1.0</p>
+        </div>
+
+        <div class="elev-banner" id="elevBanner" style="display:none;"></div>
+
+        <div class="integridad-banner" id="integridadBanner" style="display:none;"></div>
+
+        <div class="respaldo-banner" id="respaldoBanner" style="display:none;"></div>
+        
+        <!-- Buttons Section -->
+        <div class="buttons-section">
+            <h2>Diagnósticos Rápidos</h2>
+            
+            <div class="btn-grid">
+                <button class="btn btn-full" onclick="runFullScan()">
+                    <span class="btn-icon">🔍</span>
+                    <span class="btn-label">Revisión Total</span>
+                </button>
+                
+                <button class="btn btn-impresion" onclick="runDiagnostic('impresion')">
+                    <span class="btn-icon">🖨️</span>
+                    <span class="btn-label">Impresión</span>
+                </button>
+                
+                <button class="btn btn-redes" onclick="runDiagnostic('redes')">
+                    <span class="btn-icon">🌐</span>
+                    <span class="btn-label">Red Cableada</span>
+                </button>
+                
+                <button class="btn btn-wifi" onclick="runDiagnostic('wifi')">
+                    <span class="btn-icon">📶</span>
+                    <span class="btn-label">WiFi</span>
+                </button>
+                
+                <button class="btn btn-disco" onclick="runDiagnostic('disco')">
+                    <span class="btn-icon">💾</span>
+                    <span class="btn-label">Disco</span>
+                </button>
+                
+                <button class="btn btn-memoria" onclick="runDiagnostic('memoria')">
+                    <span class="btn-icon">🧠</span>
+                    <span class="btn-label">Memoria</span>
+                </button>
+                
+                <button class="btn btn-servicios" onclick="runDiagnostic('servicios')">
+                    <span class="btn-icon">⚙️</span>
+                    <span class="btn-label">Servicios</span>
+                </button>
+                
+                <button class="btn btn-seguridad" onclick="runDiagnostic('seguridad')">
+                    <span class="btn-icon">🔒</span>
+                    <span class="btn-label">Seguridad</span>
+                </button>
+                
+                <button class="btn btn-windows" onclick="runDiagnostic('windows_update')">
+                    <span class="btn-icon">🔄</span>
+                    <span class="btn-label">Windows Update</span>
+                </button>
+                
+                <button class="btn btn-drivers" onclick="runDiagnostic('drivers')">
+                    <span class="btn-icon">📦</span>
+                    <span class="btn-label">Drivers</span>
+                </button>
+                
+                <button class="btn btn-eventos" onclick="runDiagnostic('eventos')">
+                    <span class="btn-icon">📋</span>
+                    <span class="btn-label">Eventos Críticos</span>
+                </button>
+                
+                <button class="btn btn-contexto" onclick="runDiagnostic('contexto')">
+                    <span class="btn-icon">💻</span>
+                    <span class="btn-label">Contexto Sistema</span>
+                </button>
+                
+                <button class="btn btn-kb btn-full" id="btnKb" onclick="toggleKb()">
+                    <span class="btn-icon">📖</span>
+                    <span class="btn-label">Base de Conocimiento</span>
+                </button>
+                
+                <button class="btn btn-registro btn-full" id="btnRegistro" onclick="toggleRegistro()">
+                    <span class="btn-icon">🗂️</span>
+                    <span class="btn-label">Registro de análisis</span>
+                </button>
+            </div>
+        </div>
+        
+        <!-- Results Section -->
+        <div class="results-section">
+            <div class="results-header">
+                <h2>Resultados</h2>
+                <div class="results-actions">
+                    <button class="btn-small btn-word" id="btnWord" style="display:none;" onclick="downloadReport('doc')">Descargar Word</button>
+                    <button class="btn-small btn-pdf" id="btnPdf" style="display:none;" onclick="downloadReport('pdf')">Descargar PDF</button>
+                    <button class="btn-small btn-snap" id="btnSnapAntes" style="display:none;" onclick="saveSnapshotAntes()">Guardar ANTES</button>
+                    <button class="btn-small btn-snap" id="btnSnapCompara" style="display:none;" onclick="compareSnapshot()">Comparar DESPUÉS</button>
+                    <button class="btn-small btn-copy" onclick="copyResults()">Copiar</button>
+                    <button class="btn-small btn-clear" onclick="clearResults()">Limpiar</button>
+                </div>
+            </div>
+            
+            <div class="status-bar">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">Listo para ejecutar diagnósticos</span>
+            </div>
+            
+            <div class="results-content" id="resultsContent">
+                <div class="results-empty">
+                    <div class="results-empty-icon">🔧</div>
+                    <p>Haga clic en un botón para ejecutar un diagnóstico</p>
+                </div>
+            </div>
+
+            <div class="acciones-section" id="diffSection" style="display:none;">
+                <h3>Comparación antes / después</h3>
+                <div id="diffTabla"></div>
+            </div>
+            
+            <div class="acciones-section" id="accionesSection" style="display:none;">
+                <h3 id="accionesTitulo">Acciones del técnico - Generación de informe</h3>
+                <div id="problemasLista"></div>
+                <div class="acciones-campos">
+                    <label>Tecnico
+                        <input id="tecnico" type="text" placeholder="Nombre del técnico">
+                    </label>
+                    <label>Cliente / Sector
+                        <input id="cliente" type="text" placeholder="Cliente o área">
+                    </label>
+                </div>
+                <div id="mejorasLista"></div>
+                <label style="display:block; margin-top:12px; font-size:12px; color:#aaa;">
+                    Observaciones generales
+                    <textarea id="observaciones" rows="3" placeholder="Notas adicionales del trabajo realizado..."></textarea>
+                </label>
+                <p class="acciones-hint">Complete el estado y la acción implementada para cada problema; quedarán registradas en el informe Word/PDF.</p>
+            </div>
+            
+            <div class="acciones-section" id="kbSection" style="display:none;">
+                <h3>Base de conocimiento local</h3>
+                <p class="acciones-hint">Cómo debe estar cada componente para que funcione bien, cómo lograrlo y cómo comprobarlo. Busque por síntoma, componente o palabra clave.</p>
+                <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+                    <input id="kbSearch" class="kb-search" type="text" placeholder="Buscar... (ej: impresora, firewall, disco, sin internet, memoria)" style="flex:1;">
+                    <button class="btn-small btn-copy" id="btnKbNueva" onclick="openKbForm(null)">+ Nueva entrada</button>
+                </div>
+                <div class="kb-form" id="kbForm">
+                    <h4 id="kbFormTitulo" style="margin-bottom:4px;">Nueva entrada</h4>
+                    <label>ID (minúsculas y guiones bajos, ej: spooler_sucio)
+                        <input id="kbf_id" type="text"></label>
+                    <label>Título
+                        <input id="kbf_titulo" type="text"></label>
+                    <label>Categoría
+                        <input id="kbf_categoria" type="text" placeholder="Servicios, Red, Disco, Impresión..."></label>
+                    <label>Colectores asociados (separados por coma)
+                        <input id="kbf_colectores" type="text" placeholder="critical_services, service_failures"></label>
+                    <label>Síntomas asociados (separados por coma)
+                        <input id="kbf_sintomas" type="text" placeholder="servicio_detenido, no_hay_internet"></label>
+                    <label>Cómo debe estar (estado esperado)
+                        <textarea id="kbf_estado_esperado"></textarea></label>
+                    <label>Por qué importa
+                        <textarea id="kbf_por_que_importa"></textarea></label>
+                    <label>Soluciones (una por línea)
+                        <textarea id="kbf_soluciones"></textarea></label>
+                    <label>Verificación (cómo comprobar que quedó bien)
+                        <textarea id="kbf_verificacion"></textarea></label>
+                    <div class="kb-form-actions">
+                        <button class="btn-small btn-word" onclick="saveKbForm()">Guardar</button>
+                        <button class="btn-small btn-clear" onclick="closeKbForm()">Cancelar</button>
+                    </div>
+                </div>
+                <div id="kbLista"></div>
+            </div>
+            
+            <div class="acciones-section" id="registroSection" style="display:none;">
+                <h3>Registro de análisis</h3>
+                <p class="acciones-hint">Todo diagnóstico que ejecute queda guardado automáticamente aquí de forma persistente. Puede consultar el detalle, eliminar análisis individuales o vaciar el registro completo.</p>
+                <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+                    <input id="regSearch" class="kb-search" type="text" placeholder="Buscar... (paquete, síntoma, problema)" oninput="filterRegistro()" style="flex:1;">
+                    <button class="btn-small btn-copy" onclick="loadRegistro(true)">Actualizar</button>
+                    <button class="btn-small btn-clear" id="btnRegVaciar" onclick="vaciarRegistro()" style="display:none;">Vaciar registro</button>
+                </div>
+                <div id="regLista"></div>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="footer">
+            <p>DiagUSB v0.1.0 | Copyright (C) 2026 Daniel Ricardo Novoa | GPL-3.0-or-later</p>
+        </div>
+    </div>
+    
+    <script>@@DIAGUSB_JS@@    </script>
+</body>
+</html>
