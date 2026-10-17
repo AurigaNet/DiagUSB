@@ -28,6 +28,7 @@ from diagusb.core.informe import (
     informe_a_html,
     informe_a_pdf,
     informe_desde_diagnostico,
+    linea_alcance,
 )
 from diagusb.core.models import CollectorResult, Finding
 from diagusb.core.rules import RuleEngine, _agrupar_findings
@@ -1406,6 +1407,100 @@ def test_pdf_validador_externo():
         assert any((pg.extract_text() or "").strip() for pg in r.pages), f"{nombre}: sin texto"
 
 
+# ---------------------------------------------------------------------------
+# Arranque sin UAC y elevacion a pedido (ronda 11)
+# ---------------------------------------------------------------------------
+
+def test_arranque_sin_elevar():
+    import inspect
+    import diagusb.web_server as ws
+    from diagusb.__main__ import construir_parser
+
+    sig = inspect.signature(ws.run_server)
+    assert sig.parameters["elevar"].default is False, \
+        "el servidor web no debe elevarse por defecto"
+
+    parser = construir_parser()
+    assert parser.parse_args([]).elevar is False
+    assert parser.parse_args(["web"]).elevar is False
+    assert parser.parse_args(["--elevar", "web"]).elevar is True
+    assert parser.parse_args(["--no-elevate", "web"]).no_elevate is True
+
+
+def test_api_elevar_token():
+    import http.client
+    from diagusb.core import elevation as elev
+
+    httpd, base = _abrir_servidor()
+    port = httpd.server_address[1]
+
+    def post(headers):
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        conn.request("POST", "/api/elevar", body="{}", headers=headers)
+        r = conn.getresponse()
+        cuerpo = r.read()
+        conn.close()
+        return r.status, cuerpo
+
+    original = elev.elevar_servidor
+    elev.elevar_servidor = lambda linea, puerto, timeout=20.0: False
+    try:
+        estado, _ = post({"Content-Type": "application/json"})
+        assert estado == 401, estado
+
+        h = dict(_cookie())
+        h["Content-Type"] = "application/json"
+        estado, cuerpo = post(h)
+        assert estado == 200, estado
+        datos = json.loads(cuerpo.decode("utf-8"))
+        assert "ok" in datos and datos["ok"] is False
+    finally:
+        elev.elevar_servidor = original
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_reglas_colector_denied():
+    from diagusb.core.rules import diagnose_symptoms
+
+    obs = [create_mock_result("security_events", [], status="denied")]
+    findings, _ = diagnose_symptoms(["antivirus_apagado"], obs)
+
+    no_eval = [f for f in findings if (f.details or {}).get("no_evaluado")]
+    assert len(no_eval) == 1, findings
+    assert no_eval[0].collector_id == "security_events"
+    assert no_eval[0].message == "No evaluado (requiere administrador)"
+    assert no_eval[0].details.get("requiere_admin") is True
+
+
+def test_linea_alcance_informes():
+    import diagusb.web_server as ws
+
+    diag = {
+        "timestamp": "2026-01-01T00:00:00",
+        "package": "seguridad",
+        "package_label": "Seguridad",
+        "symptom": "antivirus_apagado",
+        "is_elevated": False,
+        "results": [
+            {"collector_id": "security_events", "query": {"status": "denied"},
+             "data": {}, "context": {"computer_name": "PC-01", "is_elevated": False}},
+        ],
+        "findings": [],
+    }
+    inf = informe_desde_diagnostico(diag)
+
+    linea = linea_alcance(inf)
+    assert linea == "Alcance: modo estándar; no evaluados: security_events", linea
+    assert linea in informe_a_html(inf)
+    assert b"Alcance" in informe_a_pdf(inf)
+    assert b"Alcance" in informe_a_doc(inf)
+
+    entrada = ws._entrada_registro(diag, "diagnostico")
+    assert "security_events" in entrada["alcance"]
+    assert "modo estándar" in entrada["alcance"]
+
+
 def run_tests():
     """Ejecuta todas las pruebas de esta suite."""
     tests = [
@@ -1464,6 +1559,10 @@ def run_tests():
         ("test_banner_flush", test_banner_flush),
         ("test_pdf_valido_casos", test_pdf_valido_casos),
         ("test_pdf_validador_externo", test_pdf_validador_externo),
+        ("test_arranque_sin_elevar", test_arranque_sin_elevar),
+        ("test_api_elevar_token", test_api_elevar_token),
+        ("test_reglas_colector_denied", test_reglas_colector_denied),
+        ("test_linea_alcance_informes", test_linea_alcance_informes),
     ]
 
     passed = 0

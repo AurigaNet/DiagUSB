@@ -459,8 +459,8 @@ def cmd_list_packages(args):
         print()
 
 
-def main():
-    """Punto de entrada principal."""
+def construir_parser() -> argparse.ArgumentParser:
+    """Construye el parser de argumentos de la linea de comandos."""
     parser = argparse.ArgumentParser(
         description="DiagUSB - Herramienta de Diagnostico USB",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -512,6 +512,12 @@ Ejemplos:
     web_parser = subparsers.add_parser("web", help="Abrir la interfaz web interactiva")
     web_parser.add_argument("--port", type=int, default=8080, help="Puerto del servidor (8080)")
 
+    return parser
+
+
+def main():
+    """Punto de entrada principal."""
+    parser = construir_parser()
     args = parser.parse_args()
 
     # Consolas Windows (cp1252) no pueden imprimir el banner Unicode
