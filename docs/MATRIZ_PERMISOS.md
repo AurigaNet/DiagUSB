@@ -1,6 +1,6 @@
 # MATRIZ_PERMISOS
 
-Estado **medido** en un equipo real (ya no es plantilla). Datos crudos de la Ronda 11.
+Estado **medido** en un equipo real (ya no es plantilla). Datos crudos de la Ronda 11; `physical_disks` re-medido en la Ronda 12b tras acotar la consulta de fiabilidad.
 
 ## Entorno de medición
 
@@ -18,7 +18,7 @@ Total de colectores: **39**. Colectores que difieren entre modo estándar y admi
 | --- | --- | --- | --- | --- |
 | `security_events` | `denied` | `ok` | sí | 0 eventos vs 10 eventos; sin admin el acceso al registro de seguridad se deniega. |
 | `installed_software` | `ok` | `ok` | sí | `optional_features`: 0 vs 24; sin admin no se listan las características opcionales de Windows. El colector lo declara con `optional_features_available: false` y el informe agrega "datos limitados: installed_software (requiere administrador)". |
-| `physical_disks` | `ok` (2,4 s) | `timeout` (93 s) | n/a | Elevado, `Get-PhysicalDisk`/`Get-StorageReliabilityCounter` tarda ~93 s y supera el timeout de 30 s. Reproducible. |
+| `physical_disks` | `ok` (~6,7 s) | `ok` (~6,7 s) | sí | Ronda 12b: la consulta de fiabilidad se acota a 10 s por disco y no se hace en unidades USB, así que ya no hay timeout (antes ~93 s elevado). Elevado aparecen `power_on_hours`/`temperature`; la unidad Kingston USB nunca aporta fiabilidad (`reliability_motivo: "no aplica a unidades USB"`). |
 | `running_services` | `ok` (107) | `ok` (108) | sí (volátil) | El conteo de servicios en ejecución cambia entre corridas; no es efecto de permisos. |
 | `connectivity` | `ok` | `ok` | sí (formato) | `latency_ms` entero vs flotante; no es efecto de permisos. |
 
