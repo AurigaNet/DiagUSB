@@ -7,6 +7,7 @@ import http.server
 import json
 import re
 import secrets
+import socket
 import socketserver
 import sys
 import threading
@@ -732,6 +733,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
         .elev-banner.warn { background: #fff4e5; border: 1px solid #f0a742; color: #7a4b00; }
         .elev-banner.ok { background: #e8f5e9; border: 1px solid #4caf50; color: #1b5e20; }
+        .elev-banner .elev-btn {
+            margin-left: 8px; padding: 4px 12px; border-radius: 5px; cursor: pointer;
+            border: 1px solid #b26a00; background: #f0a742; color: #3a2400;
+            font-size: 13px; font-weight: 600;
+        }
+        .elev-banner .elev-btn:disabled { opacity: 0.6; cursor: default; }
+        .elev-banner .elev-msg { margin-top: 6px; font-size: 12px; }
 
         .integridad-banner {
             padding: 10px 14px;
@@ -1908,13 +1916,39 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     b.style.display = 'block';
                 } else if (d.is_elevated === false) {
                     b.className = 'elev-banner warn';
-                    b.innerHTML = '<b>Permisos de Administrador:</b> NO activos (dialogo UAC rechazado o no mostrado). ' +
-                        'Algunos colectores mostrarán "denied" o datos parciales (inventario de software, eventos, ' +
-                        'ciertos servicios). Cierre DiagUSB, vuelva a abrirlo y acepte el dialogo de Windows para un ' +
-                        'diagnóstico completo.';
+                    b.innerHTML = '<b>Modo estándar:</b> algunos diagnósticos tendrán datos limitados ' +
+                        '(eventos de seguridad, inventario de software). ' +
+                        '<button type="button" class="elev-btn" id="elevBtn">Dar permisos de administrador</button>' +
+                        '<div class="elev-msg" id="elevMsg"></div>';
                     b.style.display = 'block';
+                    const eb = document.getElementById('elevBtn');
+                    if (eb) eb.addEventListener('click', solicitarElevacion);
                 }
             } catch (e) {}
+        }
+
+        async function solicitarElevacion() {
+            const btn = document.getElementById('elevBtn');
+            const msg = document.getElementById('elevMsg');
+            if (btn) { btn.disabled = true; btn.textContent = 'Solicitando permisos...'; }
+            if (msg) msg.textContent = '';
+            try {
+                const r = await fetch('/api/elevar', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: '{}'
+                });
+                const d = await r.json();
+                if (d.ok) {
+                    if (msg) msg.textContent = d.mensaje || ('Se abrió otra pestaña con permisos en el puerto ' + d.puerto + '.');
+                } else {
+                    if (msg) msg.textContent = d.error || d.mensaje || 'No se otorgaron los permisos.';
+                    if (btn) { btn.disabled = false; btn.textContent = 'Dar permisos de administrador'; }
+                }
+            } catch (e) {
+                if (msg) msg.textContent = 'Error: ' + e.message;
+                if (btn) { btn.disabled = false; btn.textContent = 'Dar permisos de administrador'; }
+            }
         }
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -1949,6 +1983,27 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </script>
 </body>
 </html>"""
+
+
+def _puerto_libre(desde: int) -> int | None:
+    """Primer puerto local libre a partir de ``desde`` + 1."""
+    for puerto in range(int(desde) + 1, int(desde) + 60):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            s.bind((BIND_HOST, puerto))
+            return puerto
+        except OSError:
+            continue
+        finally:
+            s.close()
+    return None
+
+
+def _comando_web_elevado(puerto: int) -> list:
+    """Linea de comandos para relanzar el servidor web elevado en ``puerto``."""
+    if getattr(sys, "frozen", False):
+        return [sys.executable, "web", "--port", str(puerto)]
+    return [sys.executable, "-B", "-m", "diagusb", "web", "--port", str(puerto)]
 
 
 class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
@@ -2173,6 +2228,8 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             self._post_compare()
         elif parsed.path == "/api/knowledge":
             self._post_knowledge()
+        elif parsed.path == "/api/elevar":
+            self._post_elevar()
         else:
             self.send_error(404, "Not found")
 
@@ -2317,6 +2374,40 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
         except Exception as e:
             self._json_response({"error": str(e)}, 500)
 
+    def _post_elevar(self):
+        """Relanza el servidor elevado en un puerto nuevo y cierra este proceso."""
+        from .core.elevation import elevar_servidor
+        if _is_elevated() is True:
+            self._json_response({"ok": False,
+                                 "mensaje": "El proceso ya tiene permisos de administrador."})
+            return
+        base = getattr(self.server, "diagusb_port", None) or 8080
+        nuevo = _puerto_libre(base)
+        if nuevo is None:
+            self._json_response(
+                {"ok": False,
+                 "error": "No se encontró un puerto libre para el proceso elevado."}, 500)
+            return
+        linea = _comando_web_elevado(nuevo)
+        if elevar_servidor(linea, nuevo):
+            self._json_response({
+                "ok": True, "puerto": nuevo,
+                "mensaje": (f"Permisos otorgados. Se abrió otra pestaña en el puerto "
+                            f"{nuevo}; esta ventana se cerrará.")})
+            threading.Timer(1.5, self._apagar_servidor).start()
+        else:
+            self._json_response(
+                {"ok": False,
+                 "error": ("No se otorgaron los permisos de administrador "
+                           "(el diálogo UAC se canceló).")})
+
+    def _apagar_servidor(self):
+        """Detiene serve_forever para que el proceso original termine."""
+        try:
+            self.server.shutdown()
+        except Exception:
+            pass
+
     def _post_report(self):
         params = parse_qs(urlparse(self.path).query)
         fmt = params.get("format", ["pdf"])[0].lower()
@@ -2418,6 +2509,8 @@ def run_server(port: int = 8080, elevar: bool = False,
         print(f"Error: no se pudo abrir el puerto {port}.")
         print("¿Ya hay otra instancia de DiagUSB corriendo? Cierrela e intente de nuevo.")
         sys.exit(1)
+
+    httpd.diagusb_port = port
 
     with httpd:
         url = f"http://localhost:{port}/?t={_token_sesion()}"
