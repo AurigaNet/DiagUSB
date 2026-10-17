@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from .models import DiagnosticResult, Finding, ContextResult
-from .informe import SEVERIDAD_LABEL
+from .informe import SEVERIDAD_LABEL, _primer_dict
 
 
 _ESTADOS_NO_EVALUADO = ("denied", "not_available", "error", "timeout")
@@ -21,14 +21,32 @@ def _status_de(result) -> str:
     return getattr(query, "status", "") if query else ""
 
 
+def _datos_limitados(diagnostic: DiagnosticResult) -> list[str]:
+    """Colectores con datos parciales por permisos, como 'id (razon)'."""
+    limite = []
+    for c in (diagnostic.collector_results or []):
+        if getattr(c, "collector_id", "") != "installed_software":
+            continue
+        if _status_de(c) != "ok":
+            continue
+        data = _primer_dict(getattr(c, "data", None))
+        if data is not None and data.get("optional_features_available") is False:
+            limite.append("installed_software (requiere administrador)")
+    return limite
+
+
 def _linea_alcance(diagnostic: DiagnosticResult) -> str:
-    """Linea 'Alcance: ...' con el modo y los colectores no evaluados."""
+    """Linea 'Alcance: ...' con el modo, no evaluados y datos limitados."""
     ctx = getattr(diagnostic, "context", None)
     modo = "administrador" if (ctx and getattr(ctx, "is_elevated", False)) else "estándar"
     no_eval = [getattr(c, "collector_id", "") for c in (diagnostic.collector_results or [])
                if _status_de(c) in _ESTADOS_NO_EVALUADO]
     lista = ", ".join([x for x in no_eval if x]) or "ninguno"
-    return f"Alcance: modo {modo}; no evaluados: {lista}"
+    linea = f"Alcance: modo {modo}; no evaluados: {lista}"
+    lim = _datos_limitados(diagnostic)
+    if lim:
+        linea += "; datos limitados: " + ", ".join(lim)
+    return linea
 
 
 class ConsoleReporter:

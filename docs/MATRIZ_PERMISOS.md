@@ -17,7 +17,7 @@ Total de colectores: **39**. Colectores que difieren entre modo estándar y admi
 | Colector | Sin admin | Con admin | ¿Datos distintos? | Nota |
 | --- | --- | --- | --- | --- |
 | `security_events` | `denied` | `ok` | sí | 0 eventos vs 10 eventos; sin admin el acceso al registro de seguridad se deniega. |
-| `installed_software` | `ok` | `ok` | sí | `optional_features`: 0 vs 24; sin admin no se listan las características opcionales de Windows. |
+| `installed_software` | `ok` | `ok` | sí | `optional_features`: 0 vs 24; sin admin no se listan las características opcionales de Windows. El colector lo declara con `optional_features_available: false` y el informe agrega "datos limitados: installed_software (requiere administrador)". |
 | `physical_disks` | `ok` (2,4 s) | `timeout` (93 s) | n/a | Elevado, `Get-PhysicalDisk`/`Get-StorageReliabilityCounter` tarda ~93 s y supera el timeout de 30 s. Reproducible. |
 | `running_services` | `ok` (107) | `ok` (108) | sí (volátil) | El conteo de servicios en ejecución cambia entre corridas; no es efecto de permisos. |
 | `connectivity` | `ok` | `ok` | sí (formato) | `latency_ms` entero vs flotante; no es efecto de permisos. |
@@ -27,7 +27,7 @@ Los **34** colectores restantes dan el mismo estado y la misma estructura de dat
 ## Colectores que requieren administrador (para el banner)
 
 - `security_events` (eventos de seguridad): `denied` sin admin.
-- `installed_software` (inventario de software): sin admin faltan las características opcionales.
+- `installed_software` (inventario de software): sin admin faltan las características opcionales; el colector declara `optional_features_available: false` y el informe lo reporta como "datos limitados: installed_software (requiere administrador)".
 
 ## Contextos pendientes
 

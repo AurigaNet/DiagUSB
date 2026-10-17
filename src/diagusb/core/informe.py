@@ -261,6 +261,7 @@ class InformeColector:
     duration_ms: int = 0
     resumen: list[str] = field(default_factory=list)
     errores: list[str] = field(default_factory=list)
+    limitado: str = ""
 
 
 @dataclass
@@ -387,18 +388,54 @@ def _knowledge_de(f: dict) -> dict | None:
 _ESTADOS_NO_EVALUADO = ("denied", "not_available", "error", "timeout")
 
 
+def _primer_dict(data: Any) -> dict | None:
+    """Primer diccionario de los datos de un colector (llegan como lista)."""
+    if isinstance(data, dict):
+        return data
+    if isinstance(data, list):
+        for x in data:
+            if isinstance(x, dict):
+                return x
+    return None
+
+
+def _limitado_de(collector_id: str, data: Any, status: str) -> str:
+    """Razon por la que un colector devolvio datos parciales ('' si completo).
+
+    Un colector puede terminar en ``ok`` y aun asi no haber leido todo por
+    falta de permisos; el colector lo declara en sus datos.
+    """
+    if status != "ok":
+        return ""
+    if collector_id == "installed_software":
+        d = _primer_dict(data)
+        if d is not None and d.get("optional_features_available") is False:
+            return "requiere administrador"
+    return ""
+
+
 def no_evaluados(informe: InformeData) -> list[str]:
     """Colectores del informe que no se pudieron evaluar (permisos/error)."""
     return [c.collector_id for c in informe.colectores
             if c.status in _ESTADOS_NO_EVALUADO]
 
 
+def datos_limitados(informe: InformeData) -> list[str]:
+    """Colectores con datos parciales por permisos, como 'id (razon)'."""
+    return [f"{c.collector_id} ({c.limitado})" for c in informe.colectores
+            if c.limitado]
+
+
 def linea_alcance(informe: InformeData) -> str:
-    """Linea 'Alcance: ...' con el modo y los colectores no evaluados."""
+    """Linea 'Alcance: ...' con el modo, no evaluados y datos limitados."""
     modo = "administrador" if informe.equipo.get("is_elevated") else "estándar"
     no_eval = no_evaluados(informe)
     lista = ", ".join(no_eval) if no_eval else "ninguno"
-    return f"Alcance: modo {modo}; no evaluados: {lista}"
+    linea = f"Alcance: modo {modo}; no evaluados: {lista}"
+    lim = datos_limitados(informe)
+    if lim:
+        linea += "; datos limitados: " + ", ".join(lim)
+    return linea
 
 
 def informe_desde_diagnostico(diag: dict, acciones: list[dict] | None = None,
@@ -444,6 +481,8 @@ def informe_desde_diagnostico(diag: dict, acciones: list[dict] | None = None,
             duration_ms=query.get("duration_ms", 0),
             resumen=_resumen_datos(r.get("data"), r.get("collector_id", "")),
             errores=[e for e in errores if e],
+            limitado=_limitado_de(r.get("collector_id", ""), r.get("data"),
+                                  query.get("status", "")),
         ))
 
     problemas: list[InformeProblema] = []

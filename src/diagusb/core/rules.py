@@ -827,12 +827,50 @@ def _findings_no_evaluados(observations: list[CollectorResult]) -> list[Finding]
     return findings
 
 
+def _collector_datos_limitados(obs) -> bool:
+    """True si el colector termino en ok pero declara datos parciales.
+
+    Los colectores que sin permisos solo leen parte de la informacion lo
+    declaran en sus datos (por ejemplo ``optional_features_available``). Los
+    datos llegan como lista de diccionarios.
+    """
+    if _estado_observacion(obs) != "ok":
+        return False
+    data = getattr(obs, "data", None)
+    if isinstance(data, dict):
+        return data.get("optional_features_available") is False
+    if isinstance(data, list):
+        for x in data:
+            if isinstance(x, dict):
+                return x.get("optional_features_available") is False
+    return False
+
+
+def _findings_datos_limitados(observations: list[CollectorResult]) -> list[Finding]:
+    """Avisos para colectores con datos parciales por falta de permisos."""
+    findings: list[Finding] = []
+    vistos: set[str] = set()
+    for obs in observations:
+        cid = getattr(obs, "collector_id", "")
+        if cid in vistos or not _collector_datos_limitados(obs):
+            continue
+        vistos.add(cid)
+        findings.append(Finding(
+            severity="warning",
+            collector_id=cid,
+            message="Datos limitados (requiere administrador)",
+            details={"datos_limitados": True, "requiere_admin": True},
+        ))
+    return findings
+
+
 def diagnose(symptom: str, observations: list[CollectorResult]) -> DiagnosticResult:
     """Ejecuta el diagnostico para un sintoma dado."""
     findings = _engine.evaluate(symptom, observations)
     kb.attach_knowledge(findings)
     findings = _agrupar_findings(findings)
     findings.extend(_findings_no_evaluados(observations))
+    findings.extend(_findings_datos_limitados(observations))
     recommendations = _generate_recommendations(findings)
     return DiagnosticResult(
         symptom=symptom,
@@ -856,6 +894,7 @@ def diagnose_symptoms(symptoms: list[str], observations: list[CollectorResult]) 
     kb.attach_knowledge(findings)
     findings = _agrupar_findings(findings)
     findings.extend(_findings_no_evaluados(observations))
+    findings.extend(_findings_datos_limitados(observations))
     return findings, _generate_recommendations(findings)
 
 

@@ -360,8 +360,23 @@ def _entrada_registro(diag: dict, tipo: str) -> dict:
     no_eval = [r.get("collector_id") or "" for r in results
                if (r.get("query") or {}).get("status") in
                ("denied", "not_available", "error", "timeout")]
+    limitados = []
+    for r in results:
+        if (r.get("collector_id") or "") == "installed_software" \
+                and (r.get("query") or {}).get("status") == "ok":
+            data = r.get("data")
+            if isinstance(data, dict):
+                d = data
+            elif isinstance(data, list):
+                d = next((x for x in data if isinstance(x, dict)), None)
+            else:
+                d = None
+            if d is not None and d.get("optional_features_available") is False:
+                limitados.append("installed_software (requiere administrador)")
     alcance = (f"Alcance: modo {modo}; no evaluados: "
                + (", ".join([x for x in no_eval if x]) or "ninguno"))
+    if limitados:
+        alcance += "; datos limitados: " + ", ".join(limitados)
     return {
         "id": f"{datetime.now():%Y%m%d_%H%M%S}_{uuid.uuid4().hex[:8]}",
         "fecha": diag.get("timestamp") or datetime.now().isoformat(),
@@ -1959,8 +1974,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     b.style.display = 'block';
                 } else if (d.is_elevated === false) {
                     b.className = 'elev-banner warn';
-                    b.innerHTML = '<b>Modo estándar:</b> algunos diagnósticos tendrán datos limitados ' +
-                        '(eventos de seguridad, inventario de software). ' +
+                    b.innerHTML = '<b>Modo estándar:</b> datos limitados: installed_software (requiere administrador); ' +
+                        'los eventos de seguridad no se evalúan. ' +
                         '<button type="button" class="elev-btn" id="elevBtn">Dar permisos de administrador</button>' +
                         '<div class="elev-msg" id="elevMsg"></div>';
                     b.style.display = 'block';

@@ -36,9 +36,11 @@ $result = New-DiagUsbCollectorResult -CollectorId 'installed_software' -ScriptBl
     } catch { $apps = @() }
 
     $features = @()
+    $featuresAvailable = $false
     try {
         $features = @(Get-WindowsOptionalFeature -Online -ErrorAction Stop |
             Where-Object { $_.State -eq 'Enabled' })
+        $featuresAvailable = $true
     } catch { $features = @() }
 
     $roles = @()
@@ -100,6 +102,7 @@ $result = New-DiagUsbCollectorResult -CollectorId 'installed_software' -ScriptBl
     return [ordered]@{
         installed_products = $softwareList
         optional_features = $optionalFeatures
+        optional_features_available = $featuresAvailable
         windows_features = $windowsFeatures
     }
 }

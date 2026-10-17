@@ -1501,6 +1501,56 @@ def test_linea_alcance_informes():
     assert "modo estándar" in entrada["alcance"]
 
 
+def test_datos_limitados_alcance():
+    import diagusb.web_server as ws
+    from diagusb.core.rules import diagnose_symptoms
+
+    diag = {
+        "timestamp": "2026-01-01T00:00:00",
+        "package": "inventario_general",
+        "package_label": "Inventario",
+        "symptom": "general",
+        "is_elevated": False,
+        "results": [
+            {"collector_id": "installed_software", "query": {"status": "ok"},
+             "data": [{"installed_products": [{"name": "A"}],
+                       "optional_features": [],
+                       "optional_features_available": False}],
+             "context": {"computer_name": "PC-01", "is_elevated": False}},
+        ],
+        "findings": [],
+    }
+    inf = informe_desde_diagnostico(diag)
+    linea = linea_alcance(inf)
+    assert linea.startswith("Alcance: modo estándar; no evaluados: ninguno"), linea
+    assert "datos limitados: installed_software (requiere administrador)" in linea, linea
+    assert "datos limitados: installed_software (requiere administrador)" in informe_a_html(inf)
+    assert b"datos limitados" in informe_a_doc(inf)
+    assert b"Alcance" in informe_a_pdf(inf)
+
+    entrada = ws._entrada_registro(diag, "diagnostico")
+    assert "datos limitados: installed_software (requiere administrador)" in entrada["alcance"]
+
+    obs = [create_mock_result(
+        "installed_software",
+        [{"optional_features": [], "optional_features_available": False}], status="ok")]
+    findings, _ = diagnose_symptoms(["general"], obs)
+    lim = [f for f in findings if (f.details or {}).get("datos_limitados")]
+    assert len(lim) == 1, findings
+    assert lim[0].collector_id == "installed_software"
+
+    diag_ok = dict(diag)
+    diag_ok["results"] = [dict(diag["results"][0],
+                               data=[{"optional_features": [],
+                                      "optional_features_available": True}])]
+    assert "datos limitados" not in linea_alcance(informe_desde_diagnostico(diag_ok))
+    obs_ok = [create_mock_result(
+        "installed_software",
+        [{"optional_features": [], "optional_features_available": True}], status="ok")]
+    findings_ok, _ = diagnose_symptoms(["general"], obs_ok)
+    assert not [f for f in findings_ok if (f.details or {}).get("datos_limitados")]
+
+
 def test_run_powershell_timeout_termina_arbol():
     import tempfile
     import time
@@ -1583,6 +1633,7 @@ def run_tests():
         ("test_api_elevar_token", test_api_elevar_token),
         ("test_reglas_colector_denied", test_reglas_colector_denied),
         ("test_linea_alcance_informes", test_linea_alcance_informes),
+        ("test_datos_limitados_alcance", test_datos_limitados_alcance),
         ("test_run_powershell_timeout_termina_arbol",
          test_run_powershell_timeout_termina_arbol),
     ]
