@@ -402,8 +402,9 @@ def _primer_dict(data: Any) -> dict | None:
 def _limitado_de(collector_id: str, data: Any, status: str) -> str:
     """Razon por la que un colector devolvio datos parciales ('' si completo).
 
-    Un colector puede terminar en ``ok`` y aun asi no haber leido todo por
-    falta de permisos; el colector lo declara en sus datos.
+    Un colector puede terminar en ``ok`` y aun asi no haber leido todo: por
+    falta de permisos (``installed_software``) o porque un dato no esta
+    disponible (``physical_disks`` sin fiabilidad en USB o por tiempo agotado).
     """
     if status != "ok":
         return ""
@@ -411,6 +412,11 @@ def _limitado_de(collector_id: str, data: Any, status: str) -> str:
         d = _primer_dict(data)
         if d is not None and d.get("optional_features_available") is False:
             return "requiere administrador"
+    if collector_id == "physical_disks":
+        for x in (data if isinstance(data, list) else [data]):
+            if isinstance(x, dict) and x.get("reliability") is None \
+                    and x.get("reliability_motivo"):
+                return "confiabilidad no disponible"
     return ""
 
 

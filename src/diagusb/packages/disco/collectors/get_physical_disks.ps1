@@ -24,25 +24,67 @@ $result = New-DiagUsbCollectorResult -CollectorId 'physical_disks' -ScriptBlock 
 
     $items = @()
     foreach ($disk in $physicalDisks) {
-        $reliability = @(Get-StorageReliabilityCounter -PhysicalDisk $disk -ErrorAction SilentlyContinue) | Select-Object -First 1
+        $busType = "$($disk.BusType)"
+        $counter = $null
+        $motivo = $null
 
+        if ($busType -eq 'USB') {
+            $motivo = 'no aplica a unidades USB'
+        }
+        else {
+            $job = Start-Job -ScriptBlock {
+                param($devId)
+                $d = @(Get-PhysicalDisk -ErrorAction SilentlyContinue) |
+                    Where-Object { "$($_.DeviceId)" -eq $devId } | Select-Object -First 1
+                if ($null -eq $d) { return }
+                @(Get-StorageReliabilityCounter -PhysicalDisk $d -ErrorAction SilentlyContinue) |
+                    Select-Object -First 1
+            } -ArgumentList "$($disk.DeviceId)"
+            $listo = $false
+            try {
+                $listo = [bool](Wait-Job -Job $job -Timeout 10)
+                if ($listo) {
+                    $counter = @(Receive-Job -Job $job -ErrorAction SilentlyContinue) | Select-Object -First 1
+                }
+            }
+            finally {
+                Stop-Job -Job $job -ErrorAction SilentlyContinue | Out-Null
+                Remove-Job -Job $job -Force -ErrorAction SilentlyContinue | Out-Null
+            }
+            if (-not $listo) {
+                $motivo = 'sin respuesta en 10 s'
+            }
+            elseif ($null -eq $counter) {
+                $motivo = 'sin datos de confiabilidad'
+            }
+        }
+
+        $reliability = $null
         $powerOnHours = $null
         $temperature = $null
         $reallocatedSectors = $null
-        if ($null -ne $reliability) {
-            $powerOnHours = Get-DiagUsbPropertyValue -InputObject $reliability -PropertyName 'PowerOnHours'
-            $temperature = Get-DiagUsbPropertyValue -InputObject $reliability -PropertyName 'Temperature'
-            $reallocatedSectors = Get-DiagUsbPropertyValue -InputObject $reliability -PropertyName 'ReallocatedSectorsCount'
+        if ($null -ne $counter) {
+            $powerOnHours = Get-DiagUsbPropertyValue -InputObject $counter -PropertyName 'PowerOnHours'
+            $temperature = Get-DiagUsbPropertyValue -InputObject $counter -PropertyName 'Temperature'
+            $reallocatedSectors = Get-DiagUsbPropertyValue -InputObject $counter -PropertyName 'ReallocatedSectorsCount'
+            $reliability = [ordered]@{
+                power_on_hours = $powerOnHours
+                temperature = $temperature
+                reallocated_sectors = $reallocatedSectors
+            }
         }
 
         $items += [ordered]@{
             device_id = $disk.DeviceId
             serial_number = $disk.SerialNumber
             friendly_name = $disk.FriendlyName
+            bus_type = $busType
             media_type = switch ($disk.MediaType) { 0 { 'Unspecified' } 3 { 'HDD' } 4 { 'SSD' } 5 { 'SCM' } default { 'Unknown' } }
             size_gb = [math]::Round($disk.Size / 1GB, 2)
             health_status = "$($disk.HealthStatus)"
             operational_status = "$($disk.OperationalStatus)"
+            reliability = $reliability
+            reliability_motivo = $motivo
             power_on_hours = $powerOnHours
             temperature = $temperature
             reallocated_sectors = $reallocatedSectors

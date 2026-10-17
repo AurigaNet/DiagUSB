@@ -33,6 +33,7 @@ from diagusb.core.rules import diagnose_symptoms
 from diagusb.core import knowledge_base as kb
 from diagusb.core.informe import (
     ESTADOS_ACCION,
+    _limitado_de,
     informe_a_doc,
     informe_a_pdf,
     informe_desde_diagnostico,
@@ -362,17 +363,11 @@ def _entrada_registro(diag: dict, tipo: str) -> dict:
                ("denied", "not_available", "error", "timeout")]
     limitados = []
     for r in results:
-        if (r.get("collector_id") or "") == "installed_software" \
-                and (r.get("query") or {}).get("status") == "ok":
-            data = r.get("data")
-            if isinstance(data, dict):
-                d = data
-            elif isinstance(data, list):
-                d = next((x for x in data if isinstance(x, dict)), None)
-            else:
-                d = None
-            if d is not None and d.get("optional_features_available") is False:
-                limitados.append("installed_software (requiere administrador)")
+        cid = r.get("collector_id") or ""
+        motivo = _limitado_de(cid, r.get("data"),
+                              (r.get("query") or {}).get("status", ""))
+        if motivo:
+            limitados.append(f"{cid} ({motivo})")
     alcance = (f"Alcance: modo {modo}; no evaluados: "
                + (", ".join([x for x in no_eval if x]) or "ninguno"))
     if limitados:

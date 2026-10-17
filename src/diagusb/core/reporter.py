@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from .models import DiagnosticResult, Finding, ContextResult
-from .informe import SEVERIDAD_LABEL, _primer_dict
+from .informe import SEVERIDAD_LABEL, _limitado_de
 
 
 _ESTADOS_NO_EVALUADO = ("denied", "not_available", "error", "timeout")
@@ -22,16 +22,13 @@ def _status_de(result) -> str:
 
 
 def _datos_limitados(diagnostic: DiagnosticResult) -> list[str]:
-    """Colectores con datos parciales por permisos, como 'id (razon)'."""
+    """Colectores con datos parciales por permisos o no disponibles."""
     limite = []
     for c in (diagnostic.collector_results or []):
-        if getattr(c, "collector_id", "") != "installed_software":
-            continue
-        if _status_de(c) != "ok":
-            continue
-        data = _primer_dict(getattr(c, "data", None))
-        if data is not None and data.get("optional_features_available") is False:
-            limite.append("installed_software (requiere administrador)")
+        cid = getattr(c, "collector_id", "")
+        motivo = _limitado_de(cid, getattr(c, "data", None), _status_de(c))
+        if motivo:
+            limite.append(f"{cid} ({motivo})")
     return limite
 
 

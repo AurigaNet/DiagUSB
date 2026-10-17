@@ -1551,6 +1551,50 @@ def test_datos_limitados_alcance():
     assert not [f for f in findings_ok if (f.details or {}).get("datos_limitados")]
 
 
+def test_physical_disks_usb_y_tope():
+    import diagusb.web_server as ws
+
+    ruta = (Path(ws.__file__).parent / "packages" / "disco" / "collectors"
+            / "get_physical_disks.ps1")
+    texto = ruta.read_text(encoding="utf-8")
+    assert "BusType" in texto and "'USB'" in texto
+    assert "no aplica a unidades USB" in texto
+    assert "Start-Job" in texto and "Wait-Job" in texto and "-Timeout 10" in texto
+    assert "Stop-Job" in texto and "Remove-Job" in texto
+    assert "sin respuesta en 10 s" in texto
+    assert "reliability" in texto
+
+    diag = {
+        "timestamp": "2026-01-01T00:00:00",
+        "package": "disco", "package_label": "Disco", "symptom": "general",
+        "is_elevated": True,
+        "results": [
+            {"collector_id": "physical_disks", "query": {"status": "ok"},
+             "data": [
+                 {"device_id": "0", "friendly_name": "SSD", "bus_type": "SATA",
+                  "reliability": {"temperature": 36}, "reliability_motivo": None},
+                 {"device_id": "3", "friendly_name": "USB pen", "bus_type": "USB",
+                  "reliability": None,
+                  "reliability_motivo": "no aplica a unidades USB"}],
+             "context": {"computer_name": "PC-01", "is_elevated": True}},
+        ],
+        "findings": [],
+    }
+    inf = informe_desde_diagnostico(diag)
+    esperado = "datos limitados: physical_disks (confiabilidad no disponible)"
+    assert esperado in linea_alcance(inf), linea_alcance(inf)
+    assert esperado in informe_a_html(inf)
+
+    entrada = ws._entrada_registro(diag, "diagnostico")
+    assert esperado in entrada["alcance"]
+
+    diag2 = dict(diag)
+    diag2["results"] = [dict(diag["results"][0], data=[
+        {"device_id": "0", "reliability": {"temperature": 36},
+         "reliability_motivo": None}])]
+    assert "datos limitados" not in linea_alcance(informe_desde_diagnostico(diag2))
+
+
 def test_run_powershell_timeout_termina_arbol():
     import tempfile
     import time
@@ -1634,6 +1678,7 @@ def run_tests():
         ("test_reglas_colector_denied", test_reglas_colector_denied),
         ("test_linea_alcance_informes", test_linea_alcance_informes),
         ("test_datos_limitados_alcance", test_datos_limitados_alcance),
+        ("test_physical_disks_usb_y_tope", test_physical_disks_usb_y_tope),
         ("test_run_powershell_timeout_termina_arbol",
          test_run_powershell_timeout_termina_arbol),
     ]
