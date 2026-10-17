@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import Any
 
 from . import knowledge_base as kb
+from .metricas import nivel_medidor as medidores_nivel
 
 SEVERIDAD_LABEL = {
     "critical": "CRÍTICO",
@@ -695,20 +696,16 @@ _CAT_RGB = {"ok": (0.18, 0.75, 0.44), "advertencia": (0.96, 0.65, 0.14),
             "error": (0.94, 0.29, 0.36), "no_evaluado": (0.62, 0.70, 0.80)}
 
 
-def _color_nivel(pct: float) -> str:
-    if pct >= 90:
-        return "#EF4B5B"
-    if pct >= 75:
-        return "#F2761E"
-    if pct >= 60:
-        return "#F5A623"
-    return "#2FBF71"
+def _color_nivel_medidor(tipo: str, pct) -> str:
+    """Color de un medidor segun los umbrales definidos en metricas."""
+    nivel = medidores_nivel(tipo, pct)
+    return {"verde": "#2FBF71", "ambar": "#F5A623", "rojo": "#EF4B5B"}[nivel]
 
 
-def _color_nivel_rgb(pct: float) -> tuple:
-    hexa = _color_nivel(pct)
-    return {"#EF4B5B": (0.94, 0.29, 0.36), "#F2761E": (0.95, 0.46, 0.12),
-            "#F5A623": (0.96, 0.65, 0.14), "#2FBF71": (0.18, 0.75, 0.44)}[hexa]
+def _color_nivel_medidor_rgb(tipo: str, pct) -> tuple:
+    """Color RGB de un medidor segun los umbrales definidos en metricas."""
+    return {"verde": (0.18, 0.75, 0.44), "ambar": (0.96, 0.65, 0.14),
+            "rojo": (0.94, 0.29, 0.36)}[medidores_nivel(tipo, pct)]
 
 
 def _barra_html(pct: float, color: str, ancho: float = 100.0) -> str:
@@ -756,8 +753,10 @@ def _seccion_grafico_html(e: InformeData) -> list[str]:
     out.append(f"<tr><td>Puntaje</td><td><b>{m.get('puntaje')}/100</b> "
                f"{_barra_html(m.get('puntaje', 0), color)}</td></tr>")
     out.append(f"<tr><td>Cobertura</td><td>{cob.get('porcentaje', 0)}% "
-               f"({cob.get('colectores_ok', 0)}/{cob.get('colectores_ejecutados', 0)} "
-               f"colectores OK)</td></tr>")
+               f"({cob.get('colectores_evaluados', cob.get('colectores_ok', 0))}/"
+               f"{cob.get('colectores_ejecutados', 0)} evaluados: "
+               f"{cob.get('colectores_ok', 0)} OK + "
+               f"{cob.get('colectores_sin_datos', 0)} sin datos)</td></tr>")
     out.append("</table>")
     out.append(f"<p class='muted'>{_esc(m.get('leyenda', ''))}</p>")
 
@@ -778,41 +777,46 @@ def _seccion_grafico_html(e: InformeData) -> list[str]:
 
     cats = m.get("categorias") or []
     if cats:
-        out.append("<h3>Estado por categoría</h3>")
-        out.append("<table><tr><td class='th' style='width:26%'>Paquete</td>"
-                   "<td class='th' style='width:10%'>OK</td>"
-                   "<td class='th' style='width:12%'>Advert.</td>"
-                   "<td class='th' style='width:10%'>Error</td>"
-                   "<td class='th' style='width:42%'>Distribución</td></tr>")
+        out.append("<h3>Estado por paquete</h3>")
+        out.append("<table><tr><td class='th' style='width:24%'>Paquete</td>"
+                   "<td class='th' style='width:8%'>OK</td>"
+                   "<td class='th' style='width:10%'>Sin datos</td>"
+                   "<td class='th' style='width:8%'>Error</td>"
+                   "<td class='th' style='width:18%'>Hallazgos</td>"
+                   "<td class='th' style='width:32%'>Distribución</td></tr>")
         for c in cats:
             ok = c.get("ok", 0)
-            adv = c.get("advertencia", 0)
-            err = c.get("error", 0)
+            sin = c.get("sin_datos", 0)
+            err = c.get("error", 0) + c.get("timeout", 0)
             ne = c.get("no_evaluado", 0)
-            total = (ok + adv + err + ne) or 1
-            segs = [(ok / total * 100, "#2FBF71"), (adv / total * 100, "#F5A623"),
-                    (err / total * 100, "#EF4B5B"), (ne / total * 100, "#9FB3CB")]
+            hall = c.get("hallazgos") or {}
+            h_txt = (f"C {hall.get('critical', 0)} / E {hall.get('error', 0)}"
+                     f" / A {hall.get('warning', 0)}")
+            total = (ok + sin + err + ne) or 1
+            segs = [(ok / total * 100, "#2FBF71"), (sin / total * 100, "#8A99AD"),
+                    (err / total * 100, "#C62839"), (ne / total * 100, "#9FB3CB")]
             out.append(f"<tr><td>{_esc(c.get('paquete', ''))}</td><td>{ok}</td>"
-                       f"<td>{adv}</td><td>{err}</td>"
+                       f"<td>{sin}</td><td>{err}</td><td>{_esc(h_txt)}</td>"
                        f"<td>{_barra_apilada_html(segs)}</td></tr>")
         out.append("</table>")
 
     med = m.get("medidores") or {}
     filas = []
     if med.get("memoria") and med["memoria"].get("usado_porcentaje") is not None:
-        filas.append(("Memoria en uso", med["memoria"]["usado_porcentaje"]))
+        filas.append(("Memoria en uso", med["memoria"]["usado_porcentaje"], "memoria"))
     for d in med.get("discos") or []:
         if d.get("usado_porcentaje") is not None:
-            filas.append((f"Disco {d.get('unidad', '')}", d["usado_porcentaje"]))
+            filas.append((f"Disco {d.get('unidad', '')}", d["usado_porcentaje"], "discos"))
     if filas:
         out.append("<h3>Medidores</h3>")
         out.append("<table><tr><td class='th' style='width:30%'>Recurso</td>"
                    "<td class='th' style='width:12%'>Uso</td>"
                    "<td class='th' style='width:58%'>Barra</td></tr>")
-        for nombre, pct in filas:
+        for nombre, pct, tipo in filas:
             out.append(f"<tr><td>{_esc(nombre)}</td><td>{pct}%</td>"
-                       f"<td>{_barra_html(pct, _color_nivel(pct))}</td></tr>")
+                       f"<td>{_barra_html(pct, _color_nivel_medidor(tipo, pct))}</td></tr>")
         out.append("</table>")
+        out.append(f"<p class='muted'>{_esc(m.get('leyenda_medidores', ''))}</p>")
 
     if e.metricas_base and e.metricas_actual:
         out.append("<h3>Comparación antes / después</h3>")
@@ -1251,8 +1255,11 @@ def _seccion_grafico_pdf(doc: "_PdfDoc", e: InformeData):
     doc.spacer(18)
     cob = m.get("cobertura") or {}
     doc.text_flow(f"Cobertura: {cob.get('porcentaje', 0)}%  "
-                  f"({cob.get('colectores_ok', 0)}/{cob.get('colectores_ejecutados', 0)} "
-                  f"colectores OK)", size=8, font="F3", indent=16, color=(0.4, 0.4, 0.4))
+                  f"({cob.get('colectores_evaluados', cob.get('colectores_ok', 0))}/"
+                  f"{cob.get('colectores_ejecutados', 0)} evaluados: "
+                  f"{cob.get('colectores_ok', 0)} OK + "
+                  f"{cob.get('colectores_sin_datos', 0)} sin datos)",
+                  size=8, font="F3", indent=16, color=(0.4, 0.4, 0.4))
     if m.get("leyenda"):
         doc.text_flow(m.get("leyenda"), size=8, font="F3", indent=16,
                       color=(0.4, 0.4, 0.4))
@@ -1271,33 +1278,41 @@ def _seccion_grafico_pdf(doc: "_PdfDoc", e: InformeData):
 
     cats = m.get("categorias") or []
     if cats:
-        doc.text_flow("Estado por categoría", size=10, font="F2", indent=8)
+        doc.text_flow("Estado por paquete", size=10, font="F2", indent=8)
         for c in cats:
             ok = c.get("ok", 0)
-            adv = c.get("advertencia", 0)
-            err = c.get("error", 0)
+            sin = c.get("sin_datos", 0)
+            err = c.get("error", 0) + c.get("timeout", 0)
             ne = c.get("no_evaluado", 0)
+            hall = c.get("hallazgos") or {}
             doc.ensure_space(16)
             doc.text(_MARGIN + 16, str(c.get("paquete", "")), size=8, font="F2")
-            doc.text(_MARGIN + 150, f"OK {ok} / adv {adv} / err {err}", size=8)
+            doc.text(_MARGIN + 150, f"OK {ok} / s/d {sin} / err {err} "
+                                    f"| H C{hall.get('critical', 0)} "
+                                    f"E{hall.get('error', 0)} "
+                                    f"A{hall.get('warning', 0)}", size=8)
             y = doc.y - 11
             _pdf_barra_apilada(doc, _MARGIN + 16, y, ancho, [
-                (ok, _CAT_RGB["ok"]), (adv, _CAT_RGB["advertencia"]),
+                (ok, _CAT_RGB["ok"]), (sin, (0.54, 0.60, 0.68)),
                 (err, _CAT_RGB["error"]), (ne, _CAT_RGB["no_evaluado"])])
             doc.spacer(16)
 
     med = m.get("medidores") or {}
     filas = []
     if med.get("memoria") and med["memoria"].get("usado_porcentaje") is not None:
-        filas.append(("Memoria en uso", med["memoria"]["usado_porcentaje"]))
+        filas.append(("Memoria en uso", med["memoria"]["usado_porcentaje"], "memoria"))
     for d in med.get("discos") or []:
         if d.get("usado_porcentaje") is not None:
-            filas.append((f"Disco {d.get('unidad', '')}", d["usado_porcentaje"]))
+            filas.append((f"Disco {d.get('unidad', '')}", d["usado_porcentaje"], "discos"))
     if filas:
         doc.text_flow("Medidores", size=10, font="F2", indent=8)
-        for nombre, pct in filas:
-            _pdf_fila_barra(doc, nombre, f"{pct}%", pct, _color_nivel_rgb(pct),
+        for nombre, pct, tipo in filas:
+            _pdf_fila_barra(doc, nombre, f"{pct}%", pct,
+                            _color_nivel_medidor_rgb(tipo, pct),
                             ancho_barra, _MARGIN + 210)
+        if m.get("leyenda_medidores"):
+            doc.text_flow(m.get("leyenda_medidores"), size=8, font="F3", indent=16,
+                          color=(0.4, 0.4, 0.4))
 
     if e.metricas_base and e.metricas_actual:
         doc.text_flow("Comparación antes / después", size=10, font="F2", indent=8)

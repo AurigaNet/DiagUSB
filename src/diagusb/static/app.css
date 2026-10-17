@@ -167,6 +167,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round
 .categoria .barra { display: flex; height: 10px; border-radius: 6px; overflow: hidden; background: var(--panel-2); }
 .categoria .barra span { height: 100%; }
 .barra-ok { background: var(--verde); }
+.barra-sindatos { background: #8A99AD; }
 .barra-advertencia { background: var(--ambar); }
 .barra-error { background: var(--rojo); }
 .barra-noevaluado { background: #56637a; }

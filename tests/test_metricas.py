@@ -9,7 +9,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from diagusb.core.metricas import calcular_metricas, tendencia  # noqa: E402
+from diagusb.core.metricas import (ESTADOS, UMBRALES, calcular_metricas,
+                                   nivel_medidor, recomendaciones_de,
+                                   tendencia)  # noqa: E402
 
 
 def _col(cid, status="ok"):
@@ -172,6 +174,99 @@ def test_metricas_de_results_reevalua():
     assert isinstance(m["puntaje"], int)
 
 
+def test_cobertura_cuenta_empty_como_evaluado():
+    m = calcular_metricas({"package": "eventos",
+                           "results": [_col("a"), _col("b", "empty"),
+                                       _col("c", "empty"), _col("d", "error")],
+                           "findings": []})
+    cob = m["cobertura"]
+    assert cob["colectores_ok"] == 1
+    assert cob["colectores_sin_datos"] == 2
+    assert cob["colectores_evaluados"] == 3
+    assert cob["porcentaje"] == round(3 / 4 * 100, 1)
+    assert cob["con_error"] == 1
+
+
+def test_estados_unicos_y_suman():
+    m = calcular_metricas({"package": "disco",
+                           "results": [_col("a"), _col("b", "empty"),
+                                       _col("c", "error"), _col("d", "timeout"),
+                                       _col("e", "denied"),
+                                       _col("f", "not_available")],
+                           "findings": []})
+    est = m["estados"]
+    assert set(est) == set(ESTADOS)
+    assert sum(est.values()) == m["cobertura"]["colectores_ejecutados"]
+    assert m["cobertura"]["estados"] == est
+
+
+def test_categorias_por_paquete():
+    resultado = {
+        "package": "full-scan", "package_label": "Revisión Total",
+        "results": [
+            {"collector_id": "logical_disks", "query": {"status": "ok"}, "data": []},
+            {"collector_id": "memory_status", "query": {"status": "ok"}, "data": []},
+            {"collector_id": "printers", "query": {"status": "ok"}, "data": []},
+            {"collector_id": "print_jobs", "query": {"status": "empty"}, "data": []},
+        ],
+        "findings": [{"severity": "critical", "collector_id": "printers",
+                      "message": "m", "details": {}}],
+        "paquetes": [
+            {"id": "disco", "label": "Estado del Disco",
+             "collectors": ["logical_disks"]},
+            {"id": "memoria", "label": "Memoria y Procesos",
+             "collectors": ["memory_status"]},
+            {"id": "impresion", "label": "Impresión",
+             "collectors": ["printers", "print_jobs"]},
+        ],
+    }
+    m = calcular_metricas(resultado)
+    cats = {c["paquete_id"]: c for c in m["categorias"]}
+    assert len(m["categorias"]) == 3
+    assert cats["disco"]["ok"] == 1
+    assert cats["memoria"]["ok"] == 1
+    assert cats["impresion"]["ok"] == 1 and cats["impresion"]["sin_datos"] == 1
+    assert cats["impresion"]["hallazgos"]["critical"] == 1
+    # Las cifras del documento derivan de la misma estructura.
+    assert sum(sum(c[e] for e in ESTADOS) for c in m["categorias"]) == \
+        m["cobertura"]["colectores_ejecutados"]
+    total_hall = sum(sum((c["hallazgos"] or {}).values()) for c in m["categorias"])
+    assert total_hall == (m["severidad"]["critical"] + m["severidad"]["error"]
+                          + m["severidad"]["warning"])
+
+
+def test_umbrales_medidores():
+    assert UMBRALES["discos"] == {"verde": 75, "ambar": 90}
+    assert UMBRALES["memoria"] == {"verde": 80, "ambar": 90}
+    assert nivel_medidor("discos", 74.9) == "verde"
+    assert nivel_medidor("discos", 75) == "ambar"
+    assert nivel_medidor("discos", 89.9) == "ambar"
+    assert nivel_medidor("discos", 90) == "rojo"
+    assert nivel_medidor("memoria", 79.9) == "verde"
+    assert nivel_medidor("memoria", 80) == "ambar"
+    assert nivel_medidor("memoria", 90) == "rojo"
+    m = calcular_metricas({
+        "package": "disco", "findings": [],
+        "results": [
+            {"collector_id": "memory_status", "query": {"status": "ok"},
+             "data": [{"physical_memory_usage_percent": 74.5}]},
+            {"collector_id": "logical_disks", "query": {"status": "ok"},
+             "data": [{"device_id": "C:", "used_percent": 42.7}]}]})
+    assert m["medidores"]["memoria"]["nivel"] == "verde"
+    assert m["medidores"]["discos"][0]["nivel"] == "verde"
+    assert m["umbrales"] == UMBRALES
+
+
+def test_recomendaciones_coherentes():
+    assert recomendaciones_de({"critical": 0, "error": 0, "warning": 0}) == \
+        ["No se detectaron problemas obvios."]
+    con_critico = recomendaciones_de({"critical": 1, "error": 1, "warning": 1})
+    assert "No se detectaron problemas obvios." not in con_critico
+    assert "Problema crítico detectado. Requiere atención inmediata." in con_critico
+    solo_warning = recomendaciones_de({"critical": 0, "error": 0, "warning": 2})
+    assert solo_warning == ["Advertencias detectadas. Monitoree la situación."]
+
+
 CASOS = [
     ("test_sin_modulos", test_sin_modulos),
     ("test_todo_ok_cien", test_todo_ok_cien),
@@ -188,6 +283,12 @@ CASOS = [
     ("test_tendencia_limita_diez", test_tendencia_limita_diez),
     ("test_campos_existentes_no_cambian", test_campos_existentes_no_cambian),
     ("test_metricas_de_results_reevalua", test_metricas_de_results_reevalua),
+    ("test_cobertura_cuenta_empty_como_evaluado",
+     test_cobertura_cuenta_empty_como_evaluado),
+    ("test_estados_unicos_y_suman", test_estados_unicos_y_suman),
+    ("test_categorias_por_paquete", test_categorias_por_paquete),
+    ("test_umbrales_medidores", test_umbrales_medidores),
+    ("test_recomendaciones_coherentes", test_recomendaciones_coherentes),
 ]
 
 

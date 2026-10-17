@@ -339,7 +339,7 @@ def test_informe_grafico_html_doc_pdf():
     assert "69/100" in html
     assert "bgcolor=" in html
     assert "<svg" not in html
-    assert "Estado por categoría" in html
+    assert "Estado por paquete" in html
     assert "Disco C:" in html
     assert "Comparación antes / después" in html
 
@@ -432,6 +432,76 @@ def test_api_report_metricas_recalculadas():
 # ---------------------------------------------------------------------------
 # Base de conocimiento editable (capa local en un archivo temporal)
 # ---------------------------------------------------------------------------
+def test_informe_cifras_coherentes():
+    import diagusb.web_server as ws
+    from diagusb.core.metricas import ESTADOS
+
+    diag = {
+        "package": "full-scan", "package_label": "Revisión Total",
+        "symptom": "revision_total",
+        "results": [
+            {"collector_id": "system_context", "query": {"status": "ok"}, "data": []},
+            {"collector_id": "bsod_events", "query": {"status": "empty"}, "data": []},
+            {"collector_id": "printers", "query": {"status": "ok"}, "data": []},
+            {"collector_id": "security_events", "query": {"status": "denied"}, "data": []},
+        ],
+        "findings": [
+            {"severity": "critical", "collector_id": "printers", "message": "c",
+             "details": {}},
+            {"severity": "warning", "collector_id": "system_context", "message": "w",
+             "details": {}},
+        ],
+    }
+    m = ws._metricas_de_reporte(diag)
+    inf = informe_desde_diagnostico({**diag, "metricas": m})
+    html = informe_a_html(inf)
+    pdf = informe_a_pdf(inf).decode("latin-1", errors="replace")
+
+    cob = m["cobertura"]
+    # Una sola definicion: estados suman los ejecutados y derivan la cobertura.
+    assert sum(m["estados"][e] for e in ESTADOS) == cob["colectores_ejecutados"]
+    assert cob["colectores_evaluados"] == cob["colectores_ok"] + cob["colectores_sin_datos"]
+    assert cob["porcentaje"] == round(
+        cob["colectores_evaluados"] / cob["colectores_ejecutados"] * 100, 1)
+    # Documento y estructura muestran la misma cobertura.
+    esperado = (f"{cob['porcentaje']}% ({cob['colectores_evaluados']}/"
+                f"{cob['colectores_ejecutados']} evaluados")
+    assert esperado in html, html[:500]
+    # En el PDF el texto puede partirse por el ajuste de linea: se comprueba
+    # la misma cifra de cobertura de forma independiente.
+    assert f"Cobertura: {cob['porcentaje']}%" in pdf
+    assert f"{cob['colectores_ok']}" in pdf and "sin datos" in pdf
+    # La severidad del documento sale de los mismos hallazgos.
+    assert int(m["severidad"]["critical"]) == 1
+    assert int(m["severidad"]["warning"]) == 1
+    total_hall = {"critical": 0, "error": 0, "warning": 0}
+    for c in m["categorias"]:
+        for k in total_hall:
+            total_hall[k] += (c.get("hallazgos") or {}).get(k, 0)
+    assert total_hall == {"critical": 1, "error": 0, "warning": 1}
+
+
+def test_informe_recomendaciones_coherentes():
+    import diagusb.web_server as ws
+
+    diag = {
+        "package": "full-scan", "package_label": "Revisión Total",
+        "results": [{"collector_id": "printers", "query": {"status": "ok"},
+                     "data": []}],
+        "findings": [{"severity": "critical", "collector_id": "printers",
+                      "message": "c", "details": {}}],
+        "recommendations": ["No se detectaron problemas obvios.",
+                            "Problema crítico detectado. Requiere atención inmediata."],
+    }
+    m = ws._metricas_de_reporte(diag)
+    inf = informe_desde_diagnostico({**diag, "metricas": m})
+    inf.recomendaciones = __import__("diagusb.core.metricas", fromlist=["x"]) \
+        .recomendaciones_de(m["severidad"])
+    html = informe_a_html(inf)
+    assert "No se detectaron problemas obvios." not in html
+    assert "Problema crítico detectado. Requiere atención inmediata." in html
+
+
 def test_kb_guardar_y_eliminar():
     tmp_dir = Path(tempfile.mkdtemp(prefix="diagusb_kb_"))
     tmp = tmp_dir / "base_conocimiento.json"
@@ -1853,6 +1923,8 @@ def run_tests():
         ("test_informe_grafico_sin_metricas", test_informe_grafico_sin_metricas),
         ("test_api_report_incluye_grafico", test_api_report_incluye_grafico),
         ("test_api_report_metricas_recalculadas", test_api_report_metricas_recalculadas),
+        ("test_informe_cifras_coherentes", test_informe_cifras_coherentes),
+        ("test_informe_recomendaciones_coherentes", test_informe_recomendaciones_coherentes),
         ("test_kb_guardar_y_eliminar", test_kb_guardar_y_eliminar),
         ("test_kb_valida_campos", test_kb_valida_campos),
         ("test_kb_embebida_intacta", test_kb_embebida_intacta),

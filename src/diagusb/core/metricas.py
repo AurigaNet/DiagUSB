@@ -7,7 +7,7 @@ analisis ejecutado. No reemplaza al diagnostico ni inventa datos: si no hay
 modulos ejecutados no hay puntaje (``None`` / "Sin datos").
 """
 
-VERSION_FORMULA = 1
+VERSION_FORMULA = 2
 
 PESOS = {"critical": 15, "error": 8, "warning": 3, "ok": 0}
 LABEL_SEVERIDAD = {"critical": "Crítico", "error": "Error",
@@ -15,9 +15,69 @@ LABEL_SEVERIDAD = {"critical": "Crítico", "error": "Error",
 LEYENDA_PUNTAJE = "Puntaje orientativo sobre los módulos ejecutados"
 
 _COBERTURA_PARCIAL = 60.0
-_ESTADOS_ERROR = ("error", "timeout")
-_ESTADOS_DENEGADO = ("denied", "not_available")
-_RANGO_SEVERIDAD = {"critical": 3, "error": 2, "warning": 1, "ok": 0}
+
+# Definicion UNICA de estados de colector. Todo el documento y la interfaz
+# derivan de esta misma clasificacion (nunca de dos criterios distintos).
+ESTADOS = ("ok", "sin_datos", "error", "timeout", "denegado", "no_disponible")
+ESTADO_LABEL = {
+    "ok": "OK", "sin_datos": "Sin datos", "error": "Error",
+    "timeout": "Tiempo agotado", "denegado": "Denegado",
+    "no_disponible": "No disponible",
+}
+_ESTADO_POR_STATUS = {
+    "ok": "ok", "empty": "sin_datos", "error": "error", "timeout": "timeout",
+    "denied": "denegado", "not_available": "no_disponible",
+}
+
+# Umbrales de los medidores (porcentaje de uso). "verde" por debajo del umbral
+# verde, "ambar" hasta el umbral ambar (inclusive) y "rojo" por encima.
+UMBRALES = {
+    "discos": {"verde": 75, "ambar": 90},
+    "memoria": {"verde": 80, "ambar": 90},
+}
+LEYENDA_UMBRALES = ("Discos: verde < 75%, ámbar 75-89%, rojo >= 90%. "
+                    "Memoria: verde < 80%, ámbar 80-89%, rojo >= 90%.")
+
+
+def estado_de(status: str) -> str:
+    """Normaliza el status crudo de un colector a uno de ``ESTADOS``."""
+    return _ESTADO_POR_STATUS.get((status or "").lower(), "no_disponible")
+
+
+def nivel_medidor(tipo: str, pct) -> str:
+    """Nivel ('verde' / 'ambar' / 'rojo') de un medidor segun su umbral."""
+    u = UMBRALES.get(tipo, {"verde": 75, "ambar": 90})
+    try:
+        valor = float(pct)
+    except (TypeError, ValueError):
+        return "verde"
+    if valor >= u["ambar"]:
+        return "rojo"
+    if valor >= u["verde"]:
+        return "ambar"
+    return "verde"
+
+
+def recomendaciones_de(conteos: dict) -> list[str]:
+    """Recomendaciones derivadas de los conteos de severidad del analisis.
+
+    Una sola definicion: mientras exista algun problema (critical/error/
+    warning) nunca se emite "No se detectaron problemas obvios.".
+    """
+    c = conteos or {}
+    criticos = int(c.get("critical") or 0)
+    errores = int(c.get("error") or 0)
+    advertencias = int(c.get("warning") or 0)
+    if criticos == 0 and errores == 0 and advertencias == 0:
+        return ["No se detectaron problemas obvios."]
+    recs = []
+    if criticos > 0:
+        recs.append("Problema crítico detectado. Requiere atención inmediata.")
+    if errores > 0:
+        recs.append("Errores detectados. Revise la configuración.")
+    if advertencias > 0:
+        recs.append("Advertencias detectadas. Monitoree la situación.")
+    return recs
 
 
 def _primer_dict(data):
@@ -51,6 +111,64 @@ def _es_no_evaluado(f: dict) -> bool:
     return bool((f.get("details") or {}).get("no_evaluado"))
 
 
+def _categorias(collectors: list, findings: list, paquetes: list | None,
+                default_id: str, default_label: str) -> list[dict]:
+    """Filas por paquete con la definicion UNICA de estados y sus hallazgos.
+
+    ``paquetes`` (opcional) es una lista de ``{"id", "label", "collectors"}``
+    con los ids de colector de cada paquete (el mapa real de paquetes). Si no
+    se informa, se genera una sola fila con la etiqueta del analisis.
+    """
+    filas: list[dict] = []
+    mapa: dict[str, dict] = {}
+    defecto: dict | None = None
+
+    def _nueva(pid: str, label: str) -> dict:
+        fila = {
+            "paquete": label or pid or "", "paquete_id": pid or "",
+            "ok": 0, "sin_datos": 0, "error": 0, "timeout": 0,
+            "denegado": 0, "no_disponible": 0,
+            "hallazgos": {"critical": 0, "error": 0, "warning": 0},
+        }
+        filas.append(fila)
+        return fila
+
+    if paquetes:
+        for p in paquetes:
+            if not isinstance(p, dict):
+                continue
+            fila = _nueva(p.get("id"), p.get("label"))
+            for cid in (p.get("collectors") or []):
+                mapa[str(cid)] = fila
+    else:
+        defecto = _nueva(default_id, default_label)
+
+    for r in collectors:
+        fila = mapa.get(str(r.get("collector_id"))) or defecto
+        if fila is None:
+            continue
+        fila[estado_de(_status(r))] += 1
+
+    for f in findings:
+        if _es_no_evaluado(f):
+            continue
+        sev = f.get("severity")
+        if sev not in ("critical", "error", "warning"):
+            continue
+        fila = mapa.get(str(f.get("collector_id"))) or defecto
+        if fila is None:
+            continue
+        fila["hallazgos"][sev] += 1
+
+    for fila in filas:
+        fila["total"] = sum(fila[e] for e in ESTADOS)
+        fila["evaluados"] = fila["ok"] + fila["sin_datos"]
+        fila["no_evaluado"] = (fila["timeout"] + fila["denegado"]
+                               + fila["no_disponible"])
+        fila["advertencia"] = fila["hallazgos"]["warning"]
+    return filas
+
+
 def calcular_metricas(resultado: dict, modulos: int | None = None) -> dict:
     """Calcula las metricas orientativas de un diagnostico (puro).
 
@@ -58,16 +176,23 @@ def calcular_metricas(resultado: dict, modulos: int | None = None) -> dict:
     entrada del registro o el combinado de una revision total) con al menos
     ``results``/``colectores`` y ``findings``. ``modulos`` permite informar
     cuantos modulos (paquetes) se ejecutaron cuando no se puede inferir.
+    ``paquetes`` (opcional) permite agrupar las categorias por paquete real.
     """
     resultado = resultado or {}
     collectors = _collectors(resultado)
     ejecutados = len(collectors)
-    ok = sum(1 for r in collectors if _status(r) == "ok")
-    vacios = sum(1 for r in collectors if _status(r) == "empty")
-    con_error = sum(1 for r in collectors if _status(r) in _ESTADOS_ERROR)
-    denegados = sum(1 for r in collectors if _status(r) in _ESTADOS_DENEGADO)
+
+    # Definicion UNICA de estados: todo se deriva de aqui.
+    estados = {e: 0 for e in ESTADOS}
+    for r in collectors:
+        estados[estado_de(_status(r))] += 1
+    ok = estados["ok"]
+    sin_datos = estados["sin_datos"]
+    con_error = estados["error"] + estados["timeout"]
+    denegados = estados["denegado"] + estados["no_disponible"]
     no_evaluados = con_error + denegados
-    porcentaje = round(ok / ejecutados * 100, 1) if ejecutados else 0.0
+    evaluados = ok + sin_datos
+    porcentaje = round(evaluados / ejecutados * 100, 1) if ejecutados else 0.0
 
     if modulos is None:
         modulos = resultado.get("modulos_ejecutados")
@@ -77,17 +202,12 @@ def calcular_metricas(resultado: dict, modulos: int | None = None) -> dict:
     findings = [f for f in (resultado.get("findings") or [])
                 if isinstance(f, dict)]
     conteos = {"critical": 0, "error": 0, "warning": 0, "ok": 0}
-    severidad_por_collector: dict[str, int] = {}
     for f in findings:
         if _es_no_evaluado(f):
             continue
         sev = f.get("severity")
         if sev in conteos:
             conteos[sev] += 1
-        cid = f.get("collector_id") or ""
-        rango = _RANGO_SEVERIDAD.get(sev, 0)
-        severidad_por_collector[cid] = max(
-            severidad_por_collector.get(cid, 0), rango)
 
     if ejecutados == 0:
         puntaje = None
@@ -113,29 +233,11 @@ def calcular_metricas(resultado: dict, modulos: int | None = None) -> dict:
         label = resultado.get("package_label") or pkg or "análisis"
         alcance = f"Puntaje del paquete {label}"
 
-    conteo_cat = {"ok": 0, "advertencia": 0, "error": 0, "no_evaluado": 0}
-    for r in collectors:
-        st = _status(r)
-        if st in _ESTADOS_DENEGADO:
-            conteo_cat["no_evaluado"] += 1
-            continue
-        if st in _ESTADOS_ERROR:
-            conteo_cat["error"] += 1
-            continue
-        rango = severidad_por_collector.get(r.get("collector_id"), 0)
-        if rango >= 2:
-            conteo_cat["error"] += 1
-        elif rango == 1:
-            conteo_cat["advertencia"] += 1
-        else:
-            conteo_cat["ok"] += 1
-
     categorias = []
     if ejecutados:
-        categorias.append({
-            "paquete": resultado.get("package_label") or pkg or "",
-            **conteo_cat,
-        })
+        categorias = _categorias(
+            collectors, findings, resultado.get("paquetes"),
+            pkg, resultado.get("package_label") or pkg or "")
 
     medidores = {}
     for r in collectors:
@@ -145,10 +247,12 @@ def calcular_metricas(resultado: dict, modulos: int | None = None) -> dict:
         if cid == "memory_status":
             d = _primer_dict(r.get("data"))
             if d and d.get("physical_memory_usage_percent") is not None:
+                pct = d.get("physical_memory_usage_percent")
                 medidores["memoria"] = {
-                    "usado_porcentaje": d.get("physical_memory_usage_percent"),
+                    "usado_porcentaje": pct,
                     "total_kb": d.get("total_visible_memory_kb"),
                     "libre_kb": d.get("free_physical_memory_kb"),
+                    "nivel": nivel_medidor("memoria", pct),
                 }
         elif cid == "logical_disks":
             discos = []
@@ -159,6 +263,7 @@ def calcular_metricas(resultado: dict, modulos: int | None = None) -> dict:
                         "usado_porcentaje": x.get("used_percent"),
                         "libre_gb": x.get("free_gb"),
                         "total_gb": x.get("total_gb"),
+                        "nivel": nivel_medidor("discos", x.get("used_percent")),
                     })
             if discos:
                 medidores["discos"] = discos
@@ -173,14 +278,20 @@ def calcular_metricas(resultado: dict, modulos: int | None = None) -> dict:
             "modulos_ejecutados": modulos,
             "colectores_ejecutados": ejecutados,
             "colectores_ok": ok,
-            "colectores_vacios": vacios,
+            "colectores_sin_datos": sin_datos,
+            "colectores_vacios": sin_datos,
+            "colectores_evaluados": evaluados,
             "con_error": con_error,
             "denegados": denegados,
             "no_evaluados": no_evaluados,
             "porcentaje": porcentaje,
+            "estados": dict(estados),
         },
+        "estados": dict(estados),
         "severidad": conteos,
         "categorias": categorias,
+        "umbrales": UMBRALES,
+        "leyenda_medidores": LEYENDA_UMBRALES,
     }
     if medidores:
         metricas["medidores"] = medidores

@@ -32,7 +32,8 @@ from diagusb.core import almacen
 from diagusb.core import integridad
 from diagusb.core import rutas
 from diagusb.core.rules import diagnose_symptoms
-from diagusb.core.metricas import calcular_metricas, tendencia
+from diagusb.core.metricas import (calcular_metricas, recomendaciones_de,
+                                   tendencia)
 from diagusb.core import knowledge_base as kb
 from diagusb.core.informe import (
     ESTADOS_ACCION,
@@ -137,12 +138,44 @@ def _metricas_de_reporte(diag: dict) -> dict:
     """
     diag = diag or {}
     findings = [f for f in (diag.get("findings") or []) if isinstance(f, dict)]
-    return calcular_metricas({
+    payload = {
         "package": diag.get("package"),
         "package_label": diag.get("package_label"),
         "results": diag.get("results") or [],
         "findings": findings,
-    })
+    }
+    if diag.get("package") == "full-scan":
+        payload["paquetes"] = _mapa_paquetes()
+    return calcular_metricas(payload)
+
+
+def _collector_id_real(script_path: Path, fallback: str) -> str:
+    """Devuelve el id que el colector declara con -CollectorId.
+
+    El nombre del archivo (``get_foo.ps1``) no siempre coincide con el
+    ``collector_id`` que emite el script (p. ej. ``get_print_events.ps1``
+    emite ``print_service_events``). Para agrupar por paquete hay que usar el
+    id real que aparece en los resultados.
+    """
+    try:
+        texto = script_path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return fallback
+    coincidencia = re.search(r"-CollectorId\s+'([^']+)'", texto)
+    return coincidencia.group(1) if coincidencia else fallback
+
+
+def _mapa_paquetes() -> list[dict]:
+    """Mapa real de paquetes -> ids de colector (para agrupar categorias)."""
+    base = Path(__file__).parent / "packages"
+    mapa = []
+    for p in discover_packages():
+        ids = []
+        for c in p.collectors:
+            ids.append(_collector_id_real(base / p.name / "collectors" / c.script,
+                                          c.id))
+        mapa.append({"id": p.name, "label": p.label, "collectors": ids})
+    return mapa
 
 
 def _entero_metricas(valor, tope: int = 10 ** 6):
@@ -259,13 +292,15 @@ def _metricas_de_full_scan(diagnostics: list) -> dict:
         "package_label": "Revisión Total",
         "results": [r for d in diagnostics for r in (d.get("results") or [])],
         "findings": [f for d in diagnostics for f in (d.get("findings") or [])],
+        "paquetes": [
+            {"id": d.get("package") or "",
+             "label": d.get("package_label") or d.get("package") or "",
+             "collectors": [r.get("collector_id")
+                            for r in (d.get("results") or [])]}
+            for d in diagnostics if isinstance(d, dict)
+        ],
     }
-    metricas = calcular_metricas(combinado, modulos=len(diagnostics))
-    categorias = []
-    for d in diagnostics:
-        categorias.extend(calcular_metricas(d).get("categorias") or [])
-    metricas["categorias"] = categorias
-    return metricas
+    return calcular_metricas(combinado, modulos=len(diagnostics))
 
 
 def _snapshot_from_results(results: list) -> Snapshot:
@@ -602,6 +637,7 @@ def _registrar_full_scan(diagnostics: list[dict]) -> dict | None:
             c = dict(f)
             c["package_label"] = d.get("package_label") or d.get("package") or ""
             findings.append(c)
+    diag_results = [r for d in validos for r in d.get("results") or []]
     diag = {
         "package": "full-scan",
         "package_label": "Revisión Total",
@@ -611,9 +647,10 @@ def _registrar_full_scan(diagnostics: list[dict]) -> dict | None:
         "error_count": sum(d.get("error_count") or 0 for d in validos),
         "empty_count": sum(d.get("empty_count") or 0 for d in validos),
         "findings": findings,
-        "recommendations": list(dict.fromkeys(
-            r for d in validos for r in d.get("recommendations") or [])),
-        "results": [r for d in validos for r in d.get("results") or []],
+        "recommendations": recomendaciones_de(
+            calcular_metricas({"package": "full-scan", "findings": findings,
+                               "results": diag_results}).get("severidad") or {}),
+        "results": diag_results,
         "timestamp": datetime.now().isoformat(),
     }
     return registrar_analisis(diag, "full-scan")
@@ -885,6 +922,8 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             
             result = {"diagnostics": diagnostics, "timestamp": datetime.now().isoformat()}
             result["metricas"] = _metricas_de_full_scan(diagnostics)
+            result["recommendations"] = recomendaciones_de(
+                result["metricas"].get("severidad") or {})
             entrada = _registrar_full_scan(diagnostics)
             if entrada:
                 result["registro_id"] = entrada["id"]
@@ -1140,6 +1179,8 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
                 metricas_base=_metricas_validadas(payload.get("metricas_base")),
                 metricas_actual=_metricas_validadas(payload.get("metricas_actual")),
             )
+            informe.recomendaciones = recomendaciones_de(
+                informe.metricas.get("severidad") or {})
             paquete = _paquete_seguro(diag["package"])
 
             if fmt == "doc":

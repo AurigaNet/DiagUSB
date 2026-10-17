@@ -568,7 +568,8 @@
                     findings: allFindings,
                     improvements: allImprovements,
                     results: allResults,
-                    recommendations: allRecommendations,
+                    recommendations: (data.recommendations && data.recommendations.length)
+                        ? data.recommendations : allRecommendations,
                     estados_accion: (data.diagnostics[0] || {}).estados_accion,
                     metricas: data.metricas,
                     timestamp: data.timestamp
@@ -682,6 +683,9 @@
             const val = 'M ' + (cx - r) + ' ' + cy + ' A ' + r + ' ' + r + ' 0 0 1 ' + ex.toFixed(2) + ' ' + ey.toFixed(2);
             const cobertura = (m.cobertura && m.cobertura.porcentaje != null) ? m.cobertura.porcentaje + '%' : '—';
             const c = m.cobertura || {};
+            const evaluados = (c.colectores_evaluados != null)
+                ? c.colectores_evaluados
+                : ((c.colectores_ok || 0) + (c.colectores_sin_datos || 0));
             cuerpo.innerHTML =
                 '<div class="gauge-figura">' +
                   '<svg width="200" height="112" viewBox="0 0 200 112">' +
@@ -691,8 +695,9 @@
                   '<div class="gauge-valor" style="color:' + color + '">' + m.puntaje + '<small>/100</small></div>' +
                 '</div>' +
                 '<div class="gauge-etiqueta" style="color:' + color + '">' + escHtml(m.etiqueta || '') + '</div>' +
-                '<div class="gauge-cobertura">Cobertura: <b>' + cobertura + '</b> (' + (c.colectores_ok || 0) +
-                    '/' + (c.colectores_ejecutados || 0) + ' colectores OK)</div>' +
+                '<div class="gauge-cobertura">Cobertura: <b>' + cobertura + '</b> (' + evaluados +
+                    '/' + (c.colectores_ejecutados || 0) + ' evaluados: ' + (c.colectores_ok || 0) +
+                    ' OK + ' + (c.colectores_sin_datos || 0) + ' sin datos)</div>' +
                 (nota ? '<div class="gauge-cobertura">' + nota + '</div>' : '');
         }
 
@@ -741,27 +746,35 @@
             if (!cats.length) { el.innerHTML = '<p class="sin-datos">Sin datos.</p>'; return; }
             let html = '';
             cats.forEach(c => {
-                const ok = c.ok || 0, adv = c.advertencia || 0, err = c.error || 0, ne = c.no_evaluado || 0;
-                const total = ok + adv + err + ne || 1;
+                const ok = c.ok || 0, sin = c.sin_datos || 0;
+                const err = (c.error || 0) + (c.timeout || 0), ne = c.no_evaluado || 0;
+                const hall = c.hallazgos || {};
+                const total = ok + sin + err + ne || 1;
                 const pct = v => (v / total * 100).toFixed(1) + '%';
                 html += '<div class="categoria">';
                 html += '<div class="nombre"><span>' + escHtml(c.paquete || 'Análisis') + '</span>' +
-                    '<span>' + ok + ' OK · ' + adv + ' adv. · ' + err + ' error · ' + ne + ' n/e</span></div>';
+                    '<span>' + ok + ' OK · ' + sin + ' s/d · ' + err + ' error · ' + ne +
+                    ' n/e · H C' + (hall.critical || 0) + ' E' + (hall.error || 0) +
+                    ' A' + (hall.warning || 0) + '</span></div>';
                 html += '<div class="barra">';
                 if (ok) html += '<span class="barra-ok" style="width:' + pct(ok) + '" title="OK: ' + ok + '"></span>';
-                if (adv) html += '<span class="barra-advertencia" style="width:' + pct(adv) + '" title="Advertencia: ' + adv + '"></span>';
+                if (sin) html += '<span class="barra-sindatos" style="width:' + pct(sin) + '" title="Sin datos: ' + sin + '"></span>';
                 if (err) html += '<span class="barra-error" style="width:' + pct(err) + '" title="Error: ' + err + '"></span>';
                 if (ne) html += '<span class="barra-noevaluado" style="width:' + pct(ne) + '" title="No evaluado: ' + ne + '"></span>';
                 html += '</div></div>';
             });
-            html += '<div class="acciones-hint">OK / Advertencia / Error / No evaluado por paquete.</div>';
+            html += '<div class="acciones-hint">OK / Sin datos / Error / No evaluado por paquete · H = hallazgos (crítico/error/advertencia).</div>';
             el.innerHTML = html;
         }
 
-        function nivel(pct) {
+        function nivelDe(tipo, pct) {
+            if (tipo === 'memoria') {
+                if (pct >= 90) return 'rojo';
+                if (pct >= 80) return 'ambar';
+                return 'ok';
+            }
             if (pct >= 90) return 'rojo';
-            if (pct >= 75) return 'naranja';
-            if (pct >= 60) return 'ambar';
+            if (pct >= 75) return 'ambar';
             return 'ok';
         }
 
@@ -771,16 +784,19 @@
             let html = '';
             if (med.memoria && med.memoria.usado_porcentaje != null) {
                 const p = med.memoria.usado_porcentaje;
+                const nv = med.memoria.nivel || nivelDe('memoria', p);
                 html += '<div class="medidor"><div class="nombre"><span>Memoria en uso</span><span>' + p + '%</span></div>' +
-                    '<div class="pista"><span class="nivel-' + nivel(p) + '" style="width:' + Math.min(100, p) + '%"></span></div></div>';
+                    '<div class="pista"><span class="nivel-' + nv + '" style="width:' + Math.min(100, p) + '%"></span></div></div>';
             }
             (med.discos || []).forEach(d => {
                 if (d.usado_porcentaje == null) return;
+                const nv = d.nivel || nivelDe('discos', d.usado_porcentaje);
                 html += '<div class="medidor"><div class="nombre"><span>Disco ' + escHtml(d.unidad || '') +
                     '</span><span>' + d.usado_porcentaje + '%</span></div>' +
-                    '<div class="pista"><span class="nivel-' + nivel(d.usado_porcentaje) + '" style="width:' + Math.min(100, d.usado_porcentaje) + '%"></span></div></div>';
+                    '<div class="pista"><span class="nivel-' + nv + '" style="width:' + Math.min(100, d.usado_porcentaje) + '%"></span></div></div>';
             });
-            el.innerHTML = html || '<p class="sin-datos">Sin datos.</p>';
+            const leyenda = (m && m.leyenda_medidores) ? '<div class="acciones-hint">' + escHtml(m.leyenda_medidores) + '</div>' : '';
+            el.innerHTML = (html || '<p class="sin-datos">Sin datos.</p>') + leyenda;
         }
 
         function alcanceDeEntrada(e) {
