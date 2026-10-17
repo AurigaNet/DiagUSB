@@ -178,126 +178,31 @@ Escribir-Utf8SinBom -Ruta (Join-Path $pyDir $pthName) -Contenido $pth
 Write-Host "Escrito $pthName con: python$mm.zip, ., ..\src"
 
 # --- 5) Lanzadores ---
-$lanzadorWeb = @'
-@echo off
-chcp 65001 >nul
-setlocal EnableExtensions
-set "KIT=%~dp0"
-title DiagUSB - Iniciar (interfaz web)
-cd /d "%KIT%"
-
-echo ============================================================
-echo  DiagUSB - Iniciar (interfaz web)
-echo ============================================================
-echo.
-
-if not exist "%KIT%python\python.exe" (
-    echo ERROR: no se encontro python\python.exe en el kit.
-    goto :error
-)
-
-echo Verificando la firma digital de python\python.exe ...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$f = Get-AuthenticodeSignature -LiteralPath '%KIT%python\python.exe'; if ($f.Status -eq 'HashMismatch' -or $f.Status -eq 'NotSigned') { Write-Host ('FIRMA INVALIDA (' + $f.Status + '). No se ejecutara nada.'); exit 2 } elseif ($f.Status -ne 'Valid') { Write-Host ('AVISO: no se pudo validar la firma (' + $f.Status + '); se continuara.'); exit 0 } else { Write-Host ('Firma valida: ' + $f.SignerCertificate.Subject); exit 0 }"
-if errorlevel 2 goto :firma_mala
-if errorlevel 1 goto :error
-
-echo.
-echo ------------------------------------------------------------
-echo  Que hace DiagUSB:
-echo   - Ejecuta consultas de SOLO LECTURA con PowerShell sobre este equipo.
-echo   - Solicita permisos de Administrador (UAC) para obtener datos completos.
-echo   - NO modifica la configuracion del equipo.
-echo   - NO envia datos por red.
-echo   - Abre la interfaz web local en 127.0.0.1 (solo en este equipo).
-echo   - Guarda los informes en la carpeta del kit.
-echo ------------------------------------------------------------
-echo.
-set /p RESPUESTA=¿Continuar? (S/N): 
-if /i not "%RESPUESTA%"=="S" (
-    echo Operacion cancelada por el usuario.
-    goto :fin
-)
-
-echo.
-echo Iniciando DiagUSB ...
-"%KIT%python\python.exe" -I -B -m diagusb --open web %*
-if errorlevel 1 goto :error
-goto :fin
-
-:error
-echo.
-echo ERROR: DiagUSB termino con un error. Revise el mensaje anterior.
-pause
-
-:firma_mala
-echo.
-echo ERROR: la firma digital de python\python.exe no es valida. No se ejecutara DiagUSB.
-pause
-
-:fin
-endlocal
-'@
-Escribir-Utf8SinBom -Ruta (Join-Path $KitRoot 'Iniciar_DiagUSB.cmd') -Contenido (Normalizar-Crlf $lanzadorWeb)
-
-$lanzadorConsola = @'
-@echo off
-chcp 65001 >nul
-setlocal EnableExtensions
-set "KIT=%~dp0"
-title DiagUSB - Iniciar (consola)
-cd /d "%KIT%"
-
-echo ============================================================
-echo  DiagUSB - Iniciar (menu de consola)
-echo ============================================================
-echo.
-
-if not exist "%KIT%python\python.exe" (
-    echo ERROR: no se encontro python\python.exe en el kit.
-    goto :error
-)
-
-echo Verificando la firma digital de python\python.exe ...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$f = Get-AuthenticodeSignature -LiteralPath '%KIT%python\python.exe'; if ($f.Status -eq 'HashMismatch' -or $f.Status -eq 'NotSigned') { Write-Host ('FIRMA INVALIDA (' + $f.Status + '). No se ejecutara nada.'); exit 2 } elseif ($f.Status -ne 'Valid') { Write-Host ('AVISO: no se pudo validar la firma (' + $f.Status + '); se continuara.'); exit 0 } else { Write-Host ('Firma valida: ' + $f.SignerCertificate.Subject); exit 0 }"
-if errorlevel 2 goto :firma_mala
-if errorlevel 1 goto :error
-
-echo.
-echo ------------------------------------------------------------
-echo  Que hace DiagUSB:
-echo   - Ejecuta consultas de SOLO LECTURA con PowerShell sobre este equipo.
-echo   - Solicita permisos de Administrador (UAC) para obtener datos completos.
-echo   - NO modifica la configuracion del equipo.
-echo   - NO envia datos por red.
-echo   - Guarda los informes en la carpeta del kit.
-echo ------------------------------------------------------------
-echo.
-set /p RESPUESTA=¿Continuar? (S/N): 
-if /i not "%RESPUESTA%"=="S" (
-    echo Operacion cancelada por el usuario.
-    goto :fin
-)
-
-echo.
-echo Iniciando DiagUSB (consola) ...
-"%KIT%python\python.exe" -I -B -m diagusb %*
-if errorlevel 1 goto :error
-goto :fin
-
-:error
-echo.
-echo ERROR: DiagUSB termino con un error. Revise el mensaje anterior.
-pause
-
-:firma_mala
-echo.
-echo ERROR: la firma digital de python\python.exe no es valida. No se ejecutara DiagUSB.
-pause
-
-:fin
-endlocal
-'@
-Escribir-Utf8SinBom -Ruta (Join-Path $KitRoot 'Iniciar_DiagUSB_consola.cmd') -Contenido (Normalizar-Crlf $lanzadorConsola)
+# Se copian byte a byte desde scripts\kit\ (asi las tildes quedan intactas) y
+# solo se normaliza el fin de linea a CRLF. No se leen como texto: PowerShell
+# 5.1 interpreta los .ps1 sin BOM como ANSI y corromperia las tildes.
+function Copiar-Lanzador {
+    param([Parameter(Mandatory = $true)][string]$Nombre)
+    $origen = Join-Path $Repo "scripts\kit\$Nombre"
+    if (-not (Test-Path -LiteralPath $origen)) {
+        throw "Falta la plantilla del lanzador: $origen"
+    }
+    $bytes = [System.IO.File]::ReadAllBytes($origen)
+    $destino = New-Object System.Collections.Generic.List[byte]
+    for ($i = 0; $i -lt $bytes.Length; $i++) {
+        if ($bytes[$i] -eq 0x0A -and ($i -eq 0 -or $bytes[$i - 1] -ne 0x0D)) {
+            $destino.Add([byte]0x0D)
+            $destino.Add([byte]0x0A)
+        }
+        else {
+            $destino.Add([byte]$bytes[$i])
+        }
+    }
+    [System.IO.File]::WriteAllBytes((Join-Path $KitRoot $Nombre), $destino.ToArray())
+    Write-Host "Lanzador escrito: $Nombre"
+}
+Copiar-Lanzador 'Iniciar_DiagUSB.cmd'
+Copiar-Lanzador 'Iniciar_DiagUSB_consola.cmd'
 
 # --- 6) SHA256SUMS.txt (rutas relativas a la raiz del zip: DiagUSB/...) ---
 $entradas = Get-ChildItem -LiteralPath $KitRoot -Recurse -File |
