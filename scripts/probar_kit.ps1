@@ -130,12 +130,10 @@ try {
     if ($code -ne 0) { Falla ("list-packages salio con codigo {0}" -f $code) }
     else { Ok 'list-packages OK' }
 
-    # --- 5) Diagnostico real (solo lectura, sin UAC) ---
-    Write-Host '5) Diagnostico real (sin elevacion)'
-    $env:DIAGUSB_NO_ELEVATE = '1'
-    $code = Invocar -Argumentos @('-I', '-B', '-m', 'diagusb', '--no-elevate', 'diagnose',
+    # --- 5) Diagnostico real (solo lectura, modo estandar sin UAC) ---
+    Write-Host '5) Diagnostico real (modo estandar, sin UAC)'
+    $code = Invocar -Argumentos @('-I', '-B', '-m', 'diagusb', 'diagnose',
         '-s', $Symptom, '-p', $Package, '-o', $tmp) -Log (Join-Path $tmp 'diag.log')
-    Remove-Item Env:\DIAGUSB_NO_ELEVATE -ErrorAction SilentlyContinue
     if ($code -ne 0) { Falla ("diagnose salio con codigo {0}" -f $code) }
     else { Ok 'diagnose OK' }
 
@@ -167,7 +165,6 @@ try {
     }
 }
 finally {
-    Remove-Item Env:\DIAGUSB_NO_ELEVATE -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
 }
 

@@ -11,7 +11,7 @@ DiagUSB es un kit de diagnóstico para soporte de infraestructura TI pensado par
 - **Registro persistente de análisis**: cada diagnóstico ejecutado queda guardado automáticamente en `config/registro_analisis.json`. Botón "Registro de análisis" para consultar el detalle, eliminar análisis individuales o vaciar el registro completo.
 - **Informes Word (.doc) y PDF (.pdf)** en español, con hallazgos, soluciones de la base de conocimiento, acciones del técnico, mejoras sugeridas y diferencias antes/después.
 - **Base de conocimiento local**: 19 entradas embebidas más capa editable en `config/base_conocimiento.json` (alta/edición/baja desde la interfaz, buscador por palabra clave).
-- **Auto-elevación a Administrador** (UAC): al iniciar solicita permisos; flag `--no-elevate` o variable `DIAGUSB_NO_ELEVATE=1` para desactivarla.
+- **Arranque sin UAC**: DiagUSB inicia sin pedir permisos (modo estándar). Los permisos de Administrador se solicitan solo a pedido: botón "Dar permisos de administrador" en la interfaz web, o flag `--elevar` en la línea de comandos.
 - **Kit portable** (`DiagUSB-kit-<version>.zip`): incluye una distribución embebida oficial de Python (python.org) más el código fuente, sin necesidad de instalar Python en el equipo destino. Es la distribución principal y se arma con `scripts\armar_kit.ps1`.
 - **Ejecutable portable opcional** (`dist/diagusb/diagusb.exe`) construido con PyInstaller, como variante sin Python embebido.
 
@@ -33,9 +33,9 @@ El kit no requiere Python instalado: usa el intérprete embebido en `python\` (f
 Ejecutable portable (variante opcional):
 
 ```
-dist\diagusb\diagusb.exe            # menú interactivo (pide Administrador)
-dist\diagusb\diagusb.exe web        # servidor web + navegador (pide Administrador)
-dist\diagusb\diagusb.exe --no-elevate web   # sin elevar
+dist\diagusb\diagusb.exe            # menú interactivo (modo estándar)
+dist\diagusb\diagusb.exe web        # servidor web + navegador (modo estándar)
+dist\diagusb\diagusb.exe --elevar web        # pedir permisos de Administrador
 ```
 
 Desde el código (desarrollo):
@@ -52,7 +52,7 @@ python -m diagusb list-packages
 
 ### Interfaz web
 
-1. Acepte el diálogo de Administrador (necesario para datos completos).
+1. La interfaz arranca en modo estándar; use el botón "Dar permisos de administrador" si necesita datos completos.
 2. Haga clic en un botón de diagnóstico o en "Revisión Total".
 3. Revise los hallazgos; marque estado y acciones implementadas por problema.
 4. "Guardar ANTES" → realice los cambios en el equipo → "Comparar DESPUÉS".
@@ -67,7 +67,7 @@ python -m diagusb list-packages
 ## Pruebas y build
 
 ```
-python tests\run_tests.py                        # suite completa (80 pruebas, sin dependencias externas)
+python tests\run_tests.py                        # suite completa (84 pruebas, sin dependencias externas)
 scripts\armar_kit.cmd -Salida dist\kit           # arma el kit (Python embebido + fuente) y lo comprime
 scripts\probar_kit.ps1 -Kit dist\kit\DiagUSB     # prueba de humo del kit
 scripts\build_exe.cmd                            # reconstruye dist\diagusb\diagusb.exe (variante opcional)

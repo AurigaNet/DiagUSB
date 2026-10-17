@@ -153,8 +153,8 @@ con el interprete incluido en la carpeta python\.
 Como usar:
   1) Copie la carpeta DiagUSB al pendrive o al equipo destino.
   2) Ejecute Iniciar_DiagUSB.cmd (interfaz web) o Iniciar_DiagUSB_consola.cmd (menu).
-  3) Acepte el dialogo de Administrador (UAC) para obtener datos completos. Si lo
-     rechaza, el programa continua con permisos limitados.
+  3) DiagUSB arranca sin pedir permisos (modo estandar). Para datos completos use
+     el boton "Dar permisos de administrador" (interfaz web) o el flag --elevar.
 
 Notas:
   - El programa es de SOLO LECTURA: no modifica la configuracion del equipo.

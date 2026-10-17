@@ -166,11 +166,12 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 - UI: banner de estado/elevación, banner de integridad de colectores y banner de respaldo de rutas, grilla de botones (12 paquetes + Revisión Total + KB + Registro), tarjetas de resultados con JSON expandible por colector, sección de acciones del técnico (con persistencia en `localStorage` para no perder el formulario al recargar), snapshot/comparación, editor y buscador de KB, y el registro de análisis.
 - La consola del servidor imprime cada request redactando el token (`[DiagUSB] GET /api/...`).
 
-### 5.10 Auto-elevación a Administrador (`core/elevation.py`)
+### 5.10 Elevación a Administrador a pedido (`core/elevation.py`)
 
-- Muchos datos (firewall, features de Windows, inventario completo, eventos) requieren Administrator. Al arrancar el CLI (`None`/`diagnose`/`snapshot`) o el servidor web, si no está elevado se relanza a sí mismo con **`ShellExecuteExW("runas")`** (es decir, el diálogo UAC nativo de Windows) usando la misma línea de comandos reconstruida (`comando_relanzable`), y espera a que el hijo eleve el puerto.
-- Desactivación: flag global `--no-elevate` o variable de entorno `DIAGUSB_NO_ELEVATE=1`. Si el usuario rechaza el UAC, el programa sigue con permisos limitados y la UI lo avisa (banner).
-- El servidor expone `GET /api/elevation` para que la UI sepa si corre elevado.
+- Algunos datos (eventos de seguridad, inventario completo de software) requieren Administrator; ver la matriz medida en `docs/MATRIZ_PERMISOS.md`. **DiagUSB arranca sin pedir permisos** (modo estándar, sin UAC): no se auto-eleva.
+- La elevación es **opt-in**: en el CLI con el flag global `--elevar`; en la interfaz web con el botón "Dar permisos de administrador", que llama a `POST /api/elevar` (mismas protecciones que el resto de los POST: token, `Host`/`Origin`, `Content-Type`). El servidor se relanza con **`ShellExecuteExW("runas")`** (el diálogo UAC nativo de Windows) en un puerto libre nuevo; el proceso original se cierra cuando el hijo ya escucha. `--no-elevate` se sigue aceptando por compatibilidad, pero no tiene efecto (la elevación ya no es automática).
+- El servidor expone `GET /api/elevation` para que la UI sepa si corre elevado, y muestra un banner de modo estándar con los diagnósticos que quedan limitados.
+- Honestidad de los informes: un colector que no se pudo evaluar por falta de permisos (`denied`) o por error/limitación no se reporta como "sin problemas", sino como "No evaluado (requiere administrador)" u otra causa. Los informes (.doc, PDF, HTML) y el registro llevan una línea "Alcance: modo estándar/administrador; no evaluados: ...".
 - Detalle operativo: los procesos elevados no se pueden matar desde un proceso no elevado; para reinicios desde scripts de mantenimiento se usa el propio mecanismo de elevar un script auxiliar.
 - El relanzable incluye `-B` (`python -B -m diagusb ...`) y `__main__.py` fija `sys.dont_write_bytecode = True`: así ni el proceso principal ni el hijo elevado dejan `__pycache__` en el kit (importante en un pendrive). `-B` no se propaga del padre al hijo, por eso va explícito en `comando_relanzable`.
 
@@ -178,8 +179,8 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 
 - Sin argumentos → menú interactivo (lista paquetes/síntomas, ejecuta diagnóstico, genera informes).
 - Subcomandos: `diagnose --package X --symptom Y --output-dir DIR`, `snapshot [-p paquete] -o archivo`, `compare antes.json despues.json`, `list-packages`, `web [--port]`.
-- Flags globales: `--yes` (no preguntar), `--open` (abrir navegador), `--no-elevate`.
-- El CLI eleva automáticamente para los comandos que ejecutan colectores.
+- Flags globales: `--yes` (no preguntar), `--open` (abrir navegador), `--elevar` (pedir permisos de Administrador; opt-in) y `--no-elevate` (compatibilidad, sin efecto).
+- El CLI **no** eleva automáticamente: arranca en modo estándar y solo pide permisos si se pasa `--elevar`.
 
 ### 5.12 Distribución: kit con Python embebido (`scripts/armar_kit.ps1`) y ejecutable opcional (`build/`)
 
@@ -255,7 +256,7 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 4. **cp1252 vs UTF-8**: los `.ps1` se leen como cp1252 sin BOM y la consola de Windows imprime en cp1252 → los scripts acentuados llevan BOM UTF-8 y toda la salida se emite UTF-8; el servidor lee los payloads con fallback cp1252 ante `UnicodeDecodeError`. El PDF usa WordAnsi para las tildes.
 5. **Registro compacto sin `data` crudos**: el valor del registro es el historial de análisis (qué, cuándo, qué se encontró), no un respaldo de datos que se pueden recolectar de nuevo; así el archivo no se descontrola.
 6. **Informes armados en servidor**: el formulario del técnico (checkbox de soluciones, estados, comentarios) viaja completo al generar el informe; no depende de que el navegador conserve estado.
-7. **Elevación opt-out**: UAC automático con fallback elegante a modo limitado (banner + status), porque en aula/sin admin el programa igual tiene que servir.
+7. **Arranque sin UAC, elevación a pedido**: DiagUSB arranca sin pedir permisos (modo estándar) y la elevación es opt-in (botón "Dar permisos de administrador" en la web o `--elevar` en el CLI), porque en aula/sin admin el programa igual tiene que servir; los datos no disponibles se marcan como "No evaluado" en lugar de darse por buenos.
 8. **Descubrimiento de paquetes por carpetas**: añadir un área de diagnóstico = agregar una carpeta con manifiesto + scripts, sin tocar Python.
 9. **Servidor solo local y con token de sesión**: el servidor escucha únicamente en `127.0.0.1` y el acceso requiere un token aleatorio generado al arrancar (cookie `HttpOnly; SameSite=Strict`); además se validan `Host`/`Origin`, `Content-Type` y el tamaño del cuerpo, y las rutas desconocidas devuelven 404. Es el endurecimiento de Ronda 2 para un kit que expone HTTP en la máquina del cliente.
 10. **Escritura atómica de JSON**: el registro, el snapshot y la KB local se escriben con `tmp` + `fsync` + `os.replace`, y si un JSON queda corrupto se preserva renombrado (`*.corrupto-<fecha>`) en lugar de sobrescribirse en silencio.
@@ -263,7 +264,7 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 ## 9. Estrategia de pruebas
 
 - **Sin frameworks**: `python tests\run_tests.py` ejecuta suites escritas a mano (modelos, reglas, registry, KB, informes, elevación, registro) con un runner propio que imprime `[OK]`/`[FALLO]`.
-- **73 pruebas** actualmente, todas pasando. Cubren, entre otros: creación de modelos; reglas con fixtures (spooler caído, WiFi débil, BSOD, drivers); descubrimiento de paquetes; KB (guardar/editar/eliminar en archivo temporal, embebida intacta); informes (PDF bytes, HTML, sección de diferencias, `_resumen_datos`, código de verificación); elevación (comandos, rechazo UAC simulado, hijo que sirve puerto); registro persistente (guardado, poda, full-scan, y **endpoints HTTP reales** con servidor en hilo sobre puerto efímero); endurecimiento web de Ronda 2 (bind local, token de sesión, `Host`/`Origin`, `Content-Type`, límite de cuerpo, rutas 404); escritura atómica y preservación de JSON corrupto; identidad del equipo en la comparación (mismo equipo / distinto / forzado); integridad de colectores (hash correcto, archivo alterado, manifiesto ausente); y resolución de rutas portables (congelado vs desarrollo vs respaldo `%LOCALAPPDATA%`).
+- **84 pruebas** actualmente, todas pasando. Cubren, entre otros: creación de modelos; reglas con fixtures (spooler caído, WiFi débil, BSOD, drivers); descubrimiento de paquetes; KB (guardar/editar/eliminar en archivo temporal, embebida intacta); informes (PDF bytes, HTML, sección de diferencias, `_resumen_datos`, código de verificación); elevación (comandos, rechazo UAC simulado, hijo que sirve puerto); registro persistente (guardado, poda, full-scan, y **endpoints HTTP reales** con servidor en hilo sobre puerto efímero); endurecimiento web de Ronda 2 (bind local, token de sesión, `Host`/`Origin`, `Content-Type`, límite de cuerpo, rutas 404); escritura atómica y preservación de JSON corrupto; identidad del equipo en la comparación (mismo equipo / distinto / forzado); integridad de colectores (hash correcto, archivo alterado, manifiesto ausente); resolución de rutas portables (congelado vs desarrollo vs respaldo `%LOCALAPPDATA%`); y la Ronda 11 (arranque sin UAC, `POST /api/elevar` con y sin token, colector `denied` en reglas y línea de alcance en los informes).
 - Los colectores se validan contra Windows real (no hay mocks de PowerShell en la suite); las pruebas unitarias simulan `run_powershell` solo donde se prueba el conteo de estados.
 - Verificación manual periódica: full-scan completo (12 paquetes, 0 errores), `node --check` del JS embebido, smoke test del exe reconstruido.
 
@@ -283,14 +284,14 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 
 - Historial (17 commits): base `bf58af8` (F0), `121b227` (F1), `e9f4a0b` (F2: registro, snapshot CLI, auto-elevación, exe); **Ronda 2** (endurecimiento web): `6f4ec55`..`b91dd19` (9 commits); **Ronda 3** (cierre de producción): `1b436a5` (persistencia atómica de JSON), `0aab58f` (identidad del equipo en la comparación), `4805a8d` (integridad SHA-256 de colectores), `b8d0062` (rutas portables junto al exe), `bd61fc0` (código de verificación en el informe).
 - Árbol limpio; `config/`, `reports/`, `build/` y `dist/` no versionados (datos locales y salidas). `manifiesto_hashes.json` se genera durante la build y tampoco se versiona.
-- Servidor verificado end-to-end en esta máquina: elevado, full-scan 12/12 sin errores (~29 s), registro (guardar/listar/detalle/borrar/vaciar), informes Word/PDF, snapshot+comparación.
+- Servidor verificado end-to-end en esta máquina: modo estándar y elevación a pedido, full-scan 12/12 sin errores (~29 s), registro (guardar/listar/detalle/borrar/vaciar), informes Word/PDF, snapshot+comparación.
 
 ## 12. Preguntas donde se busca opinión
 
 1. **Arquitectura**: ¿algún punto frágil del diseño (subprocess por colector, página única embebida, JSON local como persistencia) que recomendarías cambiar antes de escalar el proyecto?
 2. **Calidad de los datos**: los colectores son de solo lectura con timeouts y statuses controlados — ¿qué añadirías para hacer el diagnóstico más confiable (p. ej. reintentos, chequeo de salud del colector, sanity checks cruzados)?
 3. **UX del técnico**: ¿el flujo diagnóstico → marcar acciones → informe → registro cubre el trabajo real de soporte, o falta algo (p. ej. edición de notas en entradas del registro, exportar/importar el registro, comparar dos registros en el tiempo)?
-4. **Seguridad**: servidor local sin autenticación (solo localhost), elevación UAC, PowerShell como subproceso — ¿ves riesgos o malas prácticas para un kit que corre en máquinas de clientes?
+4. **Seguridad**: servidor local sin autenticación (solo localhost), elevación UAC a pedido, PowerShell como subproceso — ¿ves riesgos o malas prácticas para un kit que corre en máquinas de clientes?
 5. **Informes**: ¿el formato (HTML→.doc + PDF propio, secciones 1-8) es adecuado para evidencia profesional de soporte?
 6. **Escalado**: si en el futuro se quisiera soporte multi-equipo o sincronización del historial, ¿qué caminos sugerirías sin romper la restricción de "sin conexiones salientes"?
 7. **Código**: cualquier observación de estilo, modularidad o deuda técnica que salte al revisar las descripciones de la §5.

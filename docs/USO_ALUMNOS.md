@@ -7,18 +7,18 @@ DiagUSB se distribuye como kit portable (`DiagUSB-kit-<version>.zip`): incluye u
 ## Uso del kit portable (Windows)
 
 1. Copiar la carpeta `DiagUSB` (descomprimida del zip del kit) al pendrive.
-2. En el equipo a diagnosticar, ejecutar `Iniciar_DiagUSB.cmd` (interfaz web) o `Iniciar_DiagUSB_consola.cmd` (menú de consola), y aceptar el diálogo de Administrador (necesario para datos completos).
+2. En el equipo a diagnosticar, ejecutar `Iniciar_DiagUSB.cmd` (interfaz web) o `Iniciar_DiagUSB_consola.cmd` (menú de consola). Arranca en modo estándar, sin pedir permisos; para datos completos use el botón "Dar permisos de administrador" (interfaz web) o el flag `--elevar` (consola).
 3. El lanzador web abre la interfaz en `http://localhost:8080`; en consola, seguir el menú.
 4. En la interfaz: botón de diagnóstico o "Revisión Total" → revisar hallazgos → marcar acciones del técnico → "Guardar ANTES" / "Comparar DESPUÉS" → descargar informe Word/PDF.
 5. El historial de análisis queda en "Registro de análisis" (persistente en `config/registro_analisis.json`); allí puede consultar, eliminar individualmente o vaciar el registro.
-6. Para diagnósticos sin elevación: fije `DIAGUSB_NO_ELEVATE=1` antes de ejecutar el lanzador (algunos datos aparecerán parciales).
+6. La elevación es a pedido: DiagUSB no pide permisos al arrancar. Si no otorga permisos de Administrador, algunos datos aparecerán parciales o como "no evaluado (requiere administrador)".
 
 ## Uso del ejecutable opcional (Windows)
 
 1. Copiar la carpeta `dist\diagusb\` al pendrive.
-2. Ejecutar `diagusb.exe` y aceptar el diálogo de Administrador.
+2. Ejecutar `diagusb.exe` (arranca sin pedir permisos).
 3. Elegir `web` para la interfaz interactiva en `http://localhost:8080`, o seguir el menú de consola.
-4. Para diagnósticos sin elevación: `diagusb.exe --no-elevate web`.
+4. Para datos completos: `diagusb.exe --elevar web` (o el botón "Dar permisos de administrador" en la interfaz).
 
 ## Procedimiento manual para armar el pendrive de arranque
 

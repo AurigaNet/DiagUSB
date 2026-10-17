@@ -24,7 +24,9 @@ echo.
 echo ------------------------------------------------------------
 echo  Qué hace DiagUSB:
 echo   - Ejecuta consultas de SOLO LECTURA con PowerShell sobre este equipo.
-echo   - Solicita permisos de Administrador (UAC) para obtener datos completos.
+echo   - Funciona sin permisos de Administrador (modo estándar).
+echo   - Pide permisos de Administrador (UAC) solo si usted lo ejecuta
+echo     con --elevar (para obtener datos completos).
 echo   - NO modifica la configuración del equipo.
 echo   - NO envía datos por red.
 echo   - Guarda los informes en la carpeta del kit.
