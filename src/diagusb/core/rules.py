@@ -790,11 +790,49 @@ class RuleEngine:
 _engine = RuleEngine()
 
 
+# Estados de colector que NO son un resultado valido: el colector no se pudo
+# evaluar (permisos, no disponible, error o tiempo agotado). Nunca deben
+# interpretarse como "sin problemas".
+_ESTADOS_NO_EVALUADO = {
+    "denied": "No evaluado (requiere administrador)",
+    "not_available": "No evaluado (no disponible en este equipo)",
+    "error": "No evaluado (error al recopilar)",
+    "timeout": "No evaluado (tiempo de espera agotado)",
+}
+
+
+def _estado_observacion(obs) -> str:
+    """Status de un CollectorResult (tolerando query dict u objeto)."""
+    query = getattr(obs, "query", None)
+    if isinstance(query, dict):
+        return query.get("status", "")
+    return getattr(query, "status", "") if query else ""
+
+
+def _findings_no_evaluados(observations: list[CollectorResult]) -> list[Finding]:
+    """Findings sinteticos para colectores que no se pudieron evaluar."""
+    findings: list[Finding] = []
+    for obs in observations:
+        status = _estado_observacion(obs)
+        mensaje = _ESTADOS_NO_EVALUADO.get(status)
+        if not mensaje:
+            continue
+        findings.append(Finding(
+            severity="warning",
+            collector_id=getattr(obs, "collector_id", ""),
+            message=mensaje,
+            details={"no_evaluado": True, "requiere_admin": status == "denied",
+                     "status": status},
+        ))
+    return findings
+
+
 def diagnose(symptom: str, observations: list[CollectorResult]) -> DiagnosticResult:
     """Ejecuta el diagnostico para un sintoma dado."""
     findings = _engine.evaluate(symptom, observations)
     kb.attach_knowledge(findings)
     findings = _agrupar_findings(findings)
+    findings.extend(_findings_no_evaluados(observations))
     recommendations = _generate_recommendations(findings)
     return DiagnosticResult(
         symptom=symptom,
@@ -817,6 +855,7 @@ def diagnose_symptoms(symptoms: list[str], observations: list[CollectorResult]) 
     findings.sort(key=lambda f: severity_order.get(f.severity, 9))
     kb.attach_knowledge(findings)
     findings = _agrupar_findings(findings)
+    findings.extend(_findings_no_evaluados(observations))
     return findings, _generate_recommendations(findings)
 
 

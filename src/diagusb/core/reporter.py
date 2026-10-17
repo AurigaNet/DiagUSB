@@ -10,6 +10,27 @@ from .models import DiagnosticResult, Finding, ContextResult
 from .informe import SEVERIDAD_LABEL
 
 
+_ESTADOS_NO_EVALUADO = ("denied", "not_available", "error", "timeout")
+
+
+def _status_de(result) -> str:
+    """Status de un CollectorResult (tolerando query dict u objeto)."""
+    query = getattr(result, "query", None)
+    if isinstance(query, dict):
+        return query.get("status", "")
+    return getattr(query, "status", "") if query else ""
+
+
+def _linea_alcance(diagnostic: DiagnosticResult) -> str:
+    """Linea 'Alcance: ...' con el modo y los colectores no evaluados."""
+    ctx = getattr(diagnostic, "context", None)
+    modo = "administrador" if (ctx and getattr(ctx, "is_elevated", False)) else "estándar"
+    no_eval = [getattr(c, "collector_id", "") for c in (diagnostic.collector_results or [])
+               if _status_de(c) in _ESTADOS_NO_EVALUADO]
+    lista = ", ".join([x for x in no_eval if x]) or "ninguno"
+    return f"Alcance: modo {modo}; no evaluados: {lista}"
+
+
 class ConsoleReporter:
     """Reporter para consola con colores ANSI."""
 
@@ -59,6 +80,7 @@ class ConsoleReporter:
                 lines.append(f"  Elevado: {self._colorize('Sí', 'warning')}")
             else:
                 lines.append(f"  Elevado: No")
+            lines.append(f"  {_linea_alcance(diagnostic)}")
             lines.append("")
 
         # Informacion de contexto del sistema (notebook/desktop/server)
@@ -285,6 +307,7 @@ class HtmlReporter:
             "<div class='content'>",
             f"<div class='symptom'>Síntoma: {self._escape_html(diagnostic.symptom)}</div>",
         ]
+        html_parts.append(f"<div class='subtitle'>{self._escape_html(_linea_alcance(diagnostic))}</div>")
 
         # Seccion de contexto
         if diagnostic.context:

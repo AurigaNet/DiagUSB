@@ -320,6 +320,12 @@ def _entrada_registro(diag: dict, tipo: str) -> dict:
     """Construye una entrada compacta del registro para un diagnostico."""
     results = [r for r in (diag.get("results") or []) if isinstance(r, dict)]
     findings = diag.get("findings") or []
+    modo = "administrador" if diag.get("is_elevated") else "estándar"
+    no_eval = [r.get("collector_id") or "" for r in results
+               if (r.get("query") or {}).get("status") in
+               ("denied", "not_available", "error", "timeout")]
+    alcance = (f"Alcance: modo {modo}; no evaluados: "
+               + (", ".join([x for x in no_eval if x]) or "ninguno"))
     return {
         "id": f"{datetime.now():%Y%m%d_%H%M%S}_{uuid.uuid4().hex[:8]}",
         "fecha": diag.get("timestamp") or datetime.now().isoformat(),
@@ -327,6 +333,7 @@ def _entrada_registro(diag: dict, tipo: str) -> dict:
         "paquete": diag.get("package") or "",
         "paquete_label": diag.get("package_label") or diag.get("package") or "",
         "sintoma": diag.get("symptom") or "",
+        "alcance": alcance,
         "conteos": {
             "collectors": diag.get("collectors_count") or len(results),
             "ok": diag.get("ok_count") or 0,

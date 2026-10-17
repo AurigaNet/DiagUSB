@@ -384,6 +384,23 @@ def _knowledge_de(f: dict) -> dict | None:
     return kb.entrada_json(entradas[0]) if entradas else None
 
 
+_ESTADOS_NO_EVALUADO = ("denied", "not_available", "error", "timeout")
+
+
+def no_evaluados(informe: InformeData) -> list[str]:
+    """Colectores del informe que no se pudieron evaluar (permisos/error)."""
+    return [c.collector_id for c in informe.colectores
+            if c.status in _ESTADOS_NO_EVALUADO]
+
+
+def linea_alcance(informe: InformeData) -> str:
+    """Linea 'Alcance: ...' con el modo y los colectores no evaluados."""
+    modo = "administrador" if informe.equipo.get("is_elevated") else "estándar"
+    no_eval = no_evaluados(informe)
+    lista = ", ".join(no_eval) if no_eval else "ninguno"
+    return f"Alcance: modo {modo}; no evaluados: {lista}"
+
+
 def informe_desde_diagnostico(diag: dict, acciones: list[dict] | None = None,
                               mejoras_acciones: list[dict] | None = None,
                               tecnico: str = "", cliente: str = "",
@@ -647,6 +664,7 @@ def informe_a_html(informe: InformeData, con_anexo: bool = False,
     out.append(f"<p class='muted'>Generado: {_esc(_fmt_fecha(e.generado_en))} | "
                f"Paquete: <b>{_esc(e.paquete.get('label'))}</b> | "
                f"Síntoma: {_esc(e.paquete.get('symptom'))}</p>")
+    out.append(f"<p class='muted'><b>{_esc(linea_alcance(e))}</b></p>")
     for adv in e.advertencias:
         out.append(f"<p class='advertencia'><b>{_esc(adv)}</b></p>")
 
@@ -971,6 +989,7 @@ def informe_a_pdf(informe: InformeData) -> bytes:
     doc.spacer(2)
     doc.text_flow(f"Generado: {_fmt_fecha(e.generado_en)}  |  Paquete: {e.paquete.get('label', '')}  |  "
                   f"Síntoma: {e.paquete.get('symptom', '')}", size=9, font="F3", color=(0.4, 0.4, 0.4))
+    doc.text_flow(linea_alcance(e), size=9, font="F2", color=(0.7, 0.35, 0))
     doc.hrule()
 
     for adv in e.advertencias:
