@@ -40,7 +40,7 @@ def comando_relanzable(modulo: str = "diagusb") -> list[str]:
     """Linea de comandos que relanza el proceso actual (ejecutable o python -m)."""
     if getattr(sys, "frozen", False):
         return [sys.executable, *sys.argv[1:]]
-    return [sys.executable, "-m", modulo, *sys.argv[1:]]
+    return [sys.executable, "-B", "-m", modulo, *sys.argv[1:]]
 
 
 def _lanzar_elevado(comando: list[str]):
