@@ -1011,6 +1011,8 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
                 observaciones=payload.get("observaciones", ""),
                 diferencias=payload.get("diferencias"),
                 comparacion_forzada=bool(payload.get("comparacion_forzada")),
+                metricas_base=payload.get("metricas_base"),
+                metricas_actual=payload.get("metricas_actual"),
             )
             paquete = _paquete_seguro(diag["package"])
 

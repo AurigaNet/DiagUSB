@@ -3,6 +3,8 @@
         let currentDiag = null;
         let lastDiffs = null;
         let lastComparacionForzada = false;
+        let lastMetricasBase = null;
+        let lastMetricasActual = null;
 
         const DIAGUSB = (document.body && document.body.dataset) ? document.body.dataset : {};
 
@@ -213,7 +215,9 @@
                 cliente: (document.getElementById('cliente') || {}).value || '',
                 observaciones: (document.getElementById('observaciones') || {}).value || '',
                 diferencias: lastDiffs || [],
-                comparacion_forzada: !!lastComparacionForzada
+                comparacion_forzada: !!lastComparacionForzada,
+                metricas_base: lastMetricasBase,
+                metricas_actual: lastMetricasActual
             };
         }
 
@@ -281,6 +285,8 @@
                 lastComparacionForzada = !!d.equipos_distintos;
                 renderDiff(d.diferencias || [], d.baseline_en);
                 if (d.metricas_base && d.metricas_actual) {
+                    lastMetricasBase = d.metricas_base;
+                    lastMetricasActual = d.metricas_actual;
                     renderMetricas(d.metricas_actual);
                 }
                 let texto = 'Comparación lista: ' + (lastDiffs ? lastDiffs.length : 0) + ' diferencia(s). Incluirán en el informe.';
@@ -392,6 +398,8 @@
                     currentDiag = data;
                     lastDiffs = null;
                     lastComparacionForzada = false;
+                    lastMetricasBase = null;
+                    lastMetricasActual = null;
                     mostrarIntegridad(data.integridad_fallida);
                     document.getElementById('diffSection').style.display = 'none';
                     const nProblemas = (data.findings || []).length;
@@ -562,6 +570,7 @@
                     results: allResults,
                     recommendations: allRecommendations,
                     estados_accion: (data.diagnostics[0] || {}).estados_accion,
+                    metricas: data.metricas,
                     timestamp: data.timestamp
                 };
                 renderProblemas(allFindings);

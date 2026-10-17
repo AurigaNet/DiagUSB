@@ -270,13 +270,13 @@ def test_informe_secciones_correlativas():
     html = informe_a_html(inf, con_anexo=False)
     nums = _numeros_seccion_html(html)
     assert nums == list(range(1, len(nums) + 1)), nums
-    assert nums[-1] == 5
+    assert nums[-1] == 6
 
     sin_reco = informe_desde_diagnostico(_diag_minimo())
     sin_reco.recomendaciones = []
     html2 = informe_a_html(sin_reco, con_anexo=False)
-    assert _numeros_seccion_html(html2) == [1, 2, 3, 4]
-    assert "4. Análisis por colector" in html2
+    assert _numeros_seccion_html(html2) == [1, 2, 3, 4, 5]
+    assert "5. Análisis por colector" in html2
 
 
 def test_doc_css_y_anexo_opcional():
@@ -300,15 +300,106 @@ def test_pdf_fecha_y_secciones():
     texto = informe_a_pdf(inf).decode("latin-1", errors="replace")
     assert "15/10/2026 18:48" in texto
     nums = [int(n) for n in re.findall(
-        r"(\d+)\. (?:Datos del equipo|Resumen del diagn|Problemas detectados|Mejoras|"
+        r"(\d+)\. (?:Datos del equipo|Resumen del diagn|Resumen gr|Problemas detectados|Mejoras|"
         r"Cambios|Recomendaciones|An.lisis por colector|Observaciones)", texto)]
     assert nums == list(range(1, len(nums) + 1)), nums
+
+
+def _diag_con_metricas():
+    diag = _diag_minimo()
+    diag["metricas"] = {
+        "version_formula": 1,
+        "puntaje": 69,
+        "etiqueta": "Atención",
+        "alcance": "Paquete Disco",
+        "leyenda": "Puntaje orientativo del paquete.",
+        "cobertura": {"porcentaje": 80.0, "colectores_ok": 8,
+                      "colectores_ejecutados": 10},
+        "severidad": {"critical": 1, "error": 2, "warning": 3, "ok": 9},
+        "categorias": [{"paquete": "Disco", "ok": 2, "advertencia": 1,
+                        "error": 0, "no_evaluado": 0}],
+        "medidores": {"memoria": {"usado_porcentaje": 61.5},
+                      "discos": [{"unidad": "C:", "usado_porcentaje": 87.6}]},
+    }
+    return diag
+
+
+def test_informe_grafico_html_doc_pdf():
+    diag = _diag_con_metricas()
+    inf = informe_desde_diagnostico(
+        diag,
+        metricas_base={"puntaje": 100, "etiqueta": "Bueno"},
+        metricas_actual={"puntaje": 69, "etiqueta": "Atención"},
+    )
+    assert inf.metricas["puntaje"] == 69
+    assert inf.metricas_base["puntaje"] == 100
+
+    html = informe_a_html(inf, con_anexo=False)
+    assert "3. Resumen gráfico" in html
+    assert "69/100" in html
+    assert "bgcolor=" in html
+    assert "<svg" not in html
+    assert "Estado por categoría" in html
+    assert "Disco C:" in html
+    assert "Comparación antes / después" in html
+
+    doc = informe_a_doc(inf, resultados_completos=diag["results"]).decode("utf-8")
+    assert "Resumen gráfico" in doc
+    assert "69/100" in doc
+    assert "bgcolor=" in doc
+    assert "<svg" not in doc
+
+    pdf = informe_a_pdf(inf).decode("latin-1", errors="replace")
+    assert "Resumen gráfico" in pdf
+    assert "69/100" in pdf
+    assert "Memoria en uso" in pdf
+
+
+def test_informe_grafico_sin_metricas():
+    inf = informe_desde_diagnostico(_diag_minimo())
+    assert inf.metricas == {}
+    html = informe_a_html(inf, con_anexo=False)
+    assert "Resumen gráfico" in html
+    assert "Sin puntaje" in html
+    pdf = informe_a_pdf(inf).decode("latin-1", errors="replace")
+    assert "Sin puntaje" in pdf
+
+
+def test_api_report_incluye_grafico():
+    import urllib.request
+
+    diag = _diag_con_metricas()
+    cuerpo = json.dumps({
+        "diagnostico": diag,
+        "metricas_base": {"puntaje": 100, "etiqueta": "Bueno"},
+        "metricas_actual": {"puntaje": 69, "etiqueta": "Atención"},
+    }).encode("utf-8")
+    httpd, base = _abrir_servidor()
+    try:
+        for fmt, codec in (("doc", "utf-8"), ("pdf", "latin-1")):
+            cabeceras = dict(_cookie())
+            cabeceras["Content-Type"] = "application/json"
+            req = urllib.request.Request(
+                base + "/api/report?format=" + fmt, data=cuerpo,
+                headers=cabeceras, method="POST")
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                assert resp.status == 200, resp.status
+                datos = resp.read()
+            if fmt == "pdf":
+                assert datos[:4] == b"%PDF"
+            else:
+                assert "<html" in datos[:80].decode("utf-8", errors="replace")
+            texto = datos.decode(codec, errors="replace")
+            assert "Resumen gráfico" in texto, fmt
+            assert "69/100" in texto, fmt
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
 
 
 # ---------------------------------------------------------------------------
 # Base de conocimiento editable (capa local en un archivo temporal)
 # ---------------------------------------------------------------------------
-
 def test_kb_guardar_y_eliminar():
     tmp_dir = Path(tempfile.mkdtemp(prefix="diagusb_kb_"))
     tmp = tmp_dir / "base_conocimiento.json"
@@ -1726,6 +1817,9 @@ def run_tests():
         ("test_informe_secciones_correlativas", test_informe_secciones_correlativas),
         ("test_doc_css_y_anexo_opcional", test_doc_css_y_anexo_opcional),
         ("test_pdf_fecha_y_secciones", test_pdf_fecha_y_secciones),
+        ("test_informe_grafico_html_doc_pdf", test_informe_grafico_html_doc_pdf),
+        ("test_informe_grafico_sin_metricas", test_informe_grafico_sin_metricas),
+        ("test_api_report_incluye_grafico", test_api_report_incluye_grafico),
         ("test_kb_guardar_y_eliminar", test_kb_guardar_y_eliminar),
         ("test_kb_valida_campos", test_kb_valida_campos),
         ("test_kb_embebida_intacta", test_kb_embebida_intacta),

@@ -279,6 +279,9 @@ class InformeData:
     observaciones: str = ""
     diferencias: list[dict] = field(default_factory=list)
     advertencias: list[str] = field(default_factory=list)
+    metricas: dict = field(default_factory=dict)
+    metricas_base: dict = field(default_factory=dict)
+    metricas_actual: dict = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -453,7 +456,9 @@ def informe_desde_diagnostico(diag: dict, acciones: list[dict] | None = None,
                               tecnico: str = "", cliente: str = "",
                               observaciones: str = "",
                               diferencias: list[dict] | None = None,
-                              comparacion_forzada: bool = False) -> InformeData:
+                              comparacion_forzada: bool = False,
+                              metricas_base: dict | None = None,
+                              metricas_actual: dict | None = None) -> InformeData:
     """Construye el informe a partir del payload de /api/diagnose (o CLI)."""
     now = diag.get("timestamp") or datetime.now().isoformat()
 
@@ -582,6 +587,9 @@ def informe_desde_diagnostico(diag: dict, acciones: list[dict] | None = None,
         observaciones=observaciones,
         diferencias=[d for d in (diferencias or []) if isinstance(d, dict)],
         advertencias=advertencias,
+        metricas=diag.get("metricas") if isinstance(diag.get("metricas"), dict) else {},
+        metricas_base=metricas_base or {},
+        metricas_actual=metricas_actual or {},
     )
 
 
@@ -671,6 +679,156 @@ def _fmt_fecha(valor: Any) -> str:
     return dt.strftime("%d/%m/%Y %H:%M")
 
 
+_METRICAS_COLOR = {
+    "Bueno": "#2FBF71", "Atención": "#F5A623", "Crítico": "#EF4B5B",
+    "Datos parciales": "#F5A623", "Sin datos": "#9FB3CB",
+}
+_METRICAS_RGB = {
+    "Bueno": (0.18, 0.75, 0.44), "Atención": (0.96, 0.65, 0.14),
+    "Crítico": (0.94, 0.29, 0.36), "Datos parciales": (0.96, 0.65, 0.14),
+    "Sin datos": (0.62, 0.70, 0.80),
+}
+_SEV_GRAF = {"critical": "#EF4B5B", "error": "#F2761E", "warning": "#F5A623"}
+_SEV_GRAF_RGB = {"critical": (0.94, 0.29, 0.36), "error": (0.95, 0.46, 0.12),
+                 "warning": (0.96, 0.65, 0.14)}
+_CAT_RGB = {"ok": (0.18, 0.75, 0.44), "advertencia": (0.96, 0.65, 0.14),
+            "error": (0.94, 0.29, 0.36), "no_evaluado": (0.62, 0.70, 0.80)}
+
+
+def _color_nivel(pct: float) -> str:
+    if pct >= 90:
+        return "#EF4B5B"
+    if pct >= 75:
+        return "#F2761E"
+    if pct >= 60:
+        return "#F5A623"
+    return "#2FBF71"
+
+
+def _color_nivel_rgb(pct: float) -> tuple:
+    hexa = _color_nivel(pct)
+    return {"#EF4B5B": (0.94, 0.29, 0.36), "#F2761E": (0.95, 0.46, 0.12),
+            "#F5A623": (0.96, 0.65, 0.14), "#2FBF71": (0.18, 0.75, 0.44)}[hexa]
+
+
+def _barra_html(pct: float, color: str, ancho: float = 100.0) -> str:
+    """Barra horizontal como tabla de dos celdas (Word y navegador)."""
+    pct = max(0.0, min(100.0, float(pct or 0)))
+    resto = max(0.0, 100.0 - pct)
+    return (
+        f"<table style='width:{ancho:.0f}%;border:none;border-collapse:collapse;'>"
+        f"<tr><td bgcolor='{color}' width='{pct:.1f}%' "
+        f"style='height:9px;padding:0;border:none;'></td>"
+        f"<td bgcolor='#e0e3e7' width='{resto:.1f}%' "
+        f"style='height:9px;padding:0;border:none;'></td></tr></table>"
+    )
+
+
+def _barra_apilada_html(segmentos: list, ancho: float = 100.0) -> str:
+    celdas = ""
+    for valor, color in segmentos:
+        if valor <= 0:
+            continue
+        celdas += (f"<td bgcolor='{color}' width='{valor:.1f}%' "
+                   f"style='height:9px;padding:0;border:none;'></td>")
+    if not celdas:
+        celdas = ("<td bgcolor='#e0e3e7' width='100%' "
+                  "style='height:9px;padding:0;border:none;'></td>")
+    return (f"<table style='width:{ancho:.0f}%;border:none;border-collapse:collapse;'>"
+            f"<tr>{celdas}</tr></table>")
+
+
+def _seccion_grafico_html(e: InformeData) -> list[str]:
+    """Resumen gráfico (tablas con color) con los mismos números que metricas."""
+    m = e.metricas or {}
+    out: list[str] = []
+    if not m or m.get("puntaje") is None:
+        out.append("<p class='muted'>Sin puntaje: no se ejecutaron módulos en este análisis.</p>")
+        return out
+
+    color = _METRICAS_COLOR.get(m.get("etiqueta"), "#9FB3CB")
+    out.append(
+        f"<p><b>Alcance:</b> {_esc(m.get('alcance', ''))} — "
+        f"<span class='badge' style='background:{color};color:#fff;'>"
+        f"{_esc(m.get('etiqueta', ''))}</span></p>")
+    cob = m.get("cobertura") or {}
+    out.append("<table class='kv'>")
+    out.append(f"<tr><td>Puntaje</td><td><b>{m.get('puntaje')}/100</b> "
+               f"{_barra_html(m.get('puntaje', 0), color)}</td></tr>")
+    out.append(f"<tr><td>Cobertura</td><td>{cob.get('porcentaje', 0)}% "
+               f"({cob.get('colectores_ok', 0)}/{cob.get('colectores_ejecutados', 0)} "
+               f"colectores OK)</td></tr>")
+    out.append("</table>")
+    out.append(f"<p class='muted'>{_esc(m.get('leyenda', ''))}</p>")
+
+    sev = m.get("severidad") or {}
+    out.append("<h3>Hallazgos por severidad</h3>")
+    out.append("<table><tr><td class='th' style='width:22%'>Severidad</td>"
+               "<td class='th' style='width:12%'>Cantidad</td>"
+               "<td class='th' style='width:66%'>Barra</td></tr>")
+    maxsev = max(sev.get("critical", 0), sev.get("error", 0),
+                sev.get("warning", 0), 1)
+    for clave, etiqueta in (("critical", "Crítico"), ("error", "Error"),
+                            ("warning", "Advertencia")):
+        n = sev.get(clave, 0)
+        pct = (n / maxsev) * 100 if n else 0
+        out.append(f"<tr><td>{etiqueta}</td><td>{n}</td>"
+                   f"<td>{_barra_html(pct, _SEV_GRAF[clave])}</td></tr>")
+    out.append("</table>")
+
+    cats = m.get("categorias") or []
+    if cats:
+        out.append("<h3>Estado por categoría</h3>")
+        out.append("<table><tr><td class='th' style='width:26%'>Paquete</td>"
+                   "<td class='th' style='width:10%'>OK</td>"
+                   "<td class='th' style='width:12%'>Advert.</td>"
+                   "<td class='th' style='width:10%'>Error</td>"
+                   "<td class='th' style='width:42%'>Distribución</td></tr>")
+        for c in cats:
+            ok = c.get("ok", 0)
+            adv = c.get("advertencia", 0)
+            err = c.get("error", 0)
+            ne = c.get("no_evaluado", 0)
+            total = (ok + adv + err + ne) or 1
+            segs = [(ok / total * 100, "#2FBF71"), (adv / total * 100, "#F5A623"),
+                    (err / total * 100, "#EF4B5B"), (ne / total * 100, "#9FB3CB")]
+            out.append(f"<tr><td>{_esc(c.get('paquete', ''))}</td><td>{ok}</td>"
+                       f"<td>{adv}</td><td>{err}</td>"
+                       f"<td>{_barra_apilada_html(segs)}</td></tr>")
+        out.append("</table>")
+
+    med = m.get("medidores") or {}
+    filas = []
+    if med.get("memoria") and med["memoria"].get("usado_porcentaje") is not None:
+        filas.append(("Memoria en uso", med["memoria"]["usado_porcentaje"]))
+    for d in med.get("discos") or []:
+        if d.get("usado_porcentaje") is not None:
+            filas.append((f"Disco {d.get('unidad', '')}", d["usado_porcentaje"]))
+    if filas:
+        out.append("<h3>Medidores</h3>")
+        out.append("<table><tr><td class='th' style='width:30%'>Recurso</td>"
+                   "<td class='th' style='width:12%'>Uso</td>"
+                   "<td class='th' style='width:58%'>Barra</td></tr>")
+        for nombre, pct in filas:
+            out.append(f"<tr><td>{_esc(nombre)}</td><td>{pct}%</td>"
+                       f"<td>{_barra_html(pct, _color_nivel(pct))}</td></tr>")
+        out.append("</table>")
+
+    if e.metricas_base and e.metricas_actual:
+        out.append("<h3>Comparación antes / después</h3>")
+        out.append("<table><tr><td class='th' style='width:30%'>Momento</td>"
+                   "<td class='th' style='width:14%'>Puntaje</td>"
+                   "<td class='th' style='width:56%'>Barra</td></tr>")
+        for etiqueta, mm in (("Antes", e.metricas_base), ("Después", e.metricas_actual)):
+            val = mm.get("puntaje")
+            col = _METRICAS_COLOR.get(mm.get("etiqueta"), "#9FB3CB")
+            out.append(f"<tr><td>{etiqueta}</td>"
+                       f"<td>{'-' if val is None else val}</td>"
+                       f"<td>{_barra_html(val or 0, col)}</td></tr>")
+        out.append("</table>")
+    return out
+
+
 def codigo_verificacion(e: InformeData) -> str:
     """Primeros 16 caracteres del SHA-256 de contenido + acciones + fecha + equipo."""
     partes = [
@@ -744,6 +902,9 @@ def informe_a_html(informe: InformeData, con_anexo: bool = False,
     if e.cliente:
         out.append(f"<tr><td>Cliente / Sector</td><td>{_esc(e.cliente)}</td></tr>")
     out.append("</table>")
+
+    out.append(_sec("Resumen gráfico"))
+    out.extend(_seccion_grafico_html(e))
 
     out.append(_sec("Problemas detectados y acciones del técnico"))
     if not e.problemas:
@@ -960,6 +1121,23 @@ class _PdfDoc:
     def spacer(self, h: float = 8):
         self._y -= h
 
+    def rect(self, x: float, y: float, w: float, h: float,
+             fill: tuple | None = None, stroke: tuple | None = None,
+             width: float = 0.7):
+        """Rectangulo vectorial (relleno y/o borde) para las barras de metricas."""
+        partes = []
+        if fill:
+            partes.append(f"{fill[0]:.3f} {fill[1]:.3f} {fill[2]:.3f} rg")
+        if stroke:
+            partes.append(f"{stroke[0]:.3f} {stroke[1]:.3f} {stroke[2]:.3f} "
+                          f"RG {width:g} w")
+        partes.append(f"{x:.2f} {y:.2f} {w:.2f} {h:.2f} re")
+        if fill:
+            partes.append("f")
+        if stroke:
+            partes.append("S")
+        self.ops.append(" ".join(partes))
+
     def header_every_page(self, titulo: str):
         """Agrega encabezado/pie a todas las paginas (llamar antes de save)."""
         for i, ops in enumerate(self.pages, 1):
@@ -1024,6 +1202,113 @@ class _PdfDoc:
         return bytes(out)
 
 
+def _pdf_fila_barra(doc: "_PdfDoc", etiqueta: str, valor: str, pct: float,
+                    color: tuple, ancho_barra: float, x_barra: float):
+    doc.ensure_space(16)
+    doc.text(_MARGIN + 16, etiqueta, size=8, font="F2")
+    if valor:
+        doc.text(_MARGIN + 150, valor, size=8)
+    y = doc.y - 11
+    doc.rect(x_barra, y, ancho_barra, 9, fill=(0.88, 0.89, 0.91))
+    pct = max(0.0, min(100.0, float(pct or 0)))
+    if pct > 0:
+        doc.rect(x_barra, y, ancho_barra * pct / 100.0, 9, fill=color)
+    doc.spacer(16)
+
+
+def _pdf_barra_apilada(doc: "_PdfDoc", x: float, y: float, ancho: float,
+                       segmentos: list):
+    doc.rect(x, y, ancho, 9, fill=(0.88, 0.89, 0.91))
+    total = sum(v for v, _ in segmentos) or 1
+    dx = x
+    for valor, color in segmentos:
+        if valor <= 0:
+            continue
+        w = ancho * valor / total
+        doc.rect(dx, y, w, 9, fill=color)
+        dx += w
+
+
+def _seccion_grafico_pdf(doc: "_PdfDoc", e: InformeData):
+    """Resumen gráfico en PDF con las mismas cifras que metricas."""
+    m = e.metricas or {}
+    if not m or m.get("puntaje") is None:
+        doc.text_flow("Sin puntaje: no se ejecutaron módulos en este análisis.",
+                      size=9, font="F3", indent=8)
+        doc.spacer(4)
+        return
+
+    color = _METRICAS_RGB.get(m.get("etiqueta"), (0.62, 0.70, 0.80))
+    doc.text_flow(f"Alcance: {m.get('alcance', '')}  ({m.get('etiqueta', '')})",
+                  size=9, font="F2", indent=8, color=color)
+    doc.text_flow(f"Puntaje: {m.get('puntaje')}/100", size=9, indent=16)
+    ancho = _PAGE_W - 2 * _MARGIN - 32
+    x = _MARGIN + 16
+    doc.ensure_space(20)
+    y = doc.y - 11
+    doc.rect(x, y, ancho, 10, fill=(0.88, 0.89, 0.91))
+    doc.rect(x, y, ancho * (m.get("puntaje") or 0) / 100.0, 10, fill=color)
+    doc.spacer(18)
+    cob = m.get("cobertura") or {}
+    doc.text_flow(f"Cobertura: {cob.get('porcentaje', 0)}%  "
+                  f"({cob.get('colectores_ok', 0)}/{cob.get('colectores_ejecutados', 0)} "
+                  f"colectores OK)", size=8, font="F3", indent=16, color=(0.4, 0.4, 0.4))
+    if m.get("leyenda"):
+        doc.text_flow(m.get("leyenda"), size=8, font="F3", indent=16,
+                      color=(0.4, 0.4, 0.4))
+
+    sev = m.get("severidad") or {}
+    doc.text_flow("Hallazgos por severidad", size=10, font="F2", indent=8)
+    maxsev = max(sev.get("critical", 0), sev.get("error", 0),
+                 sev.get("warning", 0), 1)
+    ancho_barra = _PAGE_W - 2 * _MARGIN - 16 - 210
+    for clave, etiqueta in (("critical", "Crítico"), ("error", "Error"),
+                            ("warning", "Advertencia")):
+        n = sev.get(clave, 0)
+        pct = (n / maxsev * 100) if n else 0
+        _pdf_fila_barra(doc, etiqueta, str(n), pct, _SEV_GRAF_RGB[clave],
+                        ancho_barra, _MARGIN + 210)
+
+    cats = m.get("categorias") or []
+    if cats:
+        doc.text_flow("Estado por categoría", size=10, font="F2", indent=8)
+        for c in cats:
+            ok = c.get("ok", 0)
+            adv = c.get("advertencia", 0)
+            err = c.get("error", 0)
+            ne = c.get("no_evaluado", 0)
+            doc.ensure_space(16)
+            doc.text(_MARGIN + 16, str(c.get("paquete", "")), size=8, font="F2")
+            doc.text(_MARGIN + 150, f"OK {ok} / adv {adv} / err {err}", size=8)
+            y = doc.y - 11
+            _pdf_barra_apilada(doc, _MARGIN + 16, y, ancho, [
+                (ok, _CAT_RGB["ok"]), (adv, _CAT_RGB["advertencia"]),
+                (err, _CAT_RGB["error"]), (ne, _CAT_RGB["no_evaluado"])])
+            doc.spacer(16)
+
+    med = m.get("medidores") or {}
+    filas = []
+    if med.get("memoria") and med["memoria"].get("usado_porcentaje") is not None:
+        filas.append(("Memoria en uso", med["memoria"]["usado_porcentaje"]))
+    for d in med.get("discos") or []:
+        if d.get("usado_porcentaje") is not None:
+            filas.append((f"Disco {d.get('unidad', '')}", d["usado_porcentaje"]))
+    if filas:
+        doc.text_flow("Medidores", size=10, font="F2", indent=8)
+        for nombre, pct in filas:
+            _pdf_fila_barra(doc, nombre, f"{pct}%", pct, _color_nivel_rgb(pct),
+                            ancho_barra, _MARGIN + 210)
+
+    if e.metricas_base and e.metricas_actual:
+        doc.text_flow("Comparación antes / después", size=10, font="F2", indent=8)
+        for etiqueta, mm in (("Antes", e.metricas_base), ("Después", e.metricas_actual)):
+            val = mm.get("puntaje")
+            col = _METRICAS_RGB.get(mm.get("etiqueta"), (0.62, 0.70, 0.80))
+            _pdf_fila_barra(doc, etiqueta, "-" if val is None else str(val),
+                            val or 0, col, ancho_barra, _MARGIN + 210)
+    doc.spacer(4)
+
+
 def informe_a_pdf(informe: InformeData) -> bytes:
     doc = _PdfDoc()
     e = informe
@@ -1073,6 +1358,9 @@ def informe_a_pdf(informe: InformeData) -> bytes:
     if e.cliente:
         doc.text_flow(f"Cliente / Sector: {e.cliente}", size=9, indent=8)
     doc.spacer(4)
+
+    doc.text_flow(_sec("Resumen gráfico"), size=12, font="F2", color=(0.10, 0.45, 0.91))
+    _seccion_grafico_pdf(doc, e)
 
     doc.text_flow(_sec("Problemas detectados y acciones del técnico"), size=12, font="F2",
                   color=(0.10, 0.45, 0.91))
