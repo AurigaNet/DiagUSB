@@ -30,6 +30,7 @@ from diagusb.core import almacen
 from diagusb.core import integridad
 from diagusb.core import rutas
 from diagusb.core.rules import diagnose_symptoms
+from diagusb.core.metricas import calcular_metricas, tendencia
 from diagusb.core import knowledge_base as kb
 from diagusb.core.informe import (
     ESTADOS_ACCION,
@@ -102,6 +103,43 @@ def _observations_from_results(results: list) -> list[CollectorResult]:
                 ),
             ))
     return observations
+
+
+def _metricas_de_results(results: list, package: str, package_label: str) -> dict:
+    """Metricas de un lado de la comparacion re-evaluando las reglas.
+
+    El snapshot guarda ``results`` (``collector_id`` + ``data``), que es la
+    misma entrada que leen las reglas: se reconstruyen las observaciones y se
+    evaluan con funciones puras.
+    """
+    symptoms: list[str] = []
+    for p in discover_packages():
+        symptoms.extend(p.symptoms)
+    findings, _ = diagnose_symptoms(list(dict.fromkeys(symptoms)),
+                                     _observations_from_results(results))
+    return calcular_metricas({
+        "package": package or "",
+        "package_label": package_label or package or "",
+        "results": results,
+        "findings": [asdict(f) for f in findings],
+        "modulos_ejecutados": 1,
+    })
+
+
+def _metricas_de_full_scan(diagnostics: list) -> dict:
+    """Metricas combinadas de una revision total (un modulo por paquete)."""
+    combinado = {
+        "package": "full-scan",
+        "package_label": "Revisión Total",
+        "results": [r for d in diagnostics for r in (d.get("results") or [])],
+        "findings": [f for d in diagnostics for f in (d.get("findings") or [])],
+    }
+    metricas = calcular_metricas(combinado, modulos=len(diagnostics))
+    categorias = []
+    for d in diagnostics:
+        categorias.extend(calcular_metricas(d).get("categorias") or [])
+    metricas["categorias"] = categorias
+    return metricas
 
 
 def _snapshot_from_results(results: list) -> Snapshot:
@@ -319,7 +357,7 @@ def run_diagnostic(package_name: str, symptom: str = None) -> dict:
         for f in findings
     ]
 
-    return {
+    salida = {
         "package": package_name,
         "package_label": pkg.label,
         "symptom": symptom,
@@ -336,6 +374,8 @@ def run_diagnostic(package_name: str, symptom: str = None) -> dict:
         "estados_accion": ESTADOS_ACCION,
         "timestamp": datetime.now().isoformat()
     }
+    salida["metricas"] = calcular_metricas(salida, modulos=1)
+    return salida
 
 
 # ---------------------------------------------------------------------------
@@ -372,6 +412,13 @@ def _entrada_registro(diag: dict, tipo: str) -> dict:
                + (", ".join([x for x in no_eval if x]) or "ninguno"))
     if limitados:
         alcance += "; datos limitados: " + ", ".join(limitados)
+    metricas = calcular_metricas({
+        "package": diag.get("package") or "",
+        "package_label": diag.get("package_label") or "",
+        "results": results,
+        "findings": findings,
+        "modulos_ejecutados": 1,
+    })
     return {
         "id": f"{datetime.now():%Y%m%d_%H%M%S}_{uuid.uuid4().hex[:8]}",
         "fecha": diag.get("timestamp") or datetime.now().isoformat(),
@@ -379,6 +426,7 @@ def _entrada_registro(diag: dict, tipo: str) -> dict:
         "paquete": diag.get("package") or "",
         "paquete_label": diag.get("package_label") or diag.get("package") or "",
         "sintoma": diag.get("symptom") or "",
+        "puntaje": metricas["puntaje"],
         "alcance": alcance,
         "conteos": {
             "collectors": diag.get("collectors_count") or len(results),
@@ -671,7 +719,8 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             else:
                 resumen = [
                     {k: e.get(k) for k in ("id", "fecha", "tipo", "paquete",
-                                           "paquete_label", "sintoma", "conteos")}
+                                           "paquete_label", "sintoma", "puntaje",
+                                           "conteos")}
                     for e in entradas
                 ]
                 self._json_response({"total": len(entradas), "entradas": resumen})
@@ -684,6 +733,7 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
                 diagnostics = list(pool.map(lambda p: run_diagnostic(p.name), packages))
             
             result = {"diagnostics": diagnostics, "timestamp": datetime.now().isoformat()}
+            result["metricas"] = _metricas_de_full_scan(diagnostics)
             entrada = _registrar_full_scan(diagnostics)
             if entrada:
                 result["registro_id"] = entrada["id"]
@@ -850,6 +900,14 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
                 "equipos_distintos": equipos_distintos,
                 "advertencia": advertencia,
                 "diferencias": [asdict(d) for d in diffs],
+                "metricas_base": _metricas_de_results(
+                    base.get("results") or [],
+                    payload.get("package") or "",
+                    payload.get("package_label") or ""),
+                "metricas_actual": _metricas_de_results(
+                    payload.get("results") or [],
+                    payload.get("package") or "",
+                    payload.get("package_label") or ""),
             })
         except Exception as e:
             self._json_response({"error": str(e)}, 400)

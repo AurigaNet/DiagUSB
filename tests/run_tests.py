@@ -17,6 +17,7 @@ from test_rules import run_tests as run_rules
 from test_registry import run_tests as run_registry
 from test_knowledge import run_tests as run_knowledge
 from test_improvements import run_tests as run_improvements
+from test_metricas import run_tests as run_metricas
 
 
 def main():
@@ -65,6 +66,13 @@ def main():
     except Exception as e:
         print(f"  [ERROR] Fallo en suite de mejoras: {e}")
         results.append(("Mejoras", False))
+
+    try:
+        result6 = run_metricas()
+        results.append(("Métricas", result6))
+    except Exception as e:
+        print(f"  [ERROR] Fallo en suite de métricas: {e}")
+        results.append(("Métricas", False))
 
     print("\n" + "=" * 60)
     print("RESUMEN FINAL")
