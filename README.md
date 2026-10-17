@@ -12,16 +12,25 @@ DiagUSB es un kit de diagnóstico para soporte de infraestructura TI pensado par
 - **Informes Word (.doc) y PDF (.pdf)** en español, con hallazgos, soluciones de la base de conocimiento, acciones del técnico, mejoras sugeridas y diferencias antes/después.
 - **Base de conocimiento local**: 19 entradas embebidas más capa editable en `config/base_conocimiento.json` (alta/edición/baja desde la interfaz, buscador por palabra clave).
 - **Auto-elevación a Administrador** (UAC): al iniciar solicita permisos; flag `--no-elevate` o variable `DIAGUSB_NO_ELEVATE=1` para desactivarla.
-- **Ejecutable portable** (`dist/diagusb/diagusb.exe`) construido con PyInstaller, sin necesidad de Python en el equipo destino.
+- **Kit portable** (`DiagUSB-kit-<version>.zip`): incluye una distribución embebida oficial de Python (python.org) más el código fuente, sin necesidad de instalar Python en el equipo destino. Es la distribución principal y se arma con `scripts\armar_kit.ps1`.
+- **Ejecutable portable opcional** (`dist/diagusb/diagusb.exe`) construido con PyInstaller, como variante sin Python embebido.
 
 ## Requisitos
 
 - Windows 10/11 (PowerShell 5.1 incluido).
-- Para la versión portable: nada más. Para desarrollo: Python 3.12.
+- Para el kit: nada más (trae su propio intérprete en `python\`). Para el ejecutable: nada más. Para desarrollo: Python 3.13 (o 3.12+).
 
 ## Uso rápido
 
-Versión portable (pendrive):
+Kit portable (recomendado):
+
+1. Descargue `DiagUSB-kit-<version>.zip` y descomprímalo (queda una carpeta `DiagUSB`).
+2. Copie la carpeta `DiagUSB` al pendrive.
+3. En el equipo a diagnosticar, ejecute `Iniciar_DiagUSB.cmd` (interfaz web) o `Iniciar_DiagUSB_consola.cmd` (menú de consola).
+
+El kit no requiere Python instalado: usa el intérprete embebido en `python\` (firmado por Python Software Foundation).
+
+Ejecutable portable (variante opcional):
 
 ```
 dist\diagusb\diagusb.exe            # menú interactivo (pide Administrador)
@@ -58,8 +67,10 @@ python -m diagusb list-packages
 ## Pruebas y build
 
 ```
-python tests\run_tests.py           # suite completa (sin dependencias externas)
-scripts\build_exe.cmd               # reconstruye dist\diagusb\diagusb.exe
+python tests\run_tests.py                        # suite completa (80 pruebas, sin dependencias externas)
+scripts\armar_kit.cmd -Salida dist\kit           # arma el kit (Python embebido + fuente) y lo comprime
+scripts\probar_kit.ps1 -Kit dist\kit\DiagUSB     # prueba de humo del kit
+scripts\build_exe.cmd                            # reconstruye dist\diagusb\diagusb.exe (variante opcional)
 ```
 
 ## Estructura
@@ -72,7 +83,8 @@ scripts\build_exe.cmd               # reconstruye dist\diagusb\diagusb.exe
 - `reports/`: snapshots y salidas locales — no versionado.
 - `build/`, `dist/`: salidas de PyInstaller — no versionadas.
 - `tools/`: manifiesto de herramientas externas.
-- `scripts/`: utilidades locales para el técnico.
+- `scripts/`: utilidades locales para el técnico (`armar_kit.*`, `probar_kit.ps1`, `armar_pendrive.*`, `build_exe.cmd`).
+- `scripts/kit/`: plantillas de los lanzadores del kit (`Iniciar_DiagUSB.cmd`, `Iniciar_DiagUSB_consola.cmd`).
 
 ## Restricciones del proyecto
 
@@ -82,27 +94,32 @@ scripts\build_exe.cmd               # reconstruye dist\diagusb\diagusb.exe
 - Sin telemetría, sin conexiones salientes del producto final y sin modificación de la configuración del equipo analizado (los colectores son de solo lectura).
 - No se incluyen binarios o ISOs de terceros; ver `tools/tools.manifest.json`.
 
-## Política de firma de código
+## Firma de código e integridad
 
 - Firma de código gratuita provista por SignPath.io, certificado de SignPath Foundation.
 - Roles: Autor, Committer y Revisor/Aprobador: Daniel Ricardo Novoa (https://github.com/AurigaNet).
 - Política de privacidad: "Este programa no transmite información a otros sistemas de red a menos que lo solicite expresamente el usuario o quien lo opera".
-- Cómo verificar el ejecutable:
-  - Firma digital: clic derecho sobre `diagusb.exe` → Propiedades → Firmas digitales, o en PowerShell `Get-AuthenticodeSignature dist\diagusb\diagusb.exe` (debe mostrar `Status: Valid`).
-  - Integridad de archivos: `SHA256SUMS.txt` usa el formato `<hash>  <ruta>` con `/`, con las rutas tal como quedan al descomprimir el zip (`diagusb/diagusb.exe`, `diagusb/_internal/manifiesto_hashes.json`) y el nombre del zip en una línea aparte. Verificá con el zip y la carpeta `diagusb` descomprimidos en el mismo directorio:
-    - PowerShell (Windows), con el nombre del zip descargado (`diagusb-firmado.zip` o `diagusb-SIN-FIRMAR.zip`):
-      ```powershell
-      Get-FileHash -Algorithm SHA256 diagusb\diagusb.exe, diagusb\_internal\manifiesto_hashes.json, diagusb-SIN-FIRMAR.zip
-      ```
-    - `sha256sum -c` (Linux/macOS/Git Bash):
-      ```bash
-      sha256sum -c SHA256SUMS.txt
-      ```
+
+### Kit portable (distribución principal)
+
+El kit no es un ejecutable propio: es código fuente Python que corre con el intérprete embebido de Python (python.org). La confianza se apoya en:
+
+- **Firma del intérprete**: los binarios de `python\` están firmados por Python Software Foundation (y por Microsoft para `vcruntime*`). Verifique con `Get-AuthenticodeSignature python\python.exe` (debe mostrar `Status: Valid`); el lanzador `Iniciar_DiagUSB.cmd` ya comprueba esa firma antes de arrancar.
+- **Integridad de archivos**: `SHA256SUMS.txt` (dentro del kit) usa el formato `<hash>  <ruta>` con `/` y rutas relativas a la raíz del zip (`DiagUSB/...`). Verifique con:
+  - `scripts\probar_kit.ps1 -Kit <carpeta del kit>` (verifica todo el kit, la firma, un diagnóstico real y el PDF).
+  - `sha256sum -c SHA256SUMS.txt`, desde la carpeta del kit (Linux/macOS/Git Bash).
+
+### Ejecutable portable (variante opcional)
+
+- Firma digital: clic derecho sobre `diagusb.exe` → Propiedades → Firmas digitales, o en PowerShell `Get-AuthenticodeSignature dist\diagusb\diagusb.exe` (debe mostrar `Status: Valid`).
+- Integridad: el `SHA256SUMS.txt` del release usa el formato `<hash>  <ruta>` con `/`, con las rutas tal como quedan al descomprimir el zip (`diagusb/diagusb.exe`, `diagusb/_internal/manifiesto_hashes.json`) y el nombre del zip en una línea aparte. Verifique con el zip y la carpeta `diagusb` en el mismo directorio:
+  - PowerShell: `Get-FileHash -Algorithm SHA256 diagusb\diagusb.exe, diagusb\_internal\manifiesto_hashes.json, diagusb-SIN-FIRMAR.zip`
+  - `sha256sum -c SHA256SUMS.txt` (Linux/macOS/Git Bash)
 
 ## Antivirus y EDR
 
-- En equipos con EDR gestionado, el ejecutable puede requerir autorización por firmante o por hash antes de ejecutarse.
-- La regla ASR de Microsoft Defender "Bloquear procesos no confiables y sin firmar que se ejecutan desde USB" bloquea las versiones sin firma.
-- Las versiones SIN-FIRMAR (`diagusb-SIN-FIRMAR.zip`) son solo para pruebas; no se recomienda su uso en equipos de clientes.
+- En equipos con EDR gestionado, tanto el kit como el ejecutable pueden requerir autorización por firmante o por hash antes de ejecutarse.
+- El kit usa el intérprete firmado por Python Software Foundation; los scripts `.ps1` no están firmados y algunos EDR pueden inspeccionarlos o bloquearlos.
+- La regla ASR de Microsoft Defender "Bloquear procesos no confiables y sin firmar que se ejecutan desde USB" afecta al ejecutable sin firma (`diagusb-SIN-FIRMAR.zip`), que es solo para pruebas; no se recomienda su uso en equipos de clientes.
 
 Este programa se distribuye con la esperanza de que sea útil, pero SIN NINGUNA GARANTÍA; ni siquiera la garantía implícita de COMERCIABILIDAD o IDONEIDAD PARA UN PROPÓSITO PARTICULAR. Véase `LICENSE` para más detalles.

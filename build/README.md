@@ -1,6 +1,10 @@
 # Build
 
-## Empaquetado con PyInstaller
+## Kit portable (distribución principal)
+
+La distribución principal de DiagUSB es el kit con Python embebido (`DiagUSB-kit-<version>.zip`), que se arma con `scripts\armar_kit.ps1` y no requiere PyInstaller. Ver el `README.md` de la raíz. El resto de este documento describe la **variante opcional** basada en PyInstaller.
+
+## Empaquetado con PyInstaller (variante opcional)
 
 Este directorio contiene los archivos necesarios para crear un ejecutable portable de DiagUSB usando PyInstaller en modo `onedir`.
 

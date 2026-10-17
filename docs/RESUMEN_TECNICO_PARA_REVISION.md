@@ -24,15 +24,15 @@ Casos de uso previstos:
 - **Solo lectura**: los colectores no modifican configuración del equipo analizado.
 - Sin telemetría y sin conexiones de red salientes del producto.
 - Interfaz, informes y documentación en español.
-- Distribución portable (PyInstaller `onedir`), sin instalación en el equipo destino.
-- Sin binarios de terceros en el repositorio.
+- Distribución portable sin instalación en el equipo destino. **Principal**: kit con la distribución embebida oficial de Python (python.org) más el código fuente (`DiagUSB-kit-<version>.zip`, armado con `scripts/armar_kit.ps1`). **Opcional**: ejecutable PyInstaller `onedir`.
+- Sin binarios de terceros en el repositorio (el zip de Python embebido se descarga al armar el kit y se verifica por SHA-256).
 
 ## 3. Arquitectura general
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Ejecutable portable (dist/diagusb/diagusb.exe, PyInstaller)    │
-│  o python -m diagusb (desarrollo)                               │
+│  Kit portable (python\ embebido + src\) - principal             │
+│  o dist/diagusb/diagusb.exe (PyInstaller) o python -m diagusb   │
 │                                                                 │
 │  ┌──────────────┐    ┌───────────────────────────────────────┐  │
 │  │  CLI (menú   │    │  Servidor web local (8080, hilos)     │  │
@@ -172,6 +172,7 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 - Desactivación: flag global `--no-elevate` o variable de entorno `DIAGUSB_NO_ELEVATE=1`. Si el usuario rechaza el UAC, el programa sigue con permisos limitados y la UI lo avisa (banner).
 - El servidor expone `GET /api/elevation` para que la UI sepa si corre elevado.
 - Detalle operativo: los procesos elevados no se pueden matar desde un proceso no elevado; para reinicios desde scripts de mantenimiento se usa el propio mecanismo de elevar un script auxiliar.
+- El relanzable incluye `-B` (`python -B -m diagusb ...`) y `__main__.py` fija `sys.dont_write_bytecode = True`: así ni el proceso principal ni el hijo elevado dejan `__pycache__` en el kit (importante en un pendrive). `-B` no se propaga del padre al hijo, por eso va explícito en `comando_relanzable`.
 
 ### 5.11 CLI (`__main__.py`)
 
@@ -180,11 +181,11 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 - Flags globales: `--yes` (no preguntar), `--open` (abrir navegador), `--no-elevate`.
 - El CLI eleva automáticamente para los comandos que ejecutan colectores.
 
-### 5.12 Empaquetado portable (`build/` + `scripts/build_exe.cmd`)
+### 5.12 Distribución: kit con Python embebido (`scripts/armar_kit.ps1`) y ejecutable opcional (`build/`)
 
-- PyInstaller en modo `onedir` desde `build/diagusb.spec` con entry point `build/entry_console.py`.
-- `datas` embebidos: los 12 paquetes (manifiestos + colectores), `collectors/_common.ps1` y la KB embebida → quedan en `dist/diagusb/_internal/...`; en runtime se resuelven con `Path(__file__)` o el bucle de búsqueda hacia arriba de los colectores.
-- Resultado verificado en Windows real: `diagusb.exe` (CLI con banner), `diagusb.exe web` (servidor + navegador), diagnósticos con colectores `[OK]` e informes Word/PDF generados desde el exe.
+- **Principal — kit con Python embebido**: `scripts/armar_kit.ps1` descarga el zip oficial `python-3.13.15-embed-amd64.zip` de python.org, verifica su SHA-256 contra una constante fija, lo descomprime en `python\`, y arma la carpeta `DiagUSB\` con: `python\` (intérprete embebido, con todos sus binarios PE verificados por firma — Python Software Foundation, y Microsoft para `vcruntime*`), `src\diagusb\` (código, sin `__pycache__`), `src\collectors\_common.ps1`, `manifiesto_hashes.json`, `LICENSE`, `LEEME.txt`, los lanzadores `Iniciar_DiagUSB.cmd`/`Iniciar_DiagUSB_consola.cmd` (copiados byte a byte desde `scripts\kit\` con CRLF normalizado, para no corromper tildes en PowerShell 5.1), `python313._pth` (`python313.zip`, `.`, `..\src`, sin `import site`) y `SHA256SUMS.txt` (hashes de todos los archivos). Luego lo comprime en `DiagUSB-kit-<version>.zip`.
+- El kit no requiere instalar Python en el destino: usa el intérprete de `python\`. `scripts\probar_kit.ps1` es la prueba de humo reutilizable por CI (integridad, firma, versión, `list-packages`, un `diagnose` real sin UAC y la validación estructural del PDF).
+- **Opcional — ejecutable PyInstaller**: `onedir` desde `build/diagusb.spec` con entry point `build/entry_console.py`; `datas` embebidos (12 paquetes, `collectors/_common.ps1`, KB) → `dist/diagusb/_internal/...`; en runtime se resuelven con `Path(__file__)` o el bucle de búsqueda hacia arriba de los colectores. Verificado en Windows real: `diagusb.exe` (CLI con banner), `diagusb.exe web`, diagnósticos `[OK]` e informes Word/PDF.
 
 ## 6. Formatos de datos principales
 

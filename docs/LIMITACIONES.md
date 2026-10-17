@@ -12,20 +12,23 @@ Documento de limitaciones y estado actual del proyecto.
 - Informes Word (.doc) y PDF (.pdf) en español, con hallazgos, soluciones, acciones del tecnico, mejoras sugeridas y diferencias antes/despues
 - Interfaz web local (UI completa: diagnosticos rapidos, revision total, snapshot ANTES/DESPUES + comparacion, editor de KB, registro de analisis)
 - Auto-elevacion a Administrador (UAC) con flag `--no-elevate` / `DIAGUSB_NO_ELEVATE`
-- Ejecutable portable con PyInstaller (`dist\diagusb\diagusb.exe`), verificado con diagnose y reportes
+- Kit portable con Python embebido (`DiagUSB-kit-<version>.zip`, armado con `scripts\armar_kit.ps1`), verificado con prueba de humo (`scripts\probar_kit.ps1`: integridad SHA-256, firma PSF del interprete, diagnostico real y PDF)
+- Ejecutable portable con PyInstaller (`dist\diagusb\diagusb.exe`) como variante opcional, verificado con diagnose y reportes
 - Registro persistente de analisis (`config/registro_analisis.json`): auto-guardado, consulta, borrado individual y borrado total
 - Suite de pruebas unitarias (50+ pruebas)
 
 ### Pendiente de validacion
 - Windows 11 (validado hasta ahora en Windows 10)
 - Comportamiento bajo antivirus/EDR (bloqueo de PowerShell, escaneo de la carpeta del kit, cuarentena de scripts `.ps1`)
-- Prueba de UAC del exe portable en una segunda cuenta/maquina
+- Prueba de UAC del kit y del exe portable en una segunda cuenta/maquina
+- Kit armado con Python embebido: comportamiento bajo EDR (igual que el exe) y copia al pendrive en volumenes formateados en distintos sistemas de archivos
 - Diferentes contextos de permisos (equipo sin elevacion disponible)
 
 ## Restricciones conocidas
 
 ### Integridad
-- El manifiesto de hashes (`manifiesto_hashes.json`) detecta corrupcion y modificaciones accidentales de los colectores, pero NO protege contra un atacante con acceso de escritura al pendrive: puede modificar el manifiesto junto con los colectores. La proteccion contra ese escenario es la firma digital del ejecutable (fuera del alcance actual).
+- El manifiesto de hashes (`manifiesto_hashes.json`) detecta corrupcion y modificaciones accidentales de los colectores, pero NO protege contra un atacante con acceso de escritura al pendrive: puede modificar el manifiesto junto con los colectores.
+- El kit se apoya en `SHA256SUMS.txt` (integridad de todos los archivos) y en la firma del interprete embebido (Python Software Foundation). El kit como conjunto NO lleva firma digital propia; la proteccion contra un atacante con acceso de escritura es la firma digital del ejecutable (variante opcional, fuera del alcance actual).
 
 ### Arquitectura
 - PowerShell 5.1 minimo para colectores
