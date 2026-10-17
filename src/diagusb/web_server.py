@@ -2375,9 +2375,9 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
         print(f"[DiagUSB] {mensaje}")
 
 
-def run_server(port: int = 8080, elevar: bool = True,
+def run_server(port: int = 8080, elevar: bool = False,
                comando: list | None = None):
-    """Ejecuta el servidor web (con elevacion automatica a Administrador)."""
+    """Ejecuta el servidor web (sin elevacion salvo que se pida con elevar=True)."""
 
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace",

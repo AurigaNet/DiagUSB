@@ -480,8 +480,10 @@ Ejemplos:
     parser.add_argument("--yes", "-y", action="store_true", help="Responder si a todas las preguntas")
     parser.add_argument("--open", action="store_true", help="Abrir reporte HTML en el navegador")
     parser.add_argument("--log", metavar="ARCHIVO", help="Guardar log en archivo")
+    parser.add_argument("--elevar", action="store_true",
+                        help="Solicitar permisos de Administrador (UAC) al arrancar")
     parser.add_argument("--no-elevate", action="store_true",
-                        help="No solicitar permisos de Administrador (UAC)")
+                        help="Sin efecto (compatibilidad): la elevacion ya no es automatica")
 
     subparsers = parser.add_subparsers(dest="command", help="Comandos disponibles")
 
@@ -521,8 +523,8 @@ Ejemplos:
 
     show_banner()
 
-    # Elevar a Administrador para los comandos que ejecutan colectores
-    if args.command in (None, "diagnose", "snapshot") and not args.no_elevate:
+    # Elevar a Administrador solo si se pidio explicitamente con --elevar
+    if args.elevar and args.command in (None, "diagnose", "snapshot"):
         from .core.elevation import (comando_relanzable, desactivada,
                                      elevar_cli, is_elevado)
         if not desactivada() and not is_elevado():
@@ -554,7 +556,7 @@ Ejemplos:
     elif args.command == "web":
         from .web_server import run_server
         from .core.elevation import comando_relanzable
-        run_server(args.port, elevar=not args.no_elevate,
+        run_server(args.port, elevar=args.elevar,
                    comando=comando_relanzable("diagusb"))
 
 
