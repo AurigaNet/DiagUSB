@@ -6,6 +6,7 @@ Sin dependencias externas: el PDF se genera con un motor minimo propio y
 el Word es un HTML con la cabecera especifica de Microsoft Word.
 """
 
+import base64
 import hashlib
 import html
 import json
@@ -20,6 +21,9 @@ from .graficos import (PALETA as _PALETA, arcos_bezier as _arcos_bezier,
                        porciones as _porciones, porciones_simples as _porciones_simples,
                        rgb_de as _rgb_de, svg_dona as _svg_dona,
                        svg_torta as _svg_torta)
+from .graficos_png import (imagen_barra as _png_barra,
+                           imagen_dona as _png_dona,
+                           imagen_torta as _png_torta)
 
 SEVERIDAD_LABEL = {
     "critical": "CRÍTICO",
@@ -1316,29 +1320,54 @@ def _html_resumen_linea_alcance(doc: dict) -> str:
     return f"<p class='muted'><b>{_esc(doc['alcance'])}</b></p>"
 
 
-def _html_panel_grafico(doc: dict, con_svg: bool) -> str:
+def _hay_datos(porciones_) -> bool:
+    return any(p.get("valor") for p in porciones_)
+
+
+def _leyenda_html(porciones_, centro: str = "") -> str:
+    filas = "".join(
+        f"<tr><td width='14' bgcolor='{p['color']}'>&nbsp;</td>"
+        f"<td>{_esc(p['etiqueta'])}: {p['valor']:g} ({p['porcentaje']:g}%)</td></tr>"
+        for p in porciones_)
+    extra = f"<tr><td colspan='2'><b>{_esc(centro)}</b></td></tr>" if centro else ""
+    return (f"<table style='width:auto'>{filas}{extra}</table>"
+            if filas else "<p class='muted'>Sin datos.</p>")
+
+
+def _html_panel_grafico(doc: dict, con_svg: bool, imagenes: dict | None = None) -> str:
+    def _grafico(porciones_, tipo: str, titulo: str, nombre: str,
+                 centro: str = "", ancho: int = 200) -> str:
+        if imagenes is not None and nombre in imagenes:
+            if not _hay_datos(porciones_):
+                return "<p class='muted'>Sin datos para graficar.</p>"
+            return (f"<v:shape id='{nombre}' style='width:{ancho}pt;height:{ancho}pt' "
+                    f"o:title='{_esc(titulo)}'>"
+                    f"<v:imagedata src='{nombre}.png' o:title='{_esc(titulo)}'/>"
+                    "</v:shape>" + _leyenda_html(porciones_, centro))
+        return _grafico_html_porciones(porciones_, con_svg, tipo=tipo,
+                                       titulo=titulo, centro=centro)
+
     out = ["<div class='panel-grafico'>"]
     out.append("<div class='grafico-celda'><h3>Problemas por severidad</h3>")
-    out.append(_grafico_html_porciones(doc["torta_severidad"], con_svg,
-                                       titulo="Problemas por severidad"))
+    out.append(_grafico(doc["torta_severidad"], "torta", "Problemas por severidad",
+                        "diagusb_severidad"))
     out.append("</div>")
     out.append("<div class='grafico-celda'><h3>Estado de los colectores</h3>")
-    out.append(_grafico_html_porciones(doc["torta_estado"], con_svg,
-                                       titulo="Estado de los colectores"))
+    out.append(_grafico(doc["torta_estado"], "torta", "Estado de los colectores",
+                        "diagusb_estado"))
     out.append("</div>")
 
     discos = doc["discos"]
     out.append("<div class='grafico-celda'><h3>Ocupación de discos</h3>")
     if discos:
-        for d in discos[:6]:
+        for i, d in enumerate(discos[:6]):
             porc = _porciones_dona_disco(d)
             etiqueta = f"Disco {_esc(d.get('unidad') or '')}"
             centro = f"{d.get('usado_porcentaje')}%"
             out.append(f"<p class='mini-titulo'>{etiqueta} — "
                        f"{_g(d.get('total_gb'), 'GB')} total, "
                        f"{_g(d.get('libre_gb'), 'GB')} libre</p>")
-            out.append(_grafico_html_porciones(porc, con_svg, tipo="dona",
-                                               titulo=etiqueta, centro=centro))
+            out.append(_grafico(porc, "dona", etiqueta, f"diagusb_disco{i}", centro))
     else:
         out.append("<p class='muted'>Sin datos de discos.</p>")
     out.append("</div>")
@@ -1348,7 +1377,12 @@ def _html_panel_grafico(doc: dict, con_svg: bool) -> str:
     if mem and mem.get("usado_porcentaje") is not None:
         pct = mem["usado_porcentaje"]
         out.append(f"<p>Memoria en uso: <b>{pct}%</b></p>")
-        out.append(f"<p>{_barra_html(pct, _color_nivel_medidor('memoria', pct))}</p>")
+        if imagenes is not None and "diagusb_memoria" in imagenes:
+            out.append("<v:shape id='diagusb_memoria' style='width:300pt;height:26pt' "
+                       "o:title='Memoria en uso'><v:imagedata src='diagusb_memoria.png' "
+                       "o:title='Memoria en uso'/></v:shape>")
+        else:
+            out.append(f"<p>{_barra_html(pct, _color_nivel_medidor('memoria', pct))}</p>")
     else:
         out.append("<p class='muted'>Sin datos de memoria.</p>")
     out.append(f"<p class='muted'>{_esc(doc.get('leyenda_medidores', ''))}</p>")
@@ -1560,7 +1594,7 @@ th, td.th { background:#f1f3f4; font-weight:700; }
 
 def informe_a_html(informe: InformeData, con_anexo: bool = False,
                    resultados_completos: list | None = None,
-                   con_svg: bool = True) -> str:
+                   con_svg: bool = True, imagenes: dict | None = None) -> str:
     e = informe
     doc = _modelo_documento(e)
     n_seccion = 0
@@ -1605,7 +1639,7 @@ def informe_a_html(informe: InformeData, con_anexo: bool = False,
     out.append("</ul>")
 
     out.append(_sec("Panel gráfico"))
-    out.append(_html_panel_grafico(doc, con_svg))
+    out.append(_html_panel_grafico(doc, con_svg, imagenes))
 
     out.append(_sec("Problemas detectados"))
     if doc["problemas_tabla"]:
@@ -1652,18 +1686,97 @@ def informe_a_html(informe: InformeData, con_anexo: bool = False,
     return "".join(out)
 
 
+def _imagenes_doc(doc: dict) -> dict:
+    """PNG (bytes) de los graficos del panel para embeber en el .doc."""
+    imagenes = {}
+    for nombre, porciones_ in (("diagusb_severidad", doc["torta_severidad"]),
+                               ("diagusb_estado", doc["torta_estado"])):
+        if _hay_datos(porciones_):
+            imagenes[nombre] = _png_torta(porciones_, 220)
+    for i, d in enumerate(doc["discos"][:6]):
+        porciones_ = _porciones_dona_disco(d)
+        if _hay_datos(porciones_):
+            imagenes[f"diagusb_disco{i}"] = _png_dona(porciones_, 200)
+    mem = doc.get("memoria")
+    if mem and mem.get("usado_porcentaje") is not None:
+        pct = mem["usado_porcentaje"]
+        imagenes["diagusb_memoria"] = _png_barra(
+            pct, _color_nivel_medidor("memoria", pct))
+    return imagenes
+
+
+def _mhtml(html_doc: str, imagenes: dict) -> bytes:
+    """Empaqueta el HTML y sus PNG como multipart/related (MHTML de Word).
+
+    La parte HTML se envía en base64: Word no acepta `8bit` en el cuerpo
+    de texto/html de un multipart/related y, con ese encoding, ignora los
+    recursos embebidos (imágenes) aunque el documento sí se abra.
+    """
+    limite = "----=_NextPart_DiagUSB"
+    html_b64 = base64.b64encode(html_doc.encode("utf-8"))
+    html_lineas = b"\r\n".join(html_b64[i:i + 76] for i in range(0, len(html_b64), 76))
+    partes = [
+        ("MIME-Version: 1.0\r\n"
+         "Content-Type: multipart/related; boundary=\"" + limite +
+         "\"; type=\"text/html\"\r\n\r\n").encode("ascii"),
+        ("--" + limite + "\r\n"
+         "Content-Location: file:///C:/diagusb/informe.htm\r\n"
+         "Content-Type: text/html; charset=\"utf-8\"\r\n"
+         "Content-Transfer-Encoding: base64\r\n\r\n").encode("ascii"),
+        html_lineas,
+        b"\r\n",
+    ]
+    for nombre, png in imagenes.items():
+        b64 = base64.b64encode(png)
+        partes.append(("--" + limite + "\r\n"
+                       f"Content-Location: file:///C:/diagusb/{nombre}.png\r\n"
+                       "Content-Type: image/png\r\n"
+                       "Content-Transfer-Encoding: base64\r\n\r\n").encode("ascii"))
+        partes.append(b"\r\n".join(b64[i:i + 76] for i in range(0, len(b64), 76)))
+        partes.append(b"\r\n")
+    partes.append(("--" + limite + "--\r\n").encode("ascii"))
+    return b"".join(partes)
+
+
+def html_de_doc(datos: bytes) -> bytes:
+    """Extrae el cuerpo ``text/html`` de un .doc MHTML (base64 o 8bit).
+
+    Devuelve ``datos`` tal cual si no es MHTML (mantenimiento de tests
+    que consumen directamente el formato anterior).
+    """
+    if not datos.startswith(b"MIME-Version"):
+        return datos
+    i = datos.find(b"Content-Type: text/html")
+    if i == -1:
+        return datos
+    j = datos.find(b"\r\n\r\n", i)
+    if j == -1:
+        return datos
+    encabezado = datos[i:j]
+    k = j + 4
+    l = datos.find(b"\r\n--", k)
+    cuerpo = datos[k:l] if l != -1 else datos[k:]
+    if b"base64" in encabezado.lower():
+        return base64.b64decode(b"".join(cuerpo.split()))
+    return cuerpo
+
+
 def informe_a_doc(informe: InformeData, resultados_completos: list | None = None,
                   con_anexo: bool = False) -> bytes:
-    """Genera un archivo .doc (HTML con formato Word). Word lo abre directamente.
+    """Genera un .doc MHTML (HTML de Word con los graficos PNG embebidos).
 
     El volcado JSON crudo de los colectores solo se incluye si ``con_anexo`` es
     True (cuando el técnico lo pide); por defecto no aparece.
     """
+    modelo = _modelo_documento(informe)
+    imagenes = _imagenes_doc(modelo)
     body = informe_a_html(informe, con_anexo=con_anexo,
-                          resultados_completos=resultados_completos, con_svg=False)
+                          resultados_completos=resultados_completos,
+                          con_svg=False, imagenes=imagenes)
     doc = (
         "<html xmlns:o='urn:schemas-microsoft-com:office:office' "
-        "xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>"
+        "xmlns:w='urn:schemas-microsoft-com:office:word' "
+        "xmlns:v='urn:schemas-microsoft-com:vml'>"
         "<head><meta charset='utf-8'><title>Informe DiagUSB</title>"
         "<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View>"
         "<w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->"
@@ -1673,7 +1786,7 @@ def informe_a_doc(informe: InformeData, resultados_completos: list | None = None
         "<body><div class='WordSection1'>" + body[body.find("<body>") + 6:body.rfind("</body>")] +
         "</div></body></html>"
     )
-    return b"\xef\xbb\xbf" + doc.encode("utf-8")
+    return _mhtml(doc, imagenes)
 
 
 # ---------------------------------------------------------------------------

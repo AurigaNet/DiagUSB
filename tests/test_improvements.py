@@ -24,6 +24,7 @@ from diagusb.core.informe import (
     _fmt_fecha,
     _resumen_datos,
     codigo_verificacion,
+    html_de_doc,
     informe_a_doc,
     informe_a_html,
     informe_a_pdf,
@@ -282,14 +283,14 @@ def test_informe_secciones_correlativas():
 def test_doc_css_y_anexo_opcional():
     inf = informe_desde_diagnostico(_diag_minimo())
     resultados = [{"collector_id": "logical_disks", "data": 1}]
-    texto = informe_a_doc(inf, resultados_completos=resultados).decode("utf-8")
+    texto = html_de_doc(informe_a_doc(inf, resultados_completos=resultados)).decode("utf-8")
     for regla in ("table-layout:fixed", "word-wrap:break-word", ".mono",
                   "Consolas", ".muted", ".firma", ".badge", "border-collapse:collapse"):
         assert regla in texto, regla
     assert "xmlns:w='urn:schemas-microsoft-com:office:word'" in texto
     assert "Datos crudos de los colectores" not in texto
 
-    con = informe_a_doc(inf, resultados_completos=resultados, con_anexo=True).decode("utf-8")
+    con = html_de_doc(informe_a_doc(inf, resultados_completos=resultados, con_anexo=True)).decode("utf-8")
     assert "Datos crudos de los colectores" in con
     assert "collector_id" in con
 
@@ -345,7 +346,7 @@ def test_informe_grafico_html_doc_pdf():
     assert "Disco C:" in html
     assert "Comparación antes / después" in html
 
-    doc = informe_a_doc(inf, resultados_completos=diag["results"]).decode("utf-8")
+    doc = html_de_doc(informe_a_doc(inf, resultados_completos=diag["results"])).decode("utf-8")
     assert "Panel gráfico" in doc
     assert "69/100" in doc
     assert "bgcolor=" in doc
@@ -389,9 +390,11 @@ def test_api_report_incluye_grafico():
                 datos = resp.read()
             if fmt == "pdf":
                 assert datos[:4] == b"%PDF"
+                texto = datos.decode(codec, errors="replace")
             else:
-                assert "<html" in datos[:80].decode("utf-8", errors="replace")
-            texto = datos.decode(codec, errors="replace")
+                assert b"multipart/related" in datos[:200]
+                assert b"<html" in html_de_doc(datos)
+                texto = html_de_doc(datos).decode(codec, errors="replace")
             assert "Panel gr" in texto, fmt
             assert ("Cobertura" in texto) or ("COBERTURA" in texto), fmt
             assert "Comparación antes" in texto, fmt
@@ -422,7 +425,7 @@ def test_api_report_metricas_recalculadas():
             with urllib.request.urlopen(req, timeout=10) as resp:
                 assert resp.status == 200, resp.status
                 datos = resp.read()
-            texto = datos.decode(codec, errors="replace")
+            texto = html_de_doc(datos).decode(codec, errors="replace")
             assert "999/100" not in texto, fmt
             assert "<script>" not in texto, fmt
             assert "&lt;script&gt;" not in texto, fmt
@@ -1366,7 +1369,7 @@ def test_identidad_equipo_comparacion():
         h["Content-Type"] = "application/json"
         req = urllib.request.Request(base + "/api/report?format=doc",
                                      data=data, headers=h)
-        texto = urllib.request.urlopen(req, timeout=30).read().decode("utf-8")
+        texto = html_de_doc(urllib.request.urlopen(req, timeout=30).read()).decode("utf-8")
         assert "ADVERTENCIA: la comparación se hizo entre equipos distintos" in texto
     finally:
         httpd.shutdown()
@@ -1524,7 +1527,7 @@ def test_codigo_verificacion_informe():
     c.generado_en = a.generado_en
     assert codigo_verificacion(c) != ca
 
-    assert ca.encode("utf-8") in informe_a_doc(a)
+    assert ca.encode("utf-8") in html_de_doc(informe_a_doc(a))
     assert ca.encode("latin-1") in informe_a_pdf(a)
 
 
@@ -1707,7 +1710,7 @@ def test_linea_alcance_informes():
     assert linea == "Alcance: modo estándar; no evaluados: security_events", linea
     assert linea in informe_a_html(inf)
     assert b"Alcance" in informe_a_pdf(inf)
-    assert b"Alcance" in informe_a_doc(inf)
+    assert b"Alcance" in html_de_doc(informe_a_doc(inf))
 
     entrada = ws._entrada_registro(diag, "diagnostico")
     assert "security_events" in entrada["alcance"]
@@ -1738,7 +1741,7 @@ def test_datos_limitados_alcance():
     assert linea.startswith("Alcance: modo estándar; no evaluados: ninguno"), linea
     assert "datos limitados: installed_software (requiere administrador)" in linea, linea
     assert "datos limitados: installed_software (requiere administrador)" in informe_a_html(inf)
-    assert b"datos limitados" in informe_a_doc(inf)
+    assert b"datos limitados" in html_de_doc(informe_a_doc(inf))
     assert b"Alcance" in informe_a_pdf(inf)
 
     entrada = ws._entrada_registro(diag, "diagnostico")
@@ -1900,6 +1903,91 @@ def test_run_powershell_timeout_termina_arbol():
     assert dt < 5.0, f"run_powershell tardo {dt:.1f}s con timeout de 2s"
 
 
+def _decodificar_png(data):
+    """Decodifica un PNG RGB sin filtros (los que genera DiagUSB)."""
+    import struct
+    import zlib
+
+    assert data[:8] == b"\x89PNG\r\n\x1a\n", "firma PNG invalida"
+    pos = 8
+    idat = b""
+    ancho = alto = 0
+    while pos < len(data):
+        (largo,) = struct.unpack(">I", data[pos:pos + 4])
+        tipo = data[pos + 4:pos + 8]
+        cuerpo = data[pos + 8:pos + 8 + largo]
+        pos += 12 + largo
+        if tipo == b"IHDR":
+            ancho, alto = struct.unpack(">II", cuerpo[:8])
+        elif tipo == b"IDAT":
+            idat += cuerpo
+        elif tipo == b"IEND":
+            break
+    crudo = zlib.decompress(idat)
+    paso = ancho * 3
+    salida = bytearray()
+    for y in range(alto):
+        filtro = crudo[y * (paso + 1)]
+        assert filtro == 0, "solo se esperan filas sin filtro"
+        salida += crudo[y * (paso + 1) + 1:y * (paso + 1) + 1 + paso]
+    return bytes(salida)
+
+
+def test_graficos_png_valido():
+    import struct
+    import zlib
+
+    from diagusb.core.graficos import porciones
+    from diagusb.core.graficos_png import imagen_barra, imagen_dona, imagen_torta
+
+    png = imagen_barra(100, "#2FBF71", ancho=40, alto=10)
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
+    assert struct.unpack(">I", png[8:12])[0] == 13
+    assert png[12:16] == b"IHDR"
+    ancho, alto, bits, ctype = struct.unpack(">IIBB", png[16:26])
+    assert (ancho, alto, bits, ctype) == (40, 10, 8, 2)
+    assert struct.unpack(">I", png[29:33])[0] == (zlib.crc32(png[12:29]) & 0xFFFFFFFF)
+    assert png.endswith(b"IEND\xaeB`\x82")
+
+    pixeles = _decodificar_png(png)
+    centro = (5 * 40 + 20) * 3
+    assert pixeles[centro:centro + 3] == bytes((47, 191, 113))
+
+    vacia = _decodificar_png(imagen_barra(0, "#2FBF71", ancho=40, alto=10))
+    assert vacia[centro:centro + 3] == bytes((224, 227, 231))
+
+    ps = porciones([("A", 1, "#C62839"), ("B", 1, "#2FBF71")])
+    torta = _decodificar_png(imagen_torta(ps, 64))
+    assert torta[32 * 64 * 3 + 32 * 3:32 * 64 * 3 + 32 * 3 + 3] != bytes((255, 255, 255))
+    dona = _decodificar_png(imagen_dona(ps, 64))
+    assert dona[32 * 64 * 3 + 32 * 3:32 * 64 * 3 + 32 * 3 + 3] == bytes((255, 255, 255))
+
+
+def test_doc_mhtml_con_imagenes():
+    import base64
+
+    from diagusb.core.informe import informe_a_doc, informe_desde_diagnostico
+
+    inf = informe_desde_diagnostico(_diag_con_metricas())
+    datos = informe_a_doc(inf, resultados_completos=[])
+    assert b"multipart/related" in datos[:200]
+    assert b"Content-Type: image/png" in datos
+
+    partes = datos.split(b"Content-Type: image/png")
+    assert len(partes) >= 2
+    cuerpo = partes[1].split(b"\r\n\r\n", 1)[1].split(b"\r\n--", 1)[0]
+    png = base64.b64decode(b"".join(cuerpo.split()))
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
+    assert png.endswith(b"IEND\xaeB`\x82")
+
+    texto = html_de_doc(datos).decode("utf-8", errors="replace")
+    assert "diagusb_severidad.png" in texto
+    assert "diagusb_disco0.png" in texto
+    assert "diagusb_memoria.png" in texto
+    assert "v:imagedata" in texto
+    assert "Sin datos para graficar." in texto
+
+
 def run_tests():
     """Ejecuta todas las pruebas de esta suite."""
     tests = [
@@ -1976,6 +2064,8 @@ def run_tests():
         ("test_modulos_y_fetch_sin_cambios", test_modulos_y_fetch_sin_cambios),
         ("test_run_powershell_timeout_termina_arbol",
          test_run_powershell_timeout_termina_arbol),
+        ("test_graficos_png_valido", test_graficos_png_valido),
+        ("test_doc_mhtml_con_imagenes", test_doc_mhtml_con_imagenes),
     ]
 
     passed = 0
