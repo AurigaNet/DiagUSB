@@ -275,7 +275,7 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 - La verificación de integridad por SHA-256 de los colectores detecta corrupción y modificaciones accidentales, pero **no protege contra un atacante con acceso de escritura al pendrive**: puede modificar el manifiesto junto con los colectores y la verificación pasaría. La protección contra ese escenario es la firma digital del ejecutable, fuera del alcance actual.
 - Los colectores corren con `subprocess` y timeout fijo de 30 s por colector (en equipos muy lentos un colector puede quedar `timeout`).
 - El registro usa un archivo JSON local (no hay multi-usuario ni sincronización entre equipos; cada PC tiene su historial).
-- El informe .doc usa MHTML con imágenes PNG y VML (no OOXML nativo); verificado en Word 16.0. Otros visores no se validaron, pero no es un `.docx` de firma digital.
+- El informe .doc usa MHTML con imágenes PNG y VML (no OOXML nativo); verificado en Word 16.0. LibreOffice 26.2.6 no importa MHTML (muestra el texto base64), por lo que el PDF es el formato portable; no es un `.docx` de firma digital.
 - La comparación de snapshots compara `data` completo por campo (listas grandes se resumen como "registros: N"); no compara dentro de listas elemento a elemento.
 - El pendrive de arranque (Ventoy/WinPE) es procedimiento manual documentado; este repo solo entrega la capa Windows portable.
 - Sin tests de UI (el JS se valida sintácticamente, no con tests de navegador).

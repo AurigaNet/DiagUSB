@@ -20,7 +20,7 @@ Documento de limitaciones y estado actual del proyecto.
 
 ### Pendiente de validacion
 - Windows 11 (validado hasta ahora en Windows 10)
-- Apertura del informe `.doc` en visores distintos de Word (LibreOffice, Google Docs, visores moviles) con los graficos incrustados
+- Importacion del informe `.doc` (MHTML) en Google Docs: no se pudo probar sin cuenta; Google Docs no documenta soporte de MHTML como formato de importacion (use Word o el PDF)
 - Comportamiento bajo antivirus/EDR (bloqueo de PowerShell, escaneo de la carpeta del kit, cuarentena de scripts `.ps1`)
 - Prueba del boton "Dar permisos de administrador" (UAC) del kit y del exe portable en una segunda cuenta/maquina
 - Kit armado con Python embebido: comportamiento bajo EDR (igual que el exe) y copia al pendrive en volumenes formateados en distintos sistemas de archivos
@@ -40,7 +40,7 @@ Documento de limitaciones y estado actual del proyecto.
 
 ### Funcionalidad
 - La tendencia (evolucion del puntaje entre analisis) se muestra solo en la interfaz web (pestana Historial); todavia NO se incluye en los informes Word/PDF.
-- El informe `.doc` usa MHTML con imagenes PNG y VML. Se verifico en Word 16.0; otros visores (LibreOffice, Google Docs, visores moviles) pueden no interpretar VML/MHTML y mostrar los graficos como texto o enlaces. En ese caso use el PDF, que es autocontenido.
+- El informe `.doc` usa MHTML con imagenes PNG y VML. Se verifico en Word 16.0. **LibreOffice 26.2.6 NO importa este MHTML**: al abrir el `.doc` (o el mismo archivo renombrado a `.mht`) muestra el texto del MIME/base64 en lugar del documento. Para equipos sin Word, use el PDF, que es autocontenido y se abre en cualquier visor.
 - El PDF usa fuentes estandar con codificacion WinAnsi (Latin-1). Los caracteres fuera de ese rango se reemplazan por `?`; los informes estan redactados en español para evitar el problema.
 - Los colectores de seguridad (eventos) y algunos inventarios requieren permisos de Administrador para datos completos (en modo estandar se ven parciales o como 'No evaluado (requiere administrador)')
 - La verificacion de conectividad de red esta limitada (no hace ping real en el colector)
