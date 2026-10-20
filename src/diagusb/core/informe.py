@@ -2140,7 +2140,7 @@ def _pdf_tabla(doc: "_PdfDoc", columnas: list, filas: list, anchos: list,
         _fila(columnas, "F2", True, False)
     for i, celdas in enumerate(filas):
         _fila(celdas, "F1", i % 2 == 1, negrita_col0)
-    doc.spacer(6)
+    doc.spacer(size + 6)
 
 
 def _pdf_torta(doc: "_PdfDoc", cx: float, cy: float, r: float, porciones_: list,
@@ -2320,7 +2320,7 @@ def informe_a_pdf(informe: InformeData) -> bytes:
 
     def _heading(titulo: str):
         doc.ensure_space(30)
-        doc.spacer(4)
+        doc.spacer(10)
         doc.text_flow(_sec(titulo), size=12.5, font="F2", color=_pal_rgb("acento"))
 
     _pdf_portada(doc, modelo)
@@ -2414,12 +2414,12 @@ def informe_a_pdf(informe: InformeData) -> bytes:
     for p in e.problemas:
         sev = SEVERIDAD_LABEL.get(p.severidad, p.severidad)
         for a in (p.soluciones or [p.recomendacion or "Revisar el problema detectado."])[:2]:
-            pendientes.append(["[ ]", sev, a, f"Problema {p.indice} · {p.colector}"])
+            pendientes.append(["[  ]", sev, a, f"Problema {p.indice} · {p.colector}"])
     for m in e.mejoras:
         if not m.aplicada:
-            pendientes.append(["[ ]", "Mejora", m.titulo, m.detalle[:80]])
+            pendientes.append(["[  ]", "Mejora", m.titulo, m.detalle[:80]])
     if not pendientes:
-        pendientes = [["[ ]", "—", "Sin acciones pendientes.", ""]]
+        pendientes = [["[  ]", "—", "Sin acciones pendientes.", ""]]
     _pdf_tabla(doc, ["Hecho", "Prior.", "Acción", "Referencia"], pendientes,
                [0.08, 0.12, 0.48, 0.32], size=8.5)
 
@@ -2427,6 +2427,7 @@ def informe_a_pdf(informe: InformeData) -> bytes:
     for titulo, filas in modelo["ficha_tecnica"]:
         doc.ensure_space(20)
         doc.text_flow(titulo, size=10, font="F2", indent=8)
+        doc.spacer(4)
         _pdf_tabla(doc, [], [(k, str(v)) for k, v in filas], [0.32, 0.68],
                    size=8.5, negrita_col0=True)
 
