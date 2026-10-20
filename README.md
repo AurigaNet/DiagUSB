@@ -10,7 +10,7 @@ DiagUSB es un kit de diagnóstico para soporte de infraestructura TI pensado par
 - **Interfaz web local** (`http://localhost:8080`) con barra lateral, tema oscuro, botones de diagnóstico rápido, revisión total, snapshot ANTES/DESPUÉS con comparación de cambios, acciones del técnico y un panel de inicio con gráficas del estado del equipo.
 - **Puntaje orientativo**: cada análisis calcula un puntaje de salud (0–100), cobertura de colectores, hallazgos por severidad, estado por categoría y medidores, con tendencia entre análisis del mismo paquete. Se muestra en la interfaz y en los informes (detalles en `docs/PUNTAJE.md`). El puntaje orientativo **no reemplaza** al diagnóstico ni refleja necesariamente el estado general del equipo cuando se ejecuta un único paquete.
 - **Registro persistente de análisis**: cada diagnóstico ejecutado queda guardado automáticamente en `config/registro_analisis.json`. Botón "Registro de análisis" para consultar el detalle, eliminar análisis individuales o vaciar el registro completo.
-- **Informes Word (.doc) y PDF (.pdf)** en español, con un **resumen gráfico** de métricas (puntaje, severidad, categorías, medidores y comparación antes/después), hallazgos, soluciones de la base de conocimiento, acciones del técnico, mejoras sugeridas y diferencias antes/después.
+- **Informes Word (.doc) y PDF (.pdf)** en español, con un **resumen gráfico** de métricas (puntaje, severidad, categorías, medidores y comparación antes/después), hallazgos, soluciones de la base de conocimiento, acciones del técnico, mejoras sugeridas y diferencias antes/después. Los gráficos del `.doc` se incrustan como imágenes PNG reales (formato MHTML), por lo que se ven al abrir el archivo en Word aunque se mueva o comparta.
 - **Base de conocimiento local**: 19 entradas embebidas más capa editable en `config/base_conocimiento.json` (alta/edición/baja desde la interfaz, buscador por palabra clave).
 - **Arranque sin UAC**: DiagUSB inicia sin pedir permisos (modo estándar). Los permisos de Administrador se solicitan solo a pedido: botón "Dar permisos de administrador" en la interfaz web, o flag `--elevar` en la línea de comandos.
 - **Kit portable** (`DiagUSB-kit-<version>.zip`): incluye una distribución embebida oficial de Python (python.org) más el código fuente, sin necesidad de instalar Python en el equipo destino. Es la distribución principal y se arma con `scripts\armar_kit.ps1`.
@@ -68,7 +68,7 @@ python -m diagusb list-packages
 ## Pruebas y build
 
 ```
-python tests\run_tests.py                        # suite completa (110 pruebas, sin dependencias externas)
+python tests\run_tests.py                        # suite completa (119 pruebas, sin dependencias externas)
 scripts\armar_kit.cmd -Salida dist\kit           # arma el kit (Python embebido + fuente) y lo comprime
 scripts\probar_kit.ps1 -Kit dist\kit\DiagUSB     # prueba de humo del kit
 scripts\build_exe.cmd                            # reconstruye dist\diagusb\diagusb.exe (variante opcional)
