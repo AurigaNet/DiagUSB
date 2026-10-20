@@ -31,8 +31,9 @@ from diagusb.core.informe import (
     informe_desde_diagnostico,
     linea_alcance,
 )
-from diagusb.core.models import CollectorResult, Finding
+from diagusb.core.models import CollectorResult, ContextInfo, Finding, QueryInfo
 from diagusb.core.rules import RuleEngine, _agrupar_findings
+from diagusb.__main__ import _obs_a_dict
 
 
 def _abrir_servidor():
@@ -366,6 +367,19 @@ def test_informe_grafico_sin_metricas():
     assert "Sin datos para graficar." in html
     pdf = informe_a_pdf(inf).decode("latin-1", errors="replace")
     assert "Sin datos para graficar." in pdf
+
+
+def test_pdf_panel_omite_graficos_vacios():
+    diag = _diag_con_metricas()
+    diag["metricas"]["severidad"] = {}
+    diag["metricas"]["medidores"] = {}
+    diag["metricas"]["estados"] = {"ok": 1}
+    inf = informe_desde_diagnostico(diag)
+    pdf = informe_a_pdf(inf).decode("latin-1", errors="replace")
+    assert "(Estado de los colectores) Tj" in pdf
+    assert "(Problemas por severidad) Tj" not in pdf
+    assert "(Memoria) Tj" not in pdf
+    assert "(Memoria en uso) Tj" not in pdf
 
 
 def test_api_report_incluye_grafico():
@@ -1531,6 +1545,43 @@ def test_codigo_verificacion_informe():
     assert ca.encode("latin-1") in informe_a_pdf(a)
 
 
+def test_obs_a_dict_conserva_contexto():
+    crudo = {
+        "computer_name": "PC-RAW",
+        "user": "DOMINIO\\tecnico",
+        "is_elevated": True,
+        "windows": {"caption": "Microsoft Windows 10 Pro",
+                    "version": "10.0.19045", "build_number": "19045"},
+    }
+    obs = CollectorResult(
+        collector_id="system_context",
+        query=QueryInfo(status="ok", duration_ms=12),
+        metadata={"context": crudo},
+        data={"computer_name": "PC-RAW"},
+    )
+    d = _obs_a_dict(obs)
+    assert d["context"]["computer_name"] == "PC-RAW"
+    assert d["context"]["windows"]["caption"] == "Microsoft Windows 10 Pro"
+    assert d["context"]["windows"]["build_number"] == "19045"
+    assert d["query"]["status"] == "ok"
+
+    diag = _diag_minimo()
+    diag["results"] = [d]
+    inf = informe_desde_diagnostico(diag)
+    assert inf.equipo.get("computer_name") == "PC-RAW"
+    assert inf.equipo.get("os") == "Microsoft Windows 10 Pro"
+    assert inf.equipo.get("build") == "19045"
+    assert "administrador" in linea_alcance(inf)
+
+    respaldo = _obs_a_dict(CollectorResult(
+        collector_id="otro",
+        context=ContextInfo(computer_name="PC-TEST", user="usuario",
+                            is_elevated=True),
+    ))
+    assert respaldo["context"]["computer_name"] == "PC-TEST"
+    assert respaldo["context"]["is_elevated"] is True
+
+
 def test_banner_flush():
     import io
     import diagusb.__main__ as cli
@@ -2010,6 +2061,7 @@ def run_tests():
         ("test_pdf_fecha_y_secciones", test_pdf_fecha_y_secciones),
         ("test_informe_grafico_html_doc_pdf", test_informe_grafico_html_doc_pdf),
         ("test_informe_grafico_sin_metricas", test_informe_grafico_sin_metricas),
+        ("test_pdf_panel_omite_graficos_vacios", test_pdf_panel_omite_graficos_vacios),
         ("test_api_report_incluye_grafico", test_api_report_incluye_grafico),
         ("test_api_report_metricas_recalculadas", test_api_report_metricas_recalculadas),
         ("test_informe_cifras_coherentes", test_informe_cifras_coherentes),
@@ -2049,6 +2101,7 @@ def run_tests():
         ("test_web_server_rutas_base", test_web_server_rutas_base),
         ("test_rutas_portables", test_rutas_portables),
         ("test_codigo_verificacion_informe", test_codigo_verificacion_informe),
+        ("test_obs_a_dict_conserva_contexto", test_obs_a_dict_conserva_contexto),
         ("test_banner_flush", test_banner_flush),
         ("test_pdf_valido_casos", test_pdf_valido_casos),
         ("test_pdf_validador_externo", test_pdf_validador_externo),

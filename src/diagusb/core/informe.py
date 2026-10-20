@@ -2163,6 +2163,8 @@ def _pdf_torta(doc: "_PdfDoc", cx: float, cy: float, r: float, porciones_: list,
 
 def _pdf_bloque_torta(doc: "_PdfDoc", titulo: str, porciones_: list,
                       r: float = 62):
+    if not porciones_:
+        return
     doc.ensure_space(2 * r + 34)
     doc.text_flow(titulo, size=10.5, font="F2", indent=8)
     cy = doc.y - r - 4
@@ -2222,15 +2224,15 @@ def _pdf_panel_grafico(doc: "_PdfDoc", modelo: dict):
             doc.y = cy - r - 10
 
     mem = modelo.get("memoria")
-    doc.ensure_space(20)
-    doc.text_flow("Memoria", size=10.5, font="F2", indent=8)
     ancho_barra = _PAGE_W - 2 * _MARGIN - 16 - 210
     if mem and mem.get("usado_porcentaje") is not None:
+        doc.ensure_space(20)
+        doc.text_flow("Memoria", size=10.5, font="F2", indent=8)
         _pdf_fila_barra(doc, "Memoria en uso", f"{mem['usado_porcentaje']}%",
                         mem["usado_porcentaje"],
                         _color_nivel_medidor_rgb("memoria", mem["usado_porcentaje"]),
                         ancho_barra, _MARGIN + 210)
-    if modelo.get("leyenda_medidores"):
+    if modelo.get("leyenda_medidores") and (discos or mem):
         doc.text_flow(modelo["leyenda_medidores"], size=8, font="F3", indent=16,
                       color=(0.4, 0.4, 0.4))
 

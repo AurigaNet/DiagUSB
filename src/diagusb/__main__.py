@@ -232,6 +232,7 @@ def run_collectors(package_id: str, logger=None) -> list[CollectorResult]:
                 continue
 
             query_data = result.get("query", {}) if isinstance(result, dict) else {}
+            contexto = result.get("context", {}) if isinstance(result, dict) else {}
             observations.append(CollectorResult(
                 collector_id=result.get("collector_id", collector.id) if isinstance(result, dict) else collector.id,
                 data=result.get("data", {}) if isinstance(result, dict) else {},
@@ -240,6 +241,7 @@ def run_collectors(package_id: str, logger=None) -> list[CollectorResult]:
                     duration_ms=query_data.get("duration_ms", 0),
                     timeout_seconds=query_data.get("timeout_seconds", 15),
                 ),
+                metadata={"context": contexto} if isinstance(contexto, dict) else {},
             ))
             print(f"[OK]")
         except Exception as e:
@@ -255,13 +257,20 @@ def run_collectors(package_id: str, logger=None) -> list[CollectorResult]:
 
 def _obs_a_dict(o: CollectorResult) -> dict:
     """Serializa una observacion CollectorResult a dict para el informe."""
+    from dataclasses import asdict
+
+    contexto = (o.metadata or {}).get("context")
+    if not isinstance(contexto, dict):
+        contexto = asdict(o.context) if o.context else {}
     return {
         "collector_id": o.collector_id,
+        "captured_at_utc": o.captured_at_utc,
         "query": {
             "status": o.query.status,
             "duration_ms": o.query.duration_ms,
             "timeout_seconds": o.query.timeout_seconds,
         },
+        "context": contexto,
         "data": o.data,
         "errors": o.errors,
     }
