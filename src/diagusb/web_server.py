@@ -52,6 +52,17 @@ BASELINE_PATH = rutas.dir_reports() / "snapshot_antes.json"
 REGISTRO_PATH = rutas.dir_config() / "registro_analisis.json"
 BIND_HOST = "127.0.0.1"
 MAX_CUERPO = 10 * 1024 * 1024
+CSP = ("default-src 'none'; script-src 'unsafe-inline'; "
+       "style-src 'unsafe-inline'; img-src 'self' data:; "
+       "connect-src 'self'; base-uri 'none'; form-action 'none'; "
+       "frame-ancestors 'none'")
+_CABECERAS_SEGURIDAD = (
+    ("Content-Security-Policy", CSP),
+    ("X-Frame-Options", "DENY"),
+    ("X-Content-Type-Options", "nosniff"),
+    ("Cache-Control", "no-store"),
+    ("Referrer-Policy", "no-referrer"),
+)
 _SESSION_TOKEN = None
 
 
@@ -1077,6 +1088,11 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             }, 400)
             return
         self._json_response({"ok": True, "eliminados": _borrar_datos_locales()})
+
+    def end_headers(self):
+        for nombre, valor in _CABECERAS_SEGURIDAD:
+            self.send_header(nombre, valor)
+        super().end_headers()
 
     def _json_response(self, obj, status: int = 200):
         body = json.dumps(redactar(obj), ensure_ascii=False).encode("utf-8")

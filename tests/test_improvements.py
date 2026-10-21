@@ -2262,6 +2262,71 @@ def test_api_borrar_datos_locales():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_cabeceras_seguridad_en_respuestas():
+    import http.client
+    import urllib.request
+    import urllib.error
+    import diagusb.web_server as ws
+
+    def comprobar(cabeceras):
+        assert cabeceras.get("Content-Security-Policy") == ws.CSP
+        assert cabeceras.get("X-Frame-Options") == "DENY"
+        assert cabeceras.get("X-Content-Type-Options") == "nosniff"
+        assert cabeceras.get("Cache-Control") == "no-store"
+        assert cabeceras.get("Referrer-Policy") == "no-referrer"
+
+    httpd, base = _abrir_servidor()
+    try:
+        with urllib.request.urlopen(
+                urllib.request.Request(base + "/", headers=_cookie()),
+                timeout=10) as r:
+            assert r.status == 200
+            comprobar(r.headers)
+
+        with urllib.request.urlopen(
+                urllib.request.Request(base + "/api/registro",
+                                       headers=_cookie()), timeout=10) as r:
+            assert r.status == 200
+            comprobar(r.headers)
+
+        try:
+            urllib.request.urlopen(base + "/api/registro", timeout=10)
+            raise AssertionError("sin cookie debio dar 401")
+        except urllib.error.HTTPError as e:
+            assert e.code == 401
+            comprobar(e.headers)
+
+        try:
+            urllib.request.urlopen(
+                urllib.request.Request(base + "/noexiste", headers=_cookie()),
+                timeout=10)
+            raise AssertionError("ruta inexistente debio dar 404")
+        except urllib.error.HTTPError as e:
+            assert e.code == 404
+            comprobar(e.headers)
+
+        host = httpd.server_address[1]
+        conn = http.client.HTTPConnection("127.0.0.1", host, timeout=10)
+        conn.request("GET", "/?t=" + ws._token_sesion())
+        respuesta = conn.getresponse()
+        assert respuesta.status == 302
+        comprobar(respuesta.headers)
+        respuesta.read()
+        conn.close()
+
+        cuerpo = json.dumps({"diagnostico": _diag_minimo()}).encode("utf-8")
+        cabeceras = dict(_cookie())
+        cabeceras["Content-Type"] = "application/json"
+        req = urllib.request.Request(base + "/api/report?format=pdf",
+                                     data=cuerpo, headers=cabeceras)
+        with urllib.request.urlopen(req, timeout=30) as r:
+            assert r.status == 200
+            comprobar(r.headers)
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
 def run_tests():
     """Ejecuta todas las pruebas de esta suite."""
     tests = [
@@ -2272,6 +2337,8 @@ def run_tests():
         ("test_registro_sanea_findings", test_registro_sanea_findings),
         ("test_api_registro_redacta_legado", test_api_registro_redacta_legado),
         ("test_api_borrar_datos_locales", test_api_borrar_datos_locales),
+        ("test_cabeceras_seguridad_en_respuestas",
+         test_cabeceras_seguridad_en_respuestas),
         ("test_agrupa_mismo_problema", test_agrupa_mismo_problema),
         ("test_agrupa_sin_repetidos_no_altera", test_agrupa_sin_repetidos_no_altera),
         ("test_diagnose_symptoms_agrupa", test_diagnose_symptoms_agrupa),
