@@ -2,12 +2,20 @@
 # Copyright (C) 2026 Daniel Ricardo Novoa
 """Motor de reglas de diagnostico para DiagUSB."""
 
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .models import CollectorResult, DiagnosticResult, Finding
 from .context_aware import SystemContext, detect_context_from_observations, get_context_aware_rules
 from . import knowledge_base as kb
+
+
+def _normalizar_driver(nombre: Any) -> str:
+    """Normaliza un nombre de driver quitando mayusculas, espacios y version."""
+    texto = str(nombre or "").strip().casefold()
+    texto = re.sub(r",\s*\d+\s*,\s*windows\s+[^,]+$", "", texto)
+    return re.sub(r"[\s_]+", "", texto)
 
 
 class RuleEngine:
@@ -190,13 +198,18 @@ class RuleEngine:
         findings = []
         printers = self._get_data(printers_result) if isinstance(self._get_data(printers_result), list) else []
         drivers = self._get_data(drivers_result) if isinstance(self._get_data(drivers_result), list) else []
-        available_drivers = {d.get("name", "").lower() for d in drivers}
+        available_drivers = {
+            _normalizar_driver(d.get("name", "")) for d in drivers
+            if _normalizar_driver(d.get("name", ""))
+        }
         for printer in printers:
             driver = printer.get("driver_name", "")
-            if driver and driver.lower() not in available_drivers:
+            driver_normalizado = _normalizar_driver(driver)
+            if driver_normalizado and driver_normalizado not in available_drivers:
                 findings.append(Finding(
                     severity="critical",
                     collector_id="printers",
+                    knowledge_id="impresora_driver_faltante",
                     message="Driver no encontrado para la impresora",
                     details={"printer": printer.get("name", ""), "driver": driver}
                 ))

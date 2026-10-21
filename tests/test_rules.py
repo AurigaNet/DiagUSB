@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from diagusb.core.models import CollectorResult, DiagnosticResult, Finding
 from diagusb.core.rules import diagnose, RuleEngine
+from diagusb.core import knowledge_base as kb
 
 
 def create_mock_result(collector_id: str, data: list | dict, status: str = "ok") -> CollectorResult:
@@ -151,6 +152,29 @@ class TestRuleEngine:
         critical_findings = [f for f in findings if f.severity == "critical"]
         assert len(critical_findings) > 0
 
+    def test_driver_mismatch_normalizado_y_ayuda(self):
+        """El sufijo de version no genera falso positivo y la ayuda es la correcta."""
+        engine = RuleEngine()
+        printers_ok = create_mock_result("printers", [
+            {"name": "Fax", "driver_name": "Microsoft Shared Fax Driver,4,Windows x64"}
+        ])
+        drivers_ok = create_mock_result("printer_drivers", [
+            {"name": "Microsoft Shared Fax Driver"}
+        ])
+        assert engine._check_driver_mismatch([printers_ok, drivers_ok]) == []
+
+        printers_falta = create_mock_result("printers", [
+            {"name": "HP", "driver_name": "HP LaserJet 1010,3,Windows x64"}
+        ])
+        drivers_falta = create_mock_result("printer_drivers", [
+            {"name": "Canon Generic Driver"}
+        ])
+        findings = engine._check_driver_mismatch([printers_falta, drivers_falta])
+        assert len(findings) == 1
+        assert findings[0].knowledge_id == "impresora_driver_faltante"
+        kb.attach_knowledge(findings)
+        assert kb.para_finding(findings[0])["id"] == "impresora_driver_faltante"
+
 
 def run_tests():
     """Ejecuta todas las pruebas."""
@@ -165,6 +189,8 @@ def run_tests():
         ("test_stuck_jobs_detection", test_instance.test_stuck_jobs_detection),
         ("test_diagnose_function", test_instance.test_diagnose_function),
         ("test_driver_mismatch", test_instance.test_driver_mismatch),
+        ("test_driver_mismatch_normalizado_y_ayuda",
+         test_instance.test_driver_mismatch_normalizado_y_ayuda),
     ]
 
     passed = 0
