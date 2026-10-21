@@ -28,9 +28,24 @@ echo   - Funciona sin permisos de Administrador (modo estándar).
 echo   - Pide permisos de Administrador (UAC) solo si usted usa el botón
 echo     "Dar permisos de administrador" de la interfaz web.
 echo   - NO modifica la configuración del equipo.
-echo   - NO envía datos por red.
+echo   - NO envía datos a servidores de DiagUSB ni telemetría.
+echo   - El colector de red puede probar conectividad (ping a
+echo     8.8.8.8/1.1.1.1, puerta de enlace y DNS google.com) sin
+echo     enviar el diagnóstico.
 echo   - Abre la interfaz web local en 127.0.0.1 (solo en este equipo).
 echo   - Guarda los informes en la carpeta del kit.
+echo.
+echo  Datos que puede guardar (solo en este equipo):
+echo   - Equipo y Windows: nombre, usuario, dominio, versión.
+echo   - Hardware, discos, memoria, impresoras y drivers.
+echo   - Red: IP, MAC, DNS, puerta de enlace y perfiles Wi-Fi
+echo     (SSID, autenticación y cifrado; SIN contraseñas ni claves).
+echo   - Programas, servicios, eventos, actualizaciones y seguridad.
+echo   - Hallazgos, acciones e informes en config\ y reports\.
+echo.
+echo  Se requiere autorización para analizar el equipo. Al continuar,
+echo  usted confirma que cuenta con esa autorización. Puede borrar los
+echo  datos locales desde Configuración en la interfaz.
 echo ------------------------------------------------------------
 echo.
 echo ¿Continuar? (S/N)

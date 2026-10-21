@@ -2,7 +2,7 @@
 
 Copyright (C) 2026 Daniel Ricardo Novoa
 
-DiagUSB es un kit de diagnóstico para soporte de infraestructura TI pensado para ejecutarse desde un pendrive. Diagnostica Windows 10/11 con 12 paquetes de colectores PowerShell, reglas de detección de problemas, base de conocimiento editable, informes Word/PDF en español y un registro persistente de análisis.
+DiagUSB es un kit de diagnóstico para soporte de infraestructura TI pensado para ejecutarse desde un pendrive. Diagnostica Windows 10 (validado; Windows 11 aún no probado) con 12 paquetes de colectores PowerShell, reglas de detección de problemas, base de conocimiento editable, informes Word/PDF en español y un registro persistente de análisis.
 
 ## Características
 
@@ -13,12 +13,12 @@ DiagUSB es un kit de diagnóstico para soporte de infraestructura TI pensado par
 - **Informes Word (.doc) y PDF (.pdf)** en español, con un **resumen gráfico** de métricas (puntaje, severidad, categorías, medidores y comparación antes/después), hallazgos, soluciones de la base de conocimiento, acciones del técnico, mejoras sugeridas y diferencias antes/después. Los gráficos del `.doc` se incrustan como imágenes PNG reales (formato MHTML), por lo que se ven al abrir el archivo en Word aunque se mueva o comparta.
 - **Base de conocimiento local**: 19 entradas embebidas más capa editable en `config/base_conocimiento.json` (alta/edición/baja desde la interfaz, buscador por palabra clave).
 - **Arranque sin UAC**: DiagUSB inicia sin pedir permisos (modo estándar). Los permisos de Administrador se solicitan solo a pedido: botón "Dar permisos de administrador" en la interfaz web, o flag `--elevar` en la línea de comandos.
-- **Kit portable** (`DiagUSB-kit-<version>.zip`): incluye una distribución embebida oficial de Python (python.org) más el código fuente, sin necesidad de instalar Python en el equipo destino. Es la distribución principal y se arma con `scripts\armar_kit.ps1`.
+- **Kit portable** (`DiagUSB-kit-<version>.zip`): incluye una distribución embebida oficial de Python (python.org) más el código fuente, sin necesidad de instalar Python en el equipo destino. Incluye `LICENSE`, `LEGAL.md`, `THIRD_PARTY_NOTICES.md` y `CHANGELOG.md`. Es la distribución principal y se arma con `scripts\armar_kit.ps1`.
 - **Ejecutable portable opcional** (`dist/diagusb/diagusb.exe`) construido con PyInstaller, como variante sin Python embebido.
 
 ## Requisitos
 
-- Windows 10/11 (PowerShell 5.1 incluido).
+- Windows 10 (validado) con PowerShell 5.1 incluido. Windows 11 aún no está probado.
 - Para el kit: nada más (trae su propio intérprete en `python\`). Para el ejecutable: nada más. Para desarrollo: Python 3.13 (o 3.12+).
 
 ## Uso rápido
@@ -68,7 +68,7 @@ python -m diagusb list-packages
 ## Pruebas y build
 
 ```
-python tests\run_tests.py                        # suite completa (121 pruebas, sin dependencias externas)
+python tests\run_tests.py                        # suite completa (130 pruebas, sin dependencias externas)
 scripts\armar_kit.cmd -Salida dist\kit           # arma el kit (Python embebido + fuente) y lo comprime
 scripts\probar_kit.ps1 -Kit dist\kit\DiagUSB     # prueba de humo del kit
 scripts\build_exe.cmd                            # reconstruye dist\diagusb\diagusb.exe (variante opcional)
@@ -92,12 +92,12 @@ scripts\build_exe.cmd                            # reconstruye dist\diagusb\diag
 - Interfaz, informes y documentación en español.
 - Código propio bajo `GPL-3.0-or-later`.
 - Solo biblioteca estándar de Python; el PDF se genera con un motor propio sin dependencias (`src/diagusb/core/informe.py`).
-- Sin telemetría, sin conexiones salientes del producto final y sin modificación de la configuración del equipo analizado (los colectores son de solo lectura).
-- No se incluyen binarios o ISOs de terceros; ver `tools/tools.manifest.json`.
+- Sin telemetría ni envío de datos a servidores de DiagUSB. El colector de red realiza pruebas de conectividad (ping a 8.8.8.8/1.1.1.1, puerta de enlace y DNS google.com) sin enviar el diagnóstico. Los colectores son de solo lectura y no modifican la configuración del equipo analizado.
+- El repositorio no incluye binarios ni ISOs de terceros; el kit descarga y verifica el Python embebido al armarlo. Ver `tools/tools.manifest.json`.
 
 ## Firma de código e integridad
 
-- Firma de código gratuita provista por SignPath.io, certificado de SignPath Foundation.
+- Los artefactos actuales (kit y ejecutable) no tienen firma Authenticode. El proyecto tiene previsto usar la firma gratuita de SignPath.io (certificado de SignPath Foundation) cuando esté disponible; no se debe asumir que un binario publicado está firmado.
 - Roles: Autor, Committer y Revisor/Aprobador: Daniel Ricardo Novoa (https://github.com/AurigaNet).
 - Política de privacidad: "Este programa no transmite información a otros sistemas de red a menos que lo solicite expresamente el usuario o quien lo opera".
 
@@ -112,7 +112,7 @@ El kit no es un ejecutable propio: es código fuente Python que corre con el int
 
 ### Ejecutable portable (variante opcional)
 
-- Firma digital: clic derecho sobre `diagusb.exe` → Propiedades → Firmas digitales, o en PowerShell `Get-AuthenticodeSignature dist\diagusb\diagusb.exe` (debe mostrar `Status: Valid`).
+- Firma digital (solo si el artefacto fue firmado): clic derecho sobre `diagusb.exe` → Propiedades → Firmas digitales, o en PowerShell `Get-AuthenticodeSignature dist\diagusb\diagusb.exe`. Los artefactos actuales pueden mostrar `Status: NotSigned`; en ese caso verifique siempre el SHA-256.
 - Integridad: el `SHA256SUMS.txt` del release usa el formato `<hash>  <ruta>` con `/`, con las rutas tal como quedan al descomprimir el zip (`diagusb/diagusb.exe`, `diagusb/_internal/manifiesto_hashes.json`) y el nombre del zip en una línea aparte. Verifique con el zip y la carpeta `diagusb` en el mismo directorio:
   - PowerShell: `Get-FileHash -Algorithm SHA256 diagusb\diagusb.exe, diagusb\_internal\manifiesto_hashes.json, diagusb-SIN-FIRMAR.zip`
   - `sha256sum -c SHA256SUMS.txt` (Linux/macOS/Git Bash)

@@ -22,7 +22,7 @@ Casos de uso previstos:
 - Solo biblioteca estándar de Python en todo el producto: **sin dependencias externas** (el PDF se genera con un motor mínimo propio en `core/informe.py`).
 - Colectores en **PowerShell 5.1** (el que trae Windows 10/11), devolviendo JSON por stdout.
 - **Solo lectura**: los colectores no modifican configuración del equipo analizado.
-- Sin telemetría y sin conexiones de red salientes del producto.
+- Sin telemetría ni envío de datos a servidores de DiagUSB. El colector de red puede hacer pruebas de conectividad (ping a 8.8.8.8/1.1.1.1, puerta de enlace y DNS google.com) sin transmitir el diagnóstico.
 - Interfaz, informes y documentación en español.
 - Distribución portable sin instalación en el equipo destino. **Principal**: kit con la distribución embebida oficial de Python (python.org) más el código fuente (`DiagUSB-kit-<version>.zip`, armado con `scripts/armar_kit.ps1`). **Opcional**: ejecutable PyInstaller `onedir`.
 - Sin binarios de terceros en el repositorio (el zip de Python embebido se descarga al armar el kit y se verifica por SHA-256).
@@ -264,7 +264,7 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 ## 9. Estrategia de pruebas
 
 - **Sin frameworks**: `python tests\run_tests.py` ejecuta suites escritas a mano (modelos, reglas, registry, KB, informes, elevación, registro) con un runner propio que imprime `[OK]`/`[FALLO]`.
-- **121 pruebas** actualmente, todas pasando. Cubren, entre otros: creación de modelos; reglas con fixtures (spooler caído, WiFi débil, BSOD, drivers); descubrimiento de paquetes; KB (guardar/editar/eliminar en archivo temporal, embebida intacta); informes (PDF bytes, HTML, sección de diferencias, `_resumen_datos`, código de verificación); elevación (comandos, rechazo UAC simulado, hijo que sirve puerto); registro persistente (guardado, poda, full-scan, y **endpoints HTTP reales** con servidor en hilo sobre puerto efímero); endurecimiento web de Ronda 2 (bind local, token de sesión, `Host`/`Origin`, `Content-Type`, límite de cuerpo, rutas 404); escritura atómica y preservación de JSON corrupto; identidad del equipo en la comparación (mismo equipo / distinto / forzado); integridad de colectores (hash correcto, archivo alterado, manifiesto ausente); resolución de rutas portables (congelado vs desarrollo vs respaldo `%LOCALAPPDATA%`); y la Ronda 11 (arranque sin UAC, `POST /api/elevar` con y sin token, colector `denied` en reglas y línea de alcance en los informes).
+- **130 pruebas** actualmente, todas pasando. Cubren, entre otros: creación de modelos; reglas con fixtures (spooler caído, WiFi débil, BSOD, drivers); descubrimiento de paquetes; KB (guardar/editar/eliminar en archivo temporal, embebida intacta); informes (PDF bytes, HTML, sección de diferencias, `_resumen_datos`, código de verificación); elevación (comandos, rechazo UAC simulado, hijo que sirve puerto); registro persistente (guardado, poda, full-scan, y **endpoints HTTP reales** con servidor en hilo sobre puerto efímero); endurecimiento web de Ronda 2 (bind local, token de sesión, `Host`/`Origin`, `Content-Type`, límite de cuerpo, rutas 404); escritura atómica y preservación de JSON corrupto; identidad del equipo en la comparación (mismo equipo / distinto / forzado); integridad de colectores (hash correcto, archivo alterado, manifiesto ausente); resolución de rutas portables (congelado vs desarrollo vs respaldo `%LOCALAPPDATA%`); y la Ronda 11 (arranque sin UAC, `POST /api/elevar` con y sin token, colector `denied` en reglas y línea de alcance en los informes).
 - Los colectores se validan contra Windows real (no hay mocks de PowerShell en la suite); las pruebas unitarias simulan `run_powershell` solo donde se prueba el conteo de estados.
 - Verificación manual periódica: full-scan completo (12 paquetes, 0 errores), `node --check` del JS embebido, smoke test del exe reconstruido.
 
@@ -298,4 +298,4 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 
 ---
 
-*Documento generado para revisión externa. El sistema vive en el repositorio descrito; los componentes mencionados están implementados y cubiertos por la suite (121 pruebas), con las limitaciones declaradas en la §10 — entre ellas, la ausencia de validación en Windows 11 y bajo antivirus/EDR. Tener cobertura de pruebas no equivale a validación en todos los entornos de producción.*
+*Documento generado para revisión externa. El sistema vive en el repositorio descrito; los componentes mencionados están implementados y cubiertos por la suite (130 pruebas), con las limitaciones declaradas en la §10 — entre ellas, la ausencia de validación en Windows 11 y bajo antivirus/EDR. Tener cobertura de pruebas no equivale a validación en todos los entornos de producción.*

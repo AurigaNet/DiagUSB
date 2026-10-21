@@ -163,6 +163,18 @@ try {
     else {
         Ok 'no se creo __pycache__'
     }
+
+    # --- 7) Documentacion legal ---
+    Write-Host '7) Documentacion legal'
+    foreach ($nombre in @('LICENSE', 'LEGAL.md', 'THIRD_PARTY_NOTICES.md', 'CHANGELOG.md')) {
+        $ruta = Join-Path $Kit $nombre
+        if (Test-Path -LiteralPath $ruta -PathType Leaf) {
+            Ok $nombre
+        }
+        else {
+            Falla ("falta {0}" -f $nombre)
+        }
+    }
 }
 finally {
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue

@@ -141,8 +141,21 @@ python -X utf8 (Join-Path $Repo 'scripts\generar_manifiesto.py') $manifiesto
 if ($LASTEXITCODE -ne 0) { throw 'Fallo la generacion del manifiesto de hashes.' }
 if (-not (Test-Path -LiteralPath $manifiesto)) { throw "No se genero el manifiesto: $manifiesto" }
 
-# 3d) LICENSE
+# 3d) LICENSE y documentacion legal
 Copy-Item -LiteralPath (Join-Path $Repo 'LICENSE') -Destination (Join-Path $KitRoot 'LICENSE') -Force
+$legales = @(
+    @{ Origen = 'docs\LEGAL.md'; Destino = 'LEGAL.md' },
+    @{ Origen = 'THIRD_PARTY_NOTICES.md'; Destino = 'THIRD_PARTY_NOTICES.md' },
+    @{ Origen = 'CHANGELOG.md'; Destino = 'CHANGELOG.md' }
+)
+foreach ($doc in $legales) {
+    $origen = Join-Path $Repo $doc.Origen
+    if (-not (Test-Path -LiteralPath $origen)) {
+        throw "Falta el documento legal requerido: $origen"
+    }
+    Copy-Item -LiteralPath $origen -Destination (Join-Path $KitRoot $doc.Destino) -Force
+    Write-Host "Documento incluido en el kit: $($doc.Destino)"
+}
 
 # 3e) LEEME.txt
 $leeme = @'
@@ -162,12 +175,16 @@ Como usar:
 
 Notas:
   - El programa es de SOLO LECTURA: no modifica la configuracion del equipo.
-  - No envia datos por red; la interfaz web escucha solo en 127.0.0.1.
+  - No envia datos a servidores de DiagUSB ni telemetria. La interfaz web escucha
+     solo en 127.0.0.1. El colector de red puede hacer pruebas de conectividad
+     (ping a 8.8.8.8/1.1.1.1, puerta de enlace y DNS google.com) sin enviar el
+     diagnostico.
   - Los informes se guardan en la carpeta del kit (subcarpeta reports\).
   - Los binarios de python\ estan firmados por Python Software Foundation (y por
      Microsoft para vcruntime*). python313.zip y los archivos .py NO estan
      cubiertos por firma digital.
   - SHA256SUMS.txt permite comprobar la integridad de los archivos del kit.
+  - Incluye LICENSE, LEGAL.md, THIRD_PARTY_NOTICES.md y CHANGELOG.md.
 
 Copyright (C) 2026 Daniel Ricardo Novoa
 Licencia: GPL-3.0-or-later (ver LICENSE)

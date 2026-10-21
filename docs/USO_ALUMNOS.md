@@ -2,7 +2,7 @@
 
 ## Estado
 
-DiagUSB se distribuye como kit portable (`DiagUSB-kit-<version>.zip`): incluye una distribución embebida oficial de Python (python.org) más el código fuente, y corre directamente desde el pendrive en Windows 10/11 sin instalar nada. También existe un ejecutable opcional (`dist\diagusb\diagusb.exe`, PyInstaller). Esta guía cubre el uso del kit y el procedimiento manual para armar el pendrive de arranque con herramientas externas (que sigue siendo manual: en este repositorio no se incluyen binarios de terceros ni se automatiza el particionado o formateo del dispositivo).
+DiagUSB se distribuye como kit portable (`DiagUSB-kit-<version>.zip`): incluye una distribución embebida oficial de Python (python.org) más el código fuente, y corre directamente desde el pendrive en Windows 10 (validado; Windows 11 aún no probado) sin instalar nada. También existe un ejecutable opcional (`dist\diagusb\diagusb.exe`, PyInstaller). Esta guía cubre el uso del kit y el procedimiento manual para armar el pendrive de arranque con herramientas externas (que sigue siendo manual: en este repositorio no se incluyen binarios de terceros ni se automatiza el particionado o formateo del dispositivo).
 
 ## Uso del kit portable (Windows)
 
@@ -12,6 +12,17 @@ DiagUSB se distribuye como kit portable (`DiagUSB-kit-<version>.zip`): incluye u
 4. En la interfaz: botón de diagnóstico o "Revisión Total" → revisar hallazgos → marcar acciones del técnico → "Guardar ANTES" / "Comparar DESPUÉS" → descargar informe Word/PDF.
 5. El historial de análisis queda en "Registro de análisis" (persistente en `config/registro_analisis.json`); allí puede consultar, eliminar individualmente o vaciar el registro.
 6. La elevación es a pedido: DiagUSB no pide permisos al arrancar. Si no otorga permisos de Administrador, algunos datos aparecerán parciales o como "no evaluado (requiere administrador)".
+
+## SmartScreen y Defender
+
+- Descargue el kit únicamente de la fuente oficial y verifique el SHA-256 antes de ejecutarlo:
+  `Get-FileHash -Algorithm SHA256 .\DiagUSB-kit-<version>.zip`.
+  Compare el resultado con la línea publicada en `SHA256SUMS.txt`.
+- El ZIP no tiene firma Authenticode. Si SmartScreen muestra una advertencia, no continúe si el origen o el hash no coinciden. Si verificó ambos, use "Más información" → "Ejecutar de todas formas".
+- El intérprete `python\python.exe` sí está firmado por Python Software Foundation. Puede comprobarlo con `Get-AuthenticodeSignature python\python.exe`.
+- Si Windows marcó el ZIP como bloqueado, revise Propiedades → Desbloquear después de verificar el hash. No desactive Defender ni agregue exclusiones permanentes.
+- Si Defender pone en cuarentena un archivo, restáurelo solo si el hash del kit es correcto, vuelva a verificar la integridad y reporte el caso. No agregue exclusiones permanentes para evitarlo.
+- Windows 11 y los entornos con antivirus/EDR no están validados; pruebe primero en un equipo controlado.
 
 ## Uso del ejecutable opcional (Windows)
 

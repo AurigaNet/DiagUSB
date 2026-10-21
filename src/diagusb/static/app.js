@@ -1294,7 +1294,9 @@
         // Inicializacion
         // ---------------------------------------------------------------
         function inicializarAcerca() {
-            setTexto('acercaVersion', DIAGUSB.version || '—');
+            document.querySelectorAll('[data-version]:not(body)').forEach(el => {
+                el.textContent = DIAGUSB.version || '—';
+            });
             setTexto('acercaHost', DIAGUSB.hostport || '—');
             setTexto('acercaDir', DIAGUSB.datadir || '—');
             setTexto('configDatos', DIAGUSB.datadir || '—');

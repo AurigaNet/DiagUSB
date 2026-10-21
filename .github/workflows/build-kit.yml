@@ -83,9 +83,27 @@ jobs:
         run: |
           $zip = (Get-ChildItem -Filter 'DiagUSB-kit-*.zip' | Select-Object -First 1).FullName
           if (-not $zip) { throw 'No se encontro el zip del kit.' }
+          $zipName = [System.IO.Path]::GetFileName($zip)
           $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
-          "$hash  $([System.IO.Path]::GetFileName($zip))" | Set-Content -Encoding ascii SHA256SUMS.txt
+          "$hash  $zipName" | Set-Content -Encoding ascii SHA256SUMS.txt
           Get-Content SHA256SUMS.txt
-          $opciones = @('release', 'create', $env:TAG, $zip, 'SHA256SUMS.txt', '--title', $env:TAG, '--notes', 'Kit de DiagUSB (Python embebido + codigo fuente).')
+          $notas = @"
+          Kit portable de DiagUSB (Python embebido + codigo fuente).
+
+          Archivos publicados:
+          - $zipName
+          - SHA256SUMS.txt
+
+          Verificacion en PowerShell:
+          1. Descargue ambos archivos en la misma carpeta.
+          2. Ejecute: Get-FileHash -Algorithm SHA256 .\$zipName
+          3. Compare el hash obtenido con la linea de SHA256SUMS.txt.
+
+          El ZIP no tiene firma Authenticode; su integridad se verifica con SHA-256. El interprete python\python.exe si esta firmado por Python Software Foundation.
+
+          El kit incluye LICENSE, LEGAL.md, THIRD_PARTY_NOTICES.md y CHANGELOG.md.
+          Windows 10 validado; Windows 11 aun no probado.
+          "@
+          $opciones = @('release', 'create', $env:TAG, $zip, 'SHA256SUMS.txt', '--title', $env:TAG, '--notes', $notas)
           if ($env:TAG -match '-rc') { $opciones += '--prerelease' }
           gh @opciones

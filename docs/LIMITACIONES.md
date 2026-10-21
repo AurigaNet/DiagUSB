@@ -16,7 +16,7 @@ Documento de limitaciones y estado actual del proyecto.
 - Kit portable con Python embebido (`DiagUSB-kit-<version>.zip`, armado con `scripts\armar_kit.ps1`), verificado con prueba de humo (`scripts\probar_kit.ps1`: integridad SHA-256, firma PSF del interprete, diagnostico real y PDF)
 - Ejecutable portable con PyInstaller (`dist\diagusb\diagusb.exe`) como variante opcional, verificado con diagnose y reportes
 - Registro persistente de analisis (`config/registro_analisis.json`): auto-guardado, consulta, borrado individual y borrado total
-- Suite de pruebas unitarias (121 pruebas)
+- Suite de pruebas unitarias (130 pruebas)
 
 ### Pendiente de validacion
 - Windows 11 (validado hasta ahora en Windows 10)
