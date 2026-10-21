@@ -320,6 +320,17 @@
                     <div class="config-fila"><span>Estado del proceso</span><b id="configProceso">—</b></div>
                     <div class="config-fila"><span>Carpeta de datos</span><b id="configDatos">—</b></div>
                 </div>
+                <div class="panel" style="margin-top:16px;">
+                    <div class="panel-head">
+                        <h2 class="panel-title">Datos locales</h2>
+                    </div>
+                    <p class="acciones-hint">Borra el registro de análisis, los snapshots y los informes guardados. La configuración y la base de conocimiento no se modifican.</p>
+                    <div class="config-fila"><span>Registro de análisis</span><b id="datosRegistro">—</b></div>
+                    <div class="config-fila"><span>Snapshots</span><b id="datosSnapshots">—</b></div>
+                    <div class="config-fila"><span>Informes</span><b id="datosInformes">—</b></div>
+                    <button class="btn-small btn-clear" onclick="borrarDatosLocales()">Borrar datos locales</button>
+                    <p class="acciones-hint" id="datosEstado"></p>
+                </div>
             </section>
 
             <!-- Vista: Acerca de -->

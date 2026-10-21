@@ -626,6 +626,40 @@ def registrar_analisis(diag: dict, tipo: str) -> dict | None:
     return entrada
 
 
+_SUFIJOS_INFORMES = {".html", ".pdf", ".doc"}
+
+
+def _archivos_datos_locales():
+    carpeta = BASELINE_PATH.parent
+    if not carpeta.exists():
+        return [], []
+    snapshots = sorted(p for p in carpeta.glob("*.json") if p.is_file())
+    informes = sorted(
+        p for p in carpeta.iterdir()
+        if p.is_file() and p.suffix.lower() in _SUFIJOS_INFORMES
+    )
+    return snapshots, informes
+
+
+def _conteos_datos_locales() -> dict:
+    snapshots, informes = _archivos_datos_locales()
+    return {
+        "registro": len(_cargar_registro()),
+        "snapshots": len(snapshots),
+        "informes": len(informes),
+    }
+
+
+def _borrar_datos_locales() -> dict:
+    conteos = _conteos_datos_locales()
+    snapshots, informes = _archivos_datos_locales()
+    if REGISTRO_PATH.exists():
+        REGISTRO_PATH.unlink()
+    for ruta in snapshots + informes:
+        ruta.unlink(missing_ok=True)
+    return conteos
+
+
 def _registrar_full_scan(diagnostics: list[dict]) -> dict | None:
     """Guarda una revision total (todos los paquetes) como una sola entrada."""
     validos = [d for d in diagnostics
@@ -974,13 +1008,17 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             self.send_error(404, "Not found")
 
     def do_DELETE(self):
-        """APIs DELETE: borrado del registro de analisis."""
+        """APIs DELETE: borrado del registro y de los datos locales."""
         try:
             if not self._validar_solicitud():
                 return
             if not self._token_valido():
-                self._json_response({"error": "No autorizado"}, 401)
+                estado = 403 if urlparse(self.path).path == "/api/datos" else 401
+                self._json_response({"error": "No autorizado"}, estado)
                 return
+            if urlparse(self.path).path == "/api/datos":
+                if not self._validar_cuerpo_borrado():
+                    return
             self._handle_delete()
         except Exception as e:
             try:
@@ -988,25 +1026,57 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             except Exception:
                 pass
 
+    def _validar_cuerpo_borrado(self) -> bool:
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if ctype != "application/json":
+            self.send_error(415, "Content-Type debe ser application/json")
+            return False
+        try:
+            largo = int(self.headers.get("Content-Length", ""))
+        except (TypeError, ValueError):
+            self.send_error(400, "Content-Length requerido o invalido")
+            return False
+        if largo <= 0:
+            self.send_error(400, "Cuerpo requerido")
+            return False
+        if largo > MAX_CUERPO:
+            self.send_error(413, "Cuerpo demasiado grande")
+            return False
+        return True
+
     def _handle_delete(self):
         parsed = urlparse(self.path)
-        if parsed.path != "/api/registro":
+        if parsed.path == "/api/registro":
+            params = parse_qs(parsed.query)
+            registro_id = params.get("id", [None])[0]
+            if registro_id:
+                if not _id_registro_valido(registro_id):
+                    self._json_response({"error": "Id invalido"}, 400)
+                    return
+                ok = eliminar_analisis(registro_id)
+                if ok:
+                    self._json_response({"ok": True, "eliminado": registro_id})
+                else:
+                    self._json_response({"error": "Análisis no encontrado"}, 404)
+            else:
+                n = vaciar_registro()
+                self._json_response({"ok": True, "eliminados": n})
+            return
+        if parsed.path != "/api/datos":
             self._json_response({"error": "Not found"}, 404)
             return
-        params = parse_qs(parsed.query)
-        registro_id = params.get("id", [None])[0]
-        if registro_id:
-            if not _id_registro_valido(registro_id):
-                self._json_response({"error": "Id invalido"}, 400)
-                return
-            ok = eliminar_analisis(registro_id)
-            if ok:
-                self._json_response({"ok": True, "eliminado": registro_id})
-            else:
-                self._json_response({"error": "Análisis no encontrado"}, 404)
-        else:
-            n = vaciar_registro()
-            self._json_response({"ok": True, "eliminados": n})
+        try:
+            payload = self._read_payload()
+        except Exception:
+            self._json_response({"error": "JSON invalido"}, 400)
+            return
+        if not isinstance(payload, dict) or payload.get("confirmar") is not True:
+            self._json_response({
+                "error": "Confirmacion requerida",
+                "conteos": _conteos_datos_locales(),
+            }, 400)
+            return
+        self._json_response({"ok": True, "eliminados": _borrar_datos_locales()})
 
     def _json_response(self, obj, status: int = 200):
         body = json.dumps(redactar(obj), ensure_ascii=False).encode("utf-8")

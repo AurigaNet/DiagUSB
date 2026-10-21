@@ -1927,11 +1927,12 @@ def test_modulos_y_fetch_sin_cambios():
     assert 'http://' not in html and 'https://' not in html
     js = (Path(ws.__file__).with_name("static") / "app.js").read_text(encoding="utf-8")
     destinos = [u for _, u in re.findall(r"fetch\(\s*(['\"])(.*?)\1", js)]
-    assert len(destinos) == 14, destinos
+    assert len(destinos) == 16, destinos
     assert set(destinos) == {
         '/api/snapshot', '/api/compare', '/api/report?format=',
         '/api/diagnose?package=', '/api/full-scan', '/api/knowledge',
-        '/api/registro?id=', '/api/registro', '/api/elevation', '/api/elevar'}
+        '/api/registro?id=', '/api/registro', '/api/datos',
+        '/api/elevation', '/api/elevar'}
 
 
 def test_run_powershell_timeout_termina_arbol():
@@ -2169,6 +2170,98 @@ def test_api_registro_redacta_legado():
         ws.REGISTRO_PATH = original
 
 
+def test_api_borrar_datos_locales():
+    import threading
+    import socketserver
+    import urllib.request
+    import urllib.error
+    import diagusb.web_server as ws
+
+    tmp = Path(tempfile.mkdtemp(prefix="diagusb_borrar_"))
+    reports = tmp / "reports"
+    reports.mkdir()
+    old_reg = ws.REGISTRO_PATH
+    old_base = ws.BASELINE_PATH
+    ws.REGISTRO_PATH = tmp / "registro_analisis.json"
+    ws.BASELINE_PATH = reports / "snapshot_antes.json"
+
+    def peticion(confirmar, extra=None):
+        cabeceras = {"Content-Type": "application/json"}
+        cabeceras.update(extra or {})
+        cuerpo = json.dumps({"confirmar": confirmar}).encode("utf-8")
+        req = urllib.request.Request(base + "/api/datos", data=cuerpo,
+                                     headers=cabeceras, method="DELETE")
+        return urllib.request.urlopen(req, timeout=10)
+
+    httpd = None
+    try:
+        ws.registrar_analisis(_diag_fake(1), "paquete")
+        ws.registrar_analisis(_diag_fake(2), "paquete")
+        ws.BASELINE_PATH.write_text("{}", encoding="utf-8")
+        (reports / "snapshot_otro.json").write_text("{}", encoding="utf-8")
+        for nombre in ("informe.pdf", "informe.doc", "informe.html"):
+            (reports / nombre).write_text("x", encoding="utf-8")
+        (reports / "nota.txt").write_text("conservar", encoding="utf-8")
+
+        kb_antes = (kb.version(), len(kb.entradas()))
+        httpd, base = _abrir_servidor()
+
+        with urllib.request.urlopen(
+                urllib.request.Request(base + "/", headers=_cookie()),
+                timeout=10) as r:
+            pagina = r.read().decode("utf-8")
+        assert "Datos locales" in pagina
+        assert "borrarDatosLocales()" in pagina
+        assert 'id="datosRegistro"' in pagina
+
+        try:
+            peticion(True)
+            raise AssertionError("sin cookie debio dar 403")
+        except urllib.error.HTTPError as e:
+            assert e.code == 403, e.code
+
+        try:
+            peticion(True, {"Cookie": _cookie()["Cookie"],
+                            "Host": "evil.example.com"})
+            raise AssertionError("Host ajeno debio dar 403")
+        except urllib.error.HTTPError as e:
+            assert e.code == 403, e.code
+
+        try:
+            peticion(True, {"Cookie": _cookie()["Cookie"],
+                            "Content-Type": "text/plain"})
+            raise AssertionError("Content-Type invalido debio dar 415")
+        except urllib.error.HTTPError as e:
+            assert e.code == 415, e.code
+
+        try:
+            peticion(False, _cookie())
+            raise AssertionError("sin confirmacion debio dar 400")
+        except urllib.error.HTTPError as e:
+            assert e.code == 400, e.code
+            conteos = json.loads(e.read().decode("utf-8"))["conteos"]
+            assert conteos == {"registro": 2, "snapshots": 2, "informes": 3}
+
+        with peticion(True, _cookie()) as r:
+            assert r.status == 200
+            eliminados = json.loads(r.read().decode("utf-8"))["eliminados"]
+        assert eliminados == {"registro": 2, "snapshots": 2, "informes": 3}
+        assert ws._cargar_registro() == []
+        assert not ws.BASELINE_PATH.exists()
+        assert not (reports / "snapshot_otro.json").exists()
+        for nombre in ("informe.pdf", "informe.doc", "informe.html"):
+            assert not (reports / nombre).exists()
+        assert (reports / "nota.txt").exists()
+        assert (kb.version(), len(kb.entradas())) == kb_antes
+    finally:
+        if httpd:
+            httpd.shutdown()
+            httpd.server_close()
+        ws.REGISTRO_PATH = old_reg
+        ws.BASELINE_PATH = old_base
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def run_tests():
     """Ejecuta todas las pruebas de esta suite."""
     tests = [
@@ -2178,6 +2271,7 @@ def run_tests():
          test_api_snapshot_sanea_antes_de_guardar),
         ("test_registro_sanea_findings", test_registro_sanea_findings),
         ("test_api_registro_redacta_legado", test_api_registro_redacta_legado),
+        ("test_api_borrar_datos_locales", test_api_borrar_datos_locales),
         ("test_agrupa_mismo_problema", test_agrupa_mismo_problema),
         ("test_agrupa_sin_repetidos_no_altera", test_agrupa_sin_repetidos_no_altera),
         ("test_diagnose_symptoms_agrupa", test_diagnose_symptoms_agrupa),

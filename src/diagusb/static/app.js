@@ -1179,6 +1179,44 @@
             }
         }
 
+        function pintarConteosDatos(c) {
+            setTexto('datosRegistro', String((c && c.registro) || 0));
+            setTexto('datosSnapshots', String((c && c.snapshots) || 0));
+            setTexto('datosInformes', String((c && c.informes) || 0));
+        }
+
+        async function borrarDatosLocales() {
+            try {
+                const preview = await fetch('/api/datos', {
+                    method: 'DELETE',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({confirmar: false})
+                });
+                const pd = await preview.json();
+                if (!pd.conteos) throw new Error(pd.error || ('HTTP ' + preview.status));
+                pintarConteosDatos(pd.conteos);
+                const c = pd.conteos;
+                if (!confirm('Se borrarán ' + c.registro + ' análisis, ' + c.snapshots +
+                             ' snapshots y ' + c.informes + ' informes. La configuración y ' +
+                             'la base de conocimiento no se modifican. ¿Continuar?')) return;
+
+                const r = await fetch('/api/datos', {
+                    method: 'DELETE',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({confirmar: true})
+                });
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+                pintarConteosDatos(d.eliminados);
+                setTexto('datosEstado', 'Datos locales eliminados.');
+                setStatus('ready', 'Datos locales eliminados');
+                await loadRegistro();
+            } catch (e) {
+                setTexto('datosEstado', 'No se pudieron borrar los datos locales: ' + e.message);
+                setStatus('error', 'Error al borrar datos locales');
+            }
+        }
+
         // ---------------------------------------------------------------
         // Elevacion / permisos
         // ---------------------------------------------------------------
