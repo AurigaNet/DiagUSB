@@ -2039,9 +2039,145 @@ def test_doc_mhtml_con_imagenes():
     assert "Sin datos para graficar." in texto
 
 
+def test_saneamiento_redacta_estructuras():
+    from diagusb.core.saneamiento import MARCA, redactar
+
+    original = {
+        "clave": "secreto123",
+        "texto": ("SSID: Casa\n"
+                  "Contenido de la clave : abc123\n"
+                  "Key Content : xyz789\n"
+                  "normal"),
+        "lista": [{"Password": "p4ss"}, "token=abc123"],
+    }
+    saneado = redactar(original)
+    assert saneado["clave"] == MARCA
+    assert "abc123" not in saneado["texto"]
+    assert "xyz789" not in saneado["texto"]
+    assert "SSID: Casa" in saneado["texto"]
+    assert "[OCULTO]" in saneado["texto"]
+    assert "normal" in saneado["texto"]
+    assert saneado["lista"][0]["Password"] == MARCA
+    assert saneado["lista"][1] == MARCA
+    assert original["clave"] == "secreto123"
+
+
+def test_wifi_colector_no_pide_clave():
+    ruta = (Path(__file__).parent.parent / "src" / "diagusb" / "packages" /
+            "wifi" / "collectors" / "get_wifi_profiles.ps1")
+    texto = ruta.read_text(encoding="utf-8")
+    assert "key=clear" not in texto.lower()
+    assert "netsh wlan show profile name=" in texto
+    for campo in ("authentication", "cipher", "connection_mode",
+                  "auto_connect"):
+        assert campo in texto
+
+
+def test_api_snapshot_sanea_antes_de_guardar():
+    import urllib.request
+    import diagusb.web_server as ws
+
+    tmp = Path(tempfile.mkdtemp(prefix="diagusb_sanea_"))
+    original = ws.BASELINE_PATH
+    ws.BASELINE_PATH = tmp / "snapshot_antes.json"
+    httpd, base = _abrir_servidor()
+    try:
+        resultado = {
+            "collector_id": "wifi_profiles",
+            "captured_at_utc": datetime.utcnow().isoformat(),
+            "query": {"status": "ok", "duration_ms": 1,
+                      "timeout_seconds": 15},
+            "context": {},
+            "data": [{
+                "name": "Casa",
+                "details": "Contenido de la clave : secreto123",
+                "password": "clave456",
+            }],
+            "errors": [],
+        }
+        cuerpo = json.dumps({"results": [resultado]}).encode("utf-8")
+        cabeceras = dict(_cookie())
+        cabeceras["Content-Type"] = "application/json"
+        req = urllib.request.Request(base + "/api/snapshot", data=cuerpo,
+                                     headers=cabeceras)
+        with urllib.request.urlopen(req, timeout=30) as r:
+            assert r.status == 200
+        guardado = ws.BASELINE_PATH.read_text(encoding="utf-8")
+        assert "secreto123" not in guardado
+        assert "clave456" not in guardado
+        assert "[OCULTO]" in guardado
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        ws.BASELINE_PATH = original
+
+
+def test_registro_sanea_findings():
+    import diagusb.web_server as ws
+
+    tmp = Path(tempfile.mkdtemp(prefix="diagusb_sanea_reg_"))
+    original = ws.REGISTRO_PATH
+    ws.REGISTRO_PATH = tmp / "registro_analisis.json"
+    try:
+        diag = {
+            "package": "wifi",
+            "findings": [{
+                "severity": "warning",
+                "collector_id": "wifi_profiles",
+                "message": "Clave: secreto123",
+                "details": {"Password": "clave456"},
+            }],
+            "recommendations": ["Cambiar token=abc123"],
+        }
+        entrada = ws.registrar_analisis(diag, "paquete")
+        assert entrada is not None
+        guardado = ws.REGISTRO_PATH.read_text(encoding="utf-8")
+        assert "secreto123" not in guardado
+        assert "clave456" not in guardado
+        assert "abc123" not in guardado
+        assert "[OCULTO]" in guardado
+    finally:
+        ws.REGISTRO_PATH = original
+
+
+def test_api_registro_redacta_legado():
+    import urllib.request
+    import diagusb.web_server as ws
+
+    tmp = Path(tempfile.mkdtemp(prefix="diagusb_sanea_legado_"))
+    original = ws.REGISTRO_PATH
+    ws.REGISTRO_PATH = tmp / "registro_analisis.json"
+    ws.REGISTRO_PATH.write_text(json.dumps([{
+        "id": "20200101_000000_deadbeef",
+        "fecha": "2020-01-01T00:00:00",
+        "tipo": "paquete",
+        "paquete": "wifi",
+        "findings": [{"message": "Clave: secreto123"}],
+    }]), encoding="utf-8")
+    httpd, base = _abrir_servidor()
+    try:
+        req = urllib.request.Request(
+            base + "/api/registro?id=20200101_000000_deadbeef",
+            headers=_cookie())
+        with urllib.request.urlopen(req, timeout=30) as r:
+            texto = r.read().decode("utf-8")
+        assert "secreto123" not in texto
+        assert "[OCULTO]" in texto
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        ws.REGISTRO_PATH = original
+
+
 def run_tests():
     """Ejecuta todas las pruebas de esta suite."""
     tests = [
+        ("test_saneamiento_redacta_estructuras", test_saneamiento_redacta_estructuras),
+        ("test_wifi_colector_no_pide_clave", test_wifi_colector_no_pide_clave),
+        ("test_api_snapshot_sanea_antes_de_guardar",
+         test_api_snapshot_sanea_antes_de_guardar),
+        ("test_registro_sanea_findings", test_registro_sanea_findings),
+        ("test_api_registro_redacta_legado", test_api_registro_redacta_legado),
         ("test_agrupa_mismo_problema", test_agrupa_mismo_problema),
         ("test_agrupa_sin_repetidos_no_altera", test_agrupa_sin_repetidos_no_altera),
         ("test_diagnose_symptoms_agrupa", test_diagnose_symptoms_agrupa),

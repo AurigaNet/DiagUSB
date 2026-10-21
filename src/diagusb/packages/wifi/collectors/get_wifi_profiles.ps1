@@ -23,10 +23,21 @@ $result = New-DiagUsbCollectorResult -CollectorId 'wifi_profiles' -ScriptBlock {
     $profiles = netsh wlan show profiles | Select-String -Pattern '^\s*All User Profile\s*:\s*(.+)$' | ForEach-Object { $_.Matches.Groups[1].Value.Trim() }
     $output = @()
     foreach ($profile in $profiles) {
-        $details = netsh wlan show profile name="$profile" key=clear | Select-Object -SkipLast 1
+        $details = netsh wlan show profile name="$profile" | Select-Object -SkipLast 1
+        $detalle = ($details | Out-String).Trim()
+        $extraer = {
+            param([string]$Patron)
+            $m = [regex]::Match($detalle, '(?im)^\s*(?:' + $Patron + ')\s*:\s*(.+?)\s*$')
+            if ($m.Success) { return $m.Groups[1].Value.Trim() }
+            return $null
+        }
         $output += [ordered]@{
             name = $profile
-            details = ($details | Out-String).Trim()
+            authentication = & $extraer 'Authentication|Autenticaci'
+            cipher = & $extraer 'Cipher|Cifrado'
+            connection_mode = & $extraer 'Connection mode|Modo de conexi'
+            auto_connect = & $extraer 'Connect automatically|Conectar autom'
+            details = $detalle
         }
     }
     $output

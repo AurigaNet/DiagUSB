@@ -21,6 +21,7 @@ from .core.models import CollectorResult, QueryInfo
 from .core.logger import get_logger
 from .core import rutas
 from .core.metricas import calcular_metricas
+from .core.saneamiento import redactar
 
 
 BANNER = f"""
@@ -302,6 +303,10 @@ def cmd_diagnose(args):
 
     # Generar diagnostico
     diagnostic = diagnose(symptom, observations)
+    for hallazgo in diagnostic.findings:
+        hallazgo.message = redactar(hallazgo.message)
+        hallazgo.details = redactar(hallazgo.details)
+    diagnostic.recommendations = redactar(diagnostic.recommendations)
 
     # Reporte consola
     console = ConsoleReporter()
@@ -345,6 +350,7 @@ def cmd_diagnose(args):
         "error_count": sum(1 for o in observations if o.query.status != "ok"),
         "timestamp": datetime.now().isoformat(),
     }
+    diag_dict = redactar(diag_dict)
     diag_dict["metricas"] = calcular_metricas(diag_dict)
     informe = informe_desde_diagnostico(diag_dict)
     doc_path = output_dir / f"diagnostico_{symptom}_{timestamp}.doc"

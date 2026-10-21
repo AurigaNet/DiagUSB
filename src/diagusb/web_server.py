@@ -35,6 +35,7 @@ from diagusb.core.rules import diagnose_symptoms
 from diagusb.core.metricas import (calcular_metricas, recomendaciones_de,
                                    tendencia)
 from diagusb.core import knowledge_base as kb
+from diagusb.core.saneamiento import redactar
 from diagusb.core.informe import (
     ESTADOS_ACCION,
     _limitado_de,
@@ -616,7 +617,7 @@ def registrar_analisis(diag: dict, tipo: str) -> dict | None:
     """
     if not isinstance(diag, dict) or diag.get("error"):
         return None
-    entrada = _entrada_registro(diag, tipo)
+    entrada = redactar(_entrada_registro(diag, tipo))
     with _REGISTRO_LOCK:
         entradas = _cargar_registro()
         entradas.insert(0, entrada)
@@ -838,7 +839,7 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             self._handle_get()
         except Exception as e:
             try:
-                body = json.dumps({"error": f"Error interno: {e}"}, ensure_ascii=False).encode("utf-8")
+                body = json.dumps(redactar({"error": f"Error interno: {e}"}), ensure_ascii=False).encode("utf-8")
                 self.send_response(500)
                 self.send_header("Content-type", "application/json; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
@@ -864,7 +865,7 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-type", "application/json; charset=utf-8")
             self.end_headers()
-            self.wfile.write(json.dumps(result, ensure_ascii=False).encode("utf-8"))
+            self.wfile.write(json.dumps(redactar(result), ensure_ascii=False).encode("utf-8"))
             
         elif parsed.path == "/api/knowledge":
             # Base de conocimiento local (estado esperado + soluciones)
@@ -876,7 +877,7 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-type", "application/json; charset=utf-8")
             self.end_headers()
-            self.wfile.write(json.dumps(result, ensure_ascii=False).encode("utf-8"))
+            self.wfile.write(json.dumps(redactar(result), ensure_ascii=False).encode("utf-8"))
 
         elif parsed.path == "/api/elevation":
             # Indica si los colectores corren con permisos de Administrador
@@ -887,7 +888,7 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-type", "application/json; charset=utf-8")
             self.end_headers()
-            self.wfile.write(json.dumps(result, ensure_ascii=False).encode("utf-8"))
+            self.wfile.write(json.dumps(redactar(result), ensure_ascii=False).encode("utf-8"))
 
         elif parsed.path == "/api/registro":
             # Registro persistente de analisis (lista o detalle por id)
@@ -931,7 +932,7 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-type", "application/json; charset=utf-8")
             self.end_headers()
-            self.wfile.write(json.dumps(result, ensure_ascii=False).encode("utf-8"))
+            self.wfile.write(json.dumps(redactar(result), ensure_ascii=False).encode("utf-8"))
             
         else:
             self.send_error(404, "No encontrado")
@@ -1008,7 +1009,7 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             self._json_response({"ok": True, "eliminados": n})
 
     def _json_response(self, obj, status: int = 200):
-        body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+        body = json.dumps(redactar(obj), ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -1028,7 +1029,7 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
         """Guarda el estado 'antes' a partir de los results de un diagnostico."""
         try:
             payload = self._read_payload()
-            results = payload.get("results") or []
+            results = redactar(payload.get("results") or [])
             ident = _identidad_equipo(results)
             doc = {
                 "captured_at": datetime.now().isoformat(),
@@ -1052,8 +1053,8 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
                     {"error": "No hay snapshot 'antes' guardado. Use el boton Guardar ANTES."},
                     404)
                 return
-            payload = self._read_payload()
-            base = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
+            payload = redactar(self._read_payload())
+            base = redactar(json.loads(BASELINE_PATH.read_text(encoding="utf-8")))
             ident_base = {
                 "computer_name": base.get("computer_name") or "",
                 "hardware_id": base.get("hardware_id") or "",
@@ -1160,7 +1161,7 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
         fmt = params.get("format", ["pdf"])[0].lower()
 
         try:
-            payload = self._read_payload()
+            payload = redactar(self._read_payload())
             diag = dict(payload.get("diagnostico") or {})
             if not diag.get("package"):
                 raise ValueError("Falta el diagnostico")
@@ -1199,7 +1200,7 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
         except Exception as e:
-            body = json.dumps({"error": str(e)}, ensure_ascii=False).encode("utf-8")
+            body = json.dumps(redactar({"error": str(e)}), ensure_ascii=False).encode("utf-8")
             self.send_response(400)
             self.send_header("Content-type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
