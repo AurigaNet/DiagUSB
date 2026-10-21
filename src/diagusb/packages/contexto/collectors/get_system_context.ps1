@@ -45,12 +45,7 @@ $result = New-DiagUsbCollectorResult -CollectorId 'system_context' -ScriptBlock 
         $context.domain = "$($computerSystem.Domain)"
         $context.total_memory_gb = [int]($computerSystem.TotalPhysicalMemory / 1GB)
         $context.is_domain_member = [bool]$computerSystem.PartOfDomain
-        $context.is_virtual = [bool]$computerSystem.HypervisorPresent
-
-        $modelLower = "$($computerSystem.Model)".ToLower()
-        if ($modelLower -match 'virtual|vmware|hyper-v|kvm|xen|qemu|parallels|bhyve') {
-            $context.is_virtual = $true
-        }
+        $context.is_virtual = Test-DiagUsbVirtual -Manufacturer $context.manufacturer -Model $context.model
     }
 
     $battery = Get-CimInstance -ClassName Win32_Battery -ErrorAction SilentlyContinue
@@ -70,9 +65,8 @@ $result = New-DiagUsbCollectorResult -CollectorId 'system_context' -ScriptBlock 
                 $context.form_factor = 'rack'
             } elseif (17 -in $chassisTypes -or 18 -in $chassisTypes) {
                 $context.form_factor = 'blade'
-            } elseif (1 -in $chassisTypes -or 2 -in $chassisTypes -or 23 -in $chassisTypes) {
-                $context.form_factor = 'virtual'
-                $context.is_virtual = $true
+            } elseif (23 -in $chassisTypes) {
+                $context.form_factor = 'rack'
             }
         }
     }

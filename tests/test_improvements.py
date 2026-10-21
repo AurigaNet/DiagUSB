@@ -2327,6 +2327,52 @@ def test_cabeceras_seguridad_en_respuestas():
         httpd.server_close()
 
 
+def test_deteccion_virtual_por_fabricante_y_modelo():
+    import subprocess
+
+    raiz = Path(__file__).parent.parent
+    common = raiz / "collectors" / "_common.ps1"
+    contexto = (raiz / "src" / "diagusb" / "packages" / "contexto" /
+                "collectors" / "get_system_context.ps1")
+    texto = contexto.read_text(encoding="utf-8")
+    assert "HypervisorPresent" not in texto
+    assert "Test-DiagUsbVirtual" in texto
+
+    casos = [
+        ("Dell Inc.", "Precision 3620", False),
+        ("LENOVO", "ThinkCentre M720", False),
+        ("HP", "EliteDesk 800 G4", False),
+        ("VMware, Inc.", "VMware Virtual Platform", True),
+        ("innotek GmbH", "VirtualBox", True),
+        ("QEMU", "Standard PC (Q35 + ICH9, 2009)", True),
+        ("Red Hat", "KVM", True),
+        ("Xen", "HVM domU", True),
+        ("Parallels Software International Inc.", "Parallels Virtual Platform", True),
+        ("Microsoft Corporation", "Virtual Machine", True),
+    ]
+    filas = ",\n".join(
+        f"@('{m}','{model}',${str(esperado).lower()})"
+        for m, model, esperado in casos
+    )
+    codigo = (
+        "$ErrorActionPreference='Stop'; "
+        f". '{common}'; "
+        f"$casos=@({filas}); "
+        "foreach ($c in $casos) { "
+        "$r=Test-DiagUsbVirtual -Manufacturer $c[0] -Model $c[1]; "
+        "if ($r -ne [bool]$c[2]) { "
+        "Write-Output ('FALLA|' + $c[0] + '|' + $c[1]); exit 1 } }; "
+        "Write-Output 'OK'"
+    )
+    resultado = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
+         "-Command", codigo],
+        capture_output=True, text=True, timeout=30,
+    )
+    assert resultado.returncode == 0, resultado.stdout + resultado.stderr
+    assert resultado.stdout.strip().endswith("OK"), resultado.stdout
+
+
 def run_tests():
     """Ejecuta todas las pruebas de esta suite."""
     tests = [
@@ -2339,6 +2385,8 @@ def run_tests():
         ("test_api_borrar_datos_locales", test_api_borrar_datos_locales),
         ("test_cabeceras_seguridad_en_respuestas",
          test_cabeceras_seguridad_en_respuestas),
+        ("test_deteccion_virtual_por_fabricante_y_modelo",
+         test_deteccion_virtual_por_fabricante_y_modelo),
         ("test_agrupa_mismo_problema", test_agrupa_mismo_problema),
         ("test_agrupa_sin_repetidos_no_altera", test_agrupa_sin_repetidos_no_altera),
         ("test_diagnose_symptoms_agrupa", test_diagnose_symptoms_agrupa),

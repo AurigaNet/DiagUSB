@@ -14,6 +14,15 @@ function Get-DiagUsbTimestampUtc {
     return [DateTime]::UtcNow.ToString('o')
 }
 
+function Test-DiagUsbVirtual {
+    param(
+        [AllowEmptyString()][string]$Manufacturer = '',
+        [AllowEmptyString()][string]$Model = ''
+    )
+    $texto = ("$Manufacturer $Model").ToLowerInvariant()
+    return [bool]($texto -match 'vmware|virtualbox|innotek|qemu|kvm|xen|parallels|hyper-v|virtual machine|virtual platform|bhyve')
+}
+
 function Get-DiagUsbCaptureContext {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
