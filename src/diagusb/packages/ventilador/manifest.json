@@ -1,0 +1,9 @@
+{
+    "version": "1.0.0",
+    "name": "ventilador",
+    "label": "Ventilador de CPU",
+    "description": "Lectura real de RPM de fan con LibreHardwareMonitor (solo lectura). No simula datos.",
+    "symptoms": ["ventilador_0_rpm_con_cpu_caliente"],
+    "requirements": ["lhm", "pawnio_opcional"],
+    "collectors": ["get_fan_rpm"]
+}

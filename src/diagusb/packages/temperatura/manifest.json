@@ -1,9 +1,9 @@
 {
     "version": "1.0.0",
     "name": "temperatura",
-    "label": "Temperatura CPU",
-    "description": "Diagnostico de temperatura del CPU mediante LibreHardwareMonitor local (sin empaquetar LHM)",
-    "symptoms": ["cpu_caliente", "ventilador_0_rpm_con_cpu_caliente"],
-    "requirements": ["cpu_temperature"],
-    "collectors": {}
+    "label": "Temperatura del CPU",
+    "description": "Lectura real de temperatura de CPU con LibreHardwareMonitor (solo lectura). No simula datos.",
+    "symptoms": ["cpu_caliente", "temperatura_alta"],
+    "requirements": ["lhm", "pawnio_opcional"],
+    "collectors": ["get_cpu_temperature"]
 }

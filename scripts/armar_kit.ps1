@@ -151,6 +151,54 @@ Copy-Item -LiteralPath (Join-Path $Repo 'docs\LIVE_USB.md') `
     -Destination (Join-Path $KitRoot 'LIVE_USB.md') -Force
 Write-Host 'Manifiesto de live USB y guia incluidos en el kit.'
 
+# 3e) LibreHardwareMonitor (LHM) - deteccion de temperatura y ventiladores
+# Se descarga una sola vez en desarrollo, verifica hash SHA-256, y se incluye en el kit.
+# Nunca se descarga en tiempo de ejecucion en el equipo del tecnico.
+Write-Host "Incluyendo LibreHardwareMonitor en el kit..."
+$lhmZip = Join-Path ([System.IO.Path]::GetTempPath()) "LibreHardwareMonitor.zip"
+if (-not (Test-Path -LiteralPath $lhmZip)) {
+    # Usar la URL verificada desde tools/tools.manifest.json
+    $lhmUrl = "https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases/download/v0.9.6/LibreHardwareMonitor.zip"
+    Write-Host "Descargando LibreHardwareMonitor desde: $lhmUrl"
+    Invoke-WebRequest -Uri $lhmUrl -OutFile $lhmZip
+    $calculado = (Get-FileHash -LiteralPath $lhmZip -Algorithm SHA256).Hash.ToLowerInvariant()
+    $esperado = "086d9f1b5a99e643edc2cfaaac16051685b551e4c5ac0b32a57c58c0e529c001"
+    if ($calculado -ne $esperado) {
+        Remove-Item -LiteralPath $lhmZip -Force -ErrorAction SilentlyContinue
+        throw ("SHA-256 invalido para LibreHardwareMonitor. Esperado=$esperado Obtenido=$calculado")
+    }
+    Write-Host "SHA-256 de LHM verificado."
+}
+# Extraer LHM
+$lhmDst = Join-Path $KitRoot 'tools\lhm'
+if (Test-Path -LiteralPath $lhmDst) {
+    Remove-Item -LiteralPath $lhmDst -Recurse -Force
+}
+Expand-Archive -LiteralPath $lhmZip -DestinationPath $lhmDst -Force
+Remove-Item -LiteralPath $lhmZip -Force -ErrorAction SilentlyContinue
+Write-Host "LibreHardwareMonitor extraido en: $lhmDst"
+
+# Crear config propio para modo solo-lectura, server web en loopback 127.0.0.1:8085
+$configDst = Join-Path $lhmDst ' LibreHardwareMonitor.config'
+# Copiar o generar config minimizado: servidor web activado, puerto 8085, IP 127.0.0.1
+$configTexto = @"
+# LibreHardwareMonitor config generado por DiagUSB
+# Modo: solo lectura, sin red abierta
+# Servidor Web: activado, solo loopback
+SensorProvider=Sqlite
+"@
+$configDir = Join-Path $lhmDst
+if (-not (Test-Path -LiteralPath $configDir)) {
+    New-Item -ItemType Directory -Path $configDir -Force | Out-Null
+}
+[System.IO.File]::WriteAllText(configDst, $configTexto, [System.Text.Encoding]::Unicode)
+Write-Host "Configuracion LHM escrita en: $configDst"
+
+# Limpiar zip temporal si existe
+if (Test-Path -LiteralPath $lhmZip) {
+    Remove-Item -LiteralPath $lhmZip -Force -ErrorAction SilentlyContinue
+}
+
 # 3e) LICENSE y documentacion legal
 Copy-Item -LiteralPath (Join-Path $Repo 'LICENSE') -Destination (Join-Path $KitRoot 'LICENSE') -Force
 $legales = @(

@@ -96,6 +96,34 @@
       "estado": "excluido",
       "motivo": "La redistribucion requiere una licencia OEM. DiagUSB solo detecta controladores de captura ya instalados; no instala Npcap.",
       "notes": "El paquete captura_sospechosa informa si Npcap o WinPcap estan presentes, sin instalarlos."
+    },
+    {
+      "name": "LibreHardwareMonitor",
+      "official_domain": "librehardwaremonitor.org",
+      "url": "https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases/download/v0.9.6/LibreHardwareMonitor.zip",
+      "version": "0.9.6",
+      "sha256": "086d9f1b5a99e643edc2cfaaac16051685b551e4c5ac0b32a57c58c0e529c001",
+      "license": "MPL-2.0",
+      "file": "LibreHardwareMonitor.zip",
+      "source": "https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases/tag/v0.9.6",
+      "checksum_url": "https://api.github.com/repos/LibreHardwareMonitor/LibreHardwareMonitor/releases/latest",
+      "redistribuible": "yes: MPL-2.0 compatible with GPL-3.0-or-later",
+      "estado": "verificado",
+      "notes": "Windows 10/11 build without additional runtime requirements. SHA-256 verificado contra API de GitHub el 2026-10-29. Requiere instalacion del driver PawnIO para sensores CPU/ventilador."
+    },
+    {
+      "name": "PawnIO",
+      "official_domain": "pawnio.eu",
+      "url": null,
+      "version": null,
+      "sha256": null,
+      "license": "GPL-2.0",
+      "file": null,
+      "source": "https://github.com/namazso/PawnIO",
+      "checksum_url": null,
+      "redistribuible": "no: GPL-2.0 incompatibles con inclusion en kit GPL-3.0-or-later",
+      "estado": "excluido",
+      "motivo": "La licencia GPL-2.0 requiere que el codigo fuente este disponible y que la obra derivada distribuya bajo los mismos terminos. Incluir el instalador dentro de un kit con licencia GPL-3.0-or-later generarria obligaciones legales conflictivas. Se incluye solo deteccion de driver y mensaje de UI explicando instalacion manual."
     }
   ]
 }
