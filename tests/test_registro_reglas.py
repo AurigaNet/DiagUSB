@@ -25,6 +25,8 @@ ESPERADO_REGISTRO = [
     "wifi_no_conecta", "wifi_lento", "wifi_perdida",
     "blue_screen", "error_del_sistema", "error_del_sistema",
     "apagado_inesperado", "apagado_inesperado",
+    "disco_lento", "proceso_alto_cpu",
+    "seguridad_comprometida", "servicio_no_inicia",
 ]
 
 

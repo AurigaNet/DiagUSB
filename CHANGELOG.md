@@ -8,6 +8,9 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ### Agregado
 
+- Reglas deterministas para los cuatro síntomas que estaban declarados en los `manifest.json` sin ninguna regla: `disco_lento` (latencia media por transferencia y saturación del disco, solo sobre discos con actividad), `proceso_alto_cpu` (consumo por proceso normalizado contra la cantidad de núcleos), `seguridad_comprometida` (antivirus y firewall apagados a la vez, inicios de sesión fallidos repetidos, firmas desactualizadas) y `servicio_no_inicia` (servicio Automático detenido, con código de salida cuando existe).
+- Cuatro entradas nuevas en la base de conocimiento para esos síntomas (`disco_lento`, `proceso_alto_cpu`, `seguridad_comprometida`, `servicio_no_inicia`); la base embebida pasa de 23 a 27 entradas.
+- Pruebas unitarias `tests/test_reglas_huerfanas.py` sobre las cuatro reglas, incluidos los casos en que el dato no está disponible.
 - Paquete de diagnóstico `temperatura` (paquete número 14): lee la temperatura del CPU desde LibreHardwareMonitor (LHM) mediante su servidor web local (`http://127.0.0.1:8085`, configurable con `DIAGUSB_LHM_URL`), sin empacar LHM ni PawnIO en el kit. EXPERIMENTAL: no validado todavía con una lectura real de sensores (ver `docs/LIMITACIONES.md`).
 - Regla `cpu_caliente`: aviso a partir de 80 °C y hallazgo crítico a partir de 90 °C, sobre la máxima lectura válida del CPU (package/core), con detección previa de capacidades que bloquea el paquete (con motivo visible) si LHM no está activo, sin afectar al resto del diagnóstico.
 - Entrada nueva de base de conocimiento `cpu_caliente` con soluciones (polvo, pasta térmica, ventilación, plan de energía); la base embebida pasa de 19 a 22 entradas.

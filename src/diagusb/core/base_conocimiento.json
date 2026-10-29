@@ -6,8 +6,14 @@
       "id": "servicio_automatico_detenido",
       "titulo": "Servicio automático que no está en ejecución",
       "categoria": "Servicios",
-      "colectores": ["critical_services", "service_failures"],
-      "sintomas": ["servicio_detenido", "servicios_fallando"],
+      "colectores": [
+        "critical_services",
+        "service_failures"
+      ],
+      "sintomas": [
+        "servicio_detenido",
+        "servicios_fallando"
+      ],
       "estado_esperado": "Todos los servicios con tipo de inicio 'Automático' deben estar en estado 'Running' (En ejecución). Los servicios en 'Manual' o 'Deshabilitado' pueden estar detenidos sin problema: solo se inician cuando el sistema los necesita.",
       "por_que_importa": "Un servicio automático detenido deja sin funcionamiento lo que brinda (red, impresión, actualizaciones, auditoría). Si no corre y nadie lo reinicia, el equipo pierde esa capacidad hasta que alguien intervenga.",
       "soluciones": [
@@ -24,8 +30,12 @@
       "id": "spooler_detenido",
       "titulo": "Servicio Print Spooler caído o sucio",
       "categoria": "Impresión",
-      "colectores": ["spooler_service"],
-      "sintomas": ["la_impresora_no_imprime"],
+      "colectores": [
+        "spooler_service"
+      ],
+      "sintomas": [
+        "la_impresora_no_imprime"
+      ],
       "estado_esperado": "El servicio Print Spooler (Spooler) debe estar 'En ejecución' con inicio 'Automático'. La cola de impresión debe estar vacía y la carpeta C:\\Windows\\System32\\spool\\PRINTERS sin archivos de trabajos abandonados.",
       "por_que_importa": "Sin Spooler no existe cola de impresión: ninguna impresora local ni de red responde. Un archivo colgado en la carpeta spool bloquea todos los trabajos siguientes.",
       "soluciones": [
@@ -42,8 +52,12 @@
       "id": "impresora_predeterminada_offline",
       "titulo": "Impresora predeterminada fuera de línea",
       "categoria": "Impresión",
-      "colectores": ["printers"],
-      "sintomas": ["la_impresora_no_imprime"],
+      "colectores": [
+        "printers"
+      ],
+      "sintomas": [
+        "la_impresora_no_imprime"
+      ],
       "estado_esperado": "La impresora predeterminada del usuario debe estar en línea (no marcada como 'trabajar sin conexión'), encendida y seleccionada como predeterminada del usuario.",
       "por_que_importa": "Si la predeterminada está offline, los trabajos quedan encolados en ella y no salen, aunque otra impresora esté disponible.",
       "soluciones": [
@@ -59,8 +73,12 @@
       "id": "impresora_puerto_incorrecto",
       "titulo": "Puerto de impresión incorrecto",
       "categoria": "Impresión",
-      "colectores": ["printer_ports"],
-      "sintomas": ["la_impresora_no_imprime"],
+      "colectores": [
+        "printer_ports"
+      ],
+      "sintomas": [
+        "la_impresora_no_imprime"
+      ],
       "estado_esperado": "Cada impresora debe usar el puerto que apunta realmente a donde está: un puerto USB/LPT para impresoras locales o un puerto TCP/IP (o WSD activo) con la IP o nombre correcto para las de red.",
       "por_que_importa": "Con un puerto equivocado el trabajo sale 'impreso' pero nunca llega a ningún dispositivo; es la causa más común de impresión que no falla con error.",
       "soluciones": [
@@ -76,8 +94,12 @@
       "id": "impresora_driver_faltante",
       "titulo": "Driver de impresión faltante o incompatible",
       "categoria": "Impresión",
-      "colectores": ["printer_drivers"],
-      "sintomas": ["la_impresora_no_imprime"],
+      "colectores": [
+        "printer_drivers"
+      ],
+      "sintomas": [
+        "la_impresora_no_imprime"
+      ],
       "estado_esperado": "Cada impresora instalada debe tener su driver cargado y compatible con la versión de Windows, sin advertencias en el Administrador de dispositivos.",
       "por_que_importa": "Sin driver válido Windows no puede generar el trabajo (o lo genera en un formato que la impresora no entiende) y la cola queda en error.",
       "soluciones": [
@@ -93,8 +115,12 @@
       "id": "trabajos_de_impresion_colgados",
       "titulo": "Trabajos de impresión atascados en la cola",
       "categoria": "Impresión",
-      "colectores": ["print_jobs"],
-      "sintomas": ["la_impresora_no_imprime"],
+      "colectores": [
+        "print_jobs"
+      ],
+      "sintomas": [
+        "la_impresora_no_imprime"
+      ],
       "estado_esperado": "La cola de impresión debe estar vacía o con trabajos en estado 'En cola' que avanzan normalmente; no deben existir trabajos en 'Error' o 'Borrando' antiguos.",
       "por_que_importa": "Un trabajo atascado bloquea la cola completa: todos los documentos siguientes esperan indefinidamente.",
       "soluciones": [
@@ -109,8 +135,12 @@
       "id": "sin_conectividad",
       "titulo": "Sin conectividad de red o internet",
       "categoria": "Red",
-      "colectores": ["connectivity"],
-      "sintomas": ["no_hay_internet"],
+      "colectores": [
+        "connectivity"
+      ],
+      "sintomas": [
+        "no_hay_internet"
+      ],
       "estado_esperado": "El equipo debe alcanzar su puerta de enlace (gateway) y el internet con latencia baja y cero pérdida de paquetes, con adaptadores habilitados y configuración IP, máscara y DNS válidas.",
       "por_que_importa": "Sin gateway no hay comunicación fuera de la red local; sin internet no hay actualizaciones, correo, nube ni acceso remoto.",
       "soluciones": [
@@ -127,8 +157,14 @@
       "id": "adaptador_red_desactivado",
       "titulo": "Adaptador de red desactivado o con driver problemático",
       "categoria": "Red",
-      "colectores": ["network_adapters", "network_drivers"],
-      "sintomas": ["no_hay_internet", "red_lenta"],
+      "colectores": [
+        "network_adapters",
+        "network_drivers"
+      ],
+      "sintomas": [
+        "no_hay_internet",
+        "red_lenta"
+      ],
       "estado_esperado": "El adaptador de red en uso debe estar habilitado, con estado 'Up', sin advertencias en el Administrador de dispositivos y con driver actualizado. Los adaptadores sin uso pueden quedar deshabilitados a propósito (eso no es un fallo).",
       "por_que_importa": "Un adaptador deshabilitado o con driver roto corta toda comunicación de red del equipo, incluida la resolución de nombres.",
       "soluciones": [
@@ -144,8 +180,13 @@
       "id": "dns_invalido",
       "titulo": "Servidor DNS no responde o mal configurado",
       "categoria": "Red",
-      "colectores": ["dns_servers"],
-      "sintomas": ["dns_no_responde", "no_hay_internet"],
+      "colectores": [
+        "dns_servers"
+      ],
+      "sintomas": [
+        "dns_no_responde",
+        "no_hay_internet"
+      ],
       "estado_esperado": "El equipo debe tener servidores DNS activos (del router/ISP o públicos como 1.1.1.1 / 8.8.8.8) que respondan, y resolver nombres conocidos en menos de ~1 segundo. IP 0.0.0.0 o vacía en DNS es configuración inválida.",
       "por_que_importa": "Con IP pero sin DNS el equipo 'está en red' pero no abre nada por nombre: parece internet caído cuando solo falla la traducción de nombres.",
       "soluciones": [
@@ -161,8 +202,13 @@
       "id": "antivirus_desactivado",
       "titulo": "Antivirus apagado o desactualizado",
       "categoria": "Seguridad",
-      "colectores": ["antivirus_status", "security_center"],
-      "sintomas": ["antivirus_apagado"],
+      "colectores": [
+        "antivirus_status",
+        "security_center"
+      ],
+      "sintomas": [
+        "antivirus_apagado"
+      ],
       "estado_esperado": "El equipo debe reportar un antivirus instalado, activo (protección en tiempo real encendida) y con definiciones actualizadas (última actualización no mayor a 3-7 días). Windows Defender sirve si no hay otro.",
       "por_que_importa": "Sin antivirus activo el equipo queda expuesto a malware y además Windows marca el centro de seguridad en rojo, lo que invalida cualquier otra conclusión de seguridad.",
       "soluciones": [
@@ -178,8 +224,12 @@
       "id": "firewall_desactivado",
       "titulo": "Firewall de Windows desactivado",
       "categoria": "Seguridad",
-      "colectores": ["firewall_status"],
-      "sintomas": ["firewall_apagado"],
+      "colectores": [
+        "firewall_status"
+      ],
+      "sintomas": [
+        "firewall_apagado"
+      ],
       "estado_esperado": "El Firewall de Windows debe estar activo en los tres perfiles (Dominio, Privado y Público), salvo que una política corporativa documentada lo haya desactivado a propósito.",
       "por_que_importa": "El firewall es la barrera de entrada de la red; apagado, cualquier equipo de la red puede intentar conectarse a los servicios del equipo.",
       "soluciones": [
@@ -194,8 +244,13 @@
       "id": "memoria_saturada",
       "titulo": "Memoria RAM saturada",
       "categoria": "Rendimiento",
-      "colectores": ["memory_status"],
-      "sintomas": ["memoria_llena", "sistema_lento"],
+      "colectores": [
+        "memory_status"
+      ],
+      "sintomas": [
+        "memoria_llena",
+        "sistema_lento"
+      ],
       "estado_esperado": "En uso normal la RAM debe mantenerse por debajo de ~80-85%, con el archivo de paginación activo y dimensionado (Automático o de 4 a 8 GB como mínimo).",
       "por_que_importa": "Con la RAM llena Windows recurre continuamente al disco (paginación): el equipo se pone lento aunque el CPU esté libre, y las aplicaciones pueden cerrarse por falta de memoria.",
       "soluciones": [
@@ -211,8 +266,13 @@
       "id": "cpu_saturada",
       "titulo": "CPU o disco con carga sostenida alta",
       "categoria": "Rendimiento",
-      "colectores": ["system_performance", "disk_performance"],
-      "sintomas": ["sistema_lento"],
+      "colectores": [
+        "system_performance",
+        "disk_performance"
+      ],
+      "sintomas": [
+        "sistema_lento"
+      ],
       "estado_esperado": "En reposo el uso de CPU debe estar por debajo de ~30-40% y la cola de disco por debajo de ~2. Valores altos sostenidos (no transitorios) indican proceso con fuga, falta de recursos o disco limitante.",
       "por_que_importa": "CPU o cola de disco altas de forma continua explican la lentitud percibida; atacar el proceso responsable devuelve la fluidez sin cambiar hardware.",
       "soluciones": [
@@ -228,8 +288,12 @@
       "id": "disco_sin_espacio",
       "titulo": "Disco sin espacio libre",
       "categoria": "Disco",
-      "colectores": ["logical_disks"],
-      "sintomas": ["disco_lleno"],
+      "colectores": [
+        "logical_disks"
+      ],
+      "sintomas": [
+        "disco_lleno"
+      ],
       "estado_esperado": "Cada unidad debe conservar como mínimo un 15-20% de espacio libre (o ~20 GB). El disco del sistema (C:) nunca debe bajar del ~10% libre: Windows necesita espacio para temporales, paginación, actualizaciones y réplicas de seguridad.",
       "por_que_importa": "Sin espacio libre no hay actualizaciones, no se escriben temporales, las aplicaciones fallan y el archivo de paginación no puede crecer: la lentitud y los errores llegan juntos.",
       "soluciones": [
@@ -246,8 +310,12 @@
       "id": "disco_degradado",
       "titulo": "Disco físico degradado (SMART/cable)",
       "categoria": "Disco",
-      "colectores": ["physical_disks"],
-      "sintomas": ["disco_salud"],
+      "colectores": [
+        "physical_disks"
+      ],
+      "sintomas": [
+        "disco_salud"
+      ],
       "estado_esperado": "Los discos deben reportar estado 'Healthy'/'OK' en SMART, sin sectores reasignados crecientes ni errores de medios, y con cable y alimentación firmes.",
       "por_que_importa": "Un disco degradado sigue funcionando hasta el día en que falla: perder datos es cuestión de tiempo, por eso la respuesta prioritaria es el respaldo, no la reparación.",
       "soluciones": [
@@ -264,8 +332,12 @@
       "id": "disco_caliente",
       "titulo": "Disco con temperatura elevada",
       "categoria": "Disco",
-      "colectores": ["physical_disks"],
-      "sintomas": ["disco_salud"],
+      "colectores": [
+        "physical_disks"
+      ],
+      "sintomas": [
+        "disco_salud"
+      ],
       "estado_esperado": "La temperatura del disco debe mantenerse por debajo de ~60 °C. Los SSD/NVMe toleran más calor que un HDD, pero una temperatura sostenida alta acorta la vida útil y puede provocar pérdida de rendimiento o apagones.",
       "por_que_importa": "El calor degrada los componentes del disco y puede hacer que el equipo se apague o funcione lento. Si la temperatura sube por falta de ventilación o por un disco con problemas, conviene corregirlo antes de que haya pérdida de datos.",
       "soluciones": [
@@ -281,8 +353,12 @@
       "id": "cpu_caliente",
       "titulo": "CPU con temperatura elevada",
       "categoria": "Procesador",
-      "colectores": ["cpu_temperature"],
-      "sintomas": ["cpu_caliente"],
+      "colectores": [
+        "cpu_temperature"
+      ],
+      "sintomas": [
+        "cpu_caliente"
+      ],
       "estado_esperado": "La temperatura del CPU debe mantenerse idealmente por debajo de 80 °C en uso normal y no superar 90 °C de forma sostenida. Las lecturas se obtienen de LibreHardwareMonitor (LHM), que debe estar activo con su servidor web local y con el controlador PawnIO para leer los sensores.",
       "por_que_importa": "El calor excesivo reduce el rendimiento (throttling), provoca apagones, reinicios y acorta la vida del procesador. Si la temperatura sube por polvo, ventilación obstruida o pasta térmica seca, el problema empeora con el tiempo y puede dañar el equipo.",
       "soluciones": [
@@ -300,9 +376,14 @@
       "id": "ventilador_0_rpm_con_cpu_caliente",
       "titulo": "CPU caliente con ventilador sin girar (indicio)",
       "categoria": "Procesador",
-      "colectores": ["cpu_temperature", "fan_speeds"],
-      "sintomas": ["ventilador_0_rpm_con_cpu_caliente"],
-      "estado_esperado": "Con el CPU a 70 \u00b0C o mas, al menos un ventilador debe marcar RPM mayores a 0 y el del CPU no debe marcar 0 RPM. Las lecturas salen de LibreHardwareMonitor (LHM), que debe estar activo con su servidor web local; sin el no se puede comprobar.",
+      "colectores": [
+        "cpu_temperature",
+        "fan_speeds"
+      ],
+      "sintomas": [
+        "ventilador_0_rpm_con_cpu_caliente"
+      ],
+      "estado_esperado": "Con el CPU a 70 °C o mas, al menos un ventilador debe marcar RPM mayores a 0 y el del CPU no debe marcar 0 RPM. Las lecturas salen de LibreHardwareMonitor (LHM), que debe estar activo con su servidor web local; sin el no se puede comprobar.",
       "por_que_importa": "Un ventilador detenido con el CPU caliente provoca throttling, apagones y dano en el procesador. Este aviso es un INDICIO y no una prueba: un 0 RPM tambien puede deberse a un sensor sin conectar, a un cabezal de placa vacio, a un ventilador que se apaga a proposito en frio o a que LHM no lee el sensor correcto.",
       "soluciones": [
         "Mirar el equipo abierto o escuchar si el ventilador del CPU gira: es la unica forma de confirmar el indicio",
@@ -311,14 +392,18 @@
         "Revisar que el conector del ventilador este firme en la placa y que el cable no toque las aspas",
         "Si el ventilador esta trabado o no gira, reemplazarlo (requiere tecnico)"
       ],
-      "verificacion": "Con LHM activo, el ventilador del CPU marca RPM mayores a 0 cuando el CPU supera los 70 \u00b0C y la temperatura se mantiene por debajo de 80 \u00b0C en uso normal."
+      "verificacion": "Con LHM activo, el ventilador del CPU marca RPM mayores a 0 cuando el CPU supera los 70 °C y la temperatura se mantiene por debajo de 80 °C en uso normal."
     },
     {
       "id": "bateria_agotada",
       "titulo": "Bateria con desgaste elevado",
       "categoria": "Bateria",
-      "colectores": ["battery"],
-      "sintomas": ["bateria_agotada"],
+      "colectores": [
+        "battery"
+      ],
+      "sintomas": [
+        "bateria_agotada"
+      ],
       "estado_esperado": "La carga plena de la bateria debe ser mayor al 60 % de su capacidad de diseno. El dato se obtiene del reporte de bateria de Windows (powercfg); los ciclos y la quimica aparecen solo si el fabricante los declara.",
       "por_que_importa": "Una bateria con muchos ciclos acumula dano permanente y pierde autonomia; al quedar sin capacidad util puede apagar el equipo aun con porcentaje declarado alto. Comparar la carga plena con la capacidad de diseno evalua el desgaste con un criterio objetivo y permite decidir el reemplazo.",
       "soluciones": [
@@ -334,7 +419,11 @@
       "id": "actualizaciones_pendientes",
       "titulo": "Actualizaciones de Windows pendientes o fallidas",
       "categoria": "Sistema",
-      "colectores": ["pending_updates", "update_status", "update_history"],
+      "colectores": [
+        "pending_updates",
+        "update_status",
+        "update_history"
+      ],
       "sintomas": [],
       "estado_esperado": "Windows Update sin actualizaciones pendientes fallidas, sin reinicios diferidos sin aplicar, y con el último control de actualización hecho hace menos de ~7 días.",
       "por_que_importa": "Las actualizaciones incluyen parches de seguridad y correcciones de errores; con ellas pendientes el equipo queda expuesto y con fallos conocidos que ya están resueltos por Microsoft.",
@@ -351,7 +440,10 @@
       "id": "drivers_desactualizados",
       "titulo": "Drivers desactualizados o con advertencias",
       "categoria": "Sistema",
-      "colectores": ["outdated_drivers", "hardware"],
+      "colectores": [
+        "outdated_drivers",
+        "hardware"
+      ],
       "sintomas": [],
       "estado_esperado": "Todos los dispositivos del Administrador de dispositivos sin advertencias (triángulo amarillo / código 43) y con drivers vigentes, priorizando red, chipset, almacenamiento y video.",
       "por_que_importa": "Un driver viejo o roto provoca los síntomas más variados: lentitud, pantallazos, sin red, sin audio; muchos problemas 'raros' se resuelven aquí.",
@@ -368,7 +460,11 @@
       "id": "eventos_criticos_recientes",
       "titulo": "Eventos críticos recurrentes (BSOD, disco, servicios)",
       "categoria": "Sistema",
-      "colectores": ["critical_events", "bsod_events", "critical_system_events"],
+      "colectores": [
+        "critical_events",
+        "bsod_events",
+        "critical_system_events"
+      ],
       "sintomas": [],
       "estado_esperado": "No deberían existir errores críticos recurrentes en los últimos 7 días (pantallazos azules, fallos de disco, servicios que fallan). Un evento aislado que no se repite no es problema por sí solo.",
       "por_que_importa": "Los eventos críticos repetidos son la memoria de un fallo que sigue presente; ignorarlos es esperar a que aparezca de nuevo con el usuario enfrente.",
@@ -385,8 +481,13 @@
       "id": "wifi_debil",
       "titulo": "Señal WiFi débil o interferida",
       "categoria": "Red",
-      "colectores": ["wifi_networks", "wifi_profiles"],
-      "sintomas": ["red_lenta"],
+      "colectores": [
+        "wifi_networks",
+        "wifi_profiles"
+      ],
+      "sintomas": [
+        "red_lenta"
+      ],
       "estado_esperado": "La red WiFi en uso debe reportar señal igual o superior al 40% (netsh wlan show networks) y, cuando el sistema lo informa, mejor que aproximadamente -67 dBm; en un canal poco congestionado y prefiriendo la banda de 5 GHz cerca del router (2.4 GHz solo para alcance lejano).",
       "por_que_importa": "Señal débil o canal saturado se traduce en velocidad baja y cortes intermitentes que se confunden con problemas del ISP o del equipo.",
       "soluciones": [
@@ -397,6 +498,108 @@
         "Olvidar y volver a conectar la red para regenerar el perfil con credenciales correctas"
       ],
       "verificacion": "La red conectada muestra señal ≥ 40% (o mejor que -67 dBm) y la velocidad medida se acerca a la contratada."
+    },
+    {
+      "id": "disco_lento",
+      "titulo": "Disco lento por latencia alta o saturacion",
+      "categoria": "Almacenamiento",
+      "colectores": [
+        "disk_performance",
+        "physical_disks",
+        "logical_disks"
+      ],
+      "sintomas": [
+        "disco_lento",
+        "sistema_lento"
+      ],
+      "estado_esperado": "Con actividad normal, la latencia media por transferencia debe mantenerse por debajo de 50 ms y el tiempo de disco ocupado por debajo del 70 %. Un disco inactivo no se evalua como lento: la regla solo considera discos con operaciones de lectura o escritura.",
+      "por_que_importa": "Una latencia alta o un disco saturado hacen que el equipo tarde en abrir programas, guardar archivos e iniciar sesion, aunque la CPU y la memoria esten bien. Tambien acelera el desgaste y puede anticipar una falla del disco.",
+      "soluciones": [
+        "Revisar el espacio libre del volumen: por debajo del 10 % el disco se vuelve lento",
+        "Abrir el Administrador de tareas y mirar que proceso genera mas lectura/escritura",
+        "Comprobar la salud SMART del disco con el inventario de discos fisicos de DiagUSB",
+        "Actualizar el driver del controlador de almacenamiento y el firmware del disco si el fabricante lo indica",
+        "En equipos con disco mecanico, evaluar el reemplazo por un SSD como mejora de rendimiento",
+        "Revisar el registro de eventos del sistema por errores de disco (Event ID 7, 11, 51, 153)"
+      ],
+      "verificacion": "Repetir la medicion con el equipo en reposo y con la misma carga: la latencia media queda por debajo de 50 ms y el tiempo ocupado por debajo del 70 %."
+    },
+    {
+      "id": "proceso_alto_cpu",
+      "titulo": "Proceso con consumo alto de CPU",
+      "categoria": "Rendimiento",
+      "colectores": [
+        "top_processes",
+        "system_performance"
+      ],
+      "sintomas": [
+        "proceso_alto_cpu",
+        "sistema_lento"
+      ],
+      "estado_esperado": "Ningun proceso individual deberia consumir mas del 40 % de la CPU total del equipo de forma sostenida. Por encima del 70 % se considera un problema que afecta al usuario.",
+      "por_que_importa": "Un proceso que acapara la CPU deja sin tiempo de procesador al resto: la interfaz se traba, el audio se corta y las aplicaciones responden lento. Puede ser una tarea legitima (antivirus, indexacion, actualizacion) o software no deseado.",
+      "soluciones": [
+        "Identificar el proceso por nombre y PID en el detalle del hallazgo",
+        "Comprobar si es una tarea programada legitima (antivirus, indexador, Windows Update) y si termina sola",
+        "Revisar el origen del ejecutable: ruta, firma digital y fabricante",
+        "Si es software desconocido o esta en una ruta temporal, escalar a seguridad y no cerrarlo a ciegas",
+        "Actualizar o reparar la aplicacion responsable si el consumo se repite",
+        "Reiniciar el equipo y volver a medir para descartar un proceso colgado"
+      ],
+      "verificacion": "En una medicion posterior ningun proceso supera el 40 % de la CPU total y el equipo responde con normalidad."
+    },
+    {
+      "id": "seguridad_comprometida",
+      "titulo": "Indicios de seguridad comprometida",
+      "categoria": "Seguridad",
+      "colectores": [
+        "antivirus_status",
+        "firewall_status",
+        "security_events",
+        "security_center"
+      ],
+      "sintomas": [
+        "seguridad_comprometida",
+        "antivirus_apagado",
+        "firewall_apagado"
+      ],
+      "estado_esperado": "Antivirus activo y actualizado, firewall habilitado en todos los perfiles, sin una racha de inicios de sesion fallidos y con el registro de seguridad legible (requiere Administrador).",
+      "por_que_importa": "La combinacion de antivirus y firewall deshabilitados, sumada a intentos de inicio de sesion fallidos repetidos, reduce las defensas del equipo y puede indicar una intrusion o un intento de fuerza bruta. Un hallazgo aislado no prueba actividad maliciosa: hay que correlacionarlo.",
+      "soluciones": [
+        "No apagar ni desinstalar protecciones como primera medida: primero preservar evidencia",
+        "Revisar en el Visor de Eventos los inicios de sesion fallidos (Event ID 4625) y su equipo de origen",
+        "Verificar con el responsable de TI si el antivirus o el firewall fueron deshabilitados a proposito",
+        "Reactivar Microsoft Defender y el firewall desde Seguridad de Windows si corresponde",
+        "Ejecutar un analisis completo con la herramienta de seguridad aprobada por la organizacion",
+        "Cambiar credenciales si hubo accesos no reconocidos y escalar el incidente segun el procedimiento interno"
+      ],
+      "verificacion": "Antivirus y firewall activos, firmas al dia, sin nuevos 4625 repetidos y sin hallazgos criticos en el analisis de seguridad posterior."
+    },
+    {
+      "id": "servicio_no_inicia",
+      "titulo": "Servicio automatico que no inicia",
+      "categoria": "Servicios",
+      "colectores": [
+        "critical_services",
+        "service_failures",
+        "running_services"
+      ],
+      "sintomas": [
+        "servicio_no_inicia",
+        "servicio_detenido",
+        "servicios_fallando"
+      ],
+      "estado_esperado": "Todo servicio con tipo de inicio Automatico debe estar En ejecucion. Si falla, el Visor de Eventos debe explicar el codigo de error y el servicio debe poder iniciarse manualmente sin errores.",
+      "por_que_importa": "Un servicio automatico detenido deja sin funcionamiento la capacidad que brinda (red, impresion, actualizaciones, auditoria, cola de trabajos). Si el servicio no arranca, reiniciar el equipo no lo soluciona por si solo.",
+      "soluciones": [
+        "Abrir services.msc como Administrador y localizar el servicio por nombre",
+        "Intentar iniciarlo manualmente y anotar el mensaje de error exacto",
+        "Revisar la pestana Dependencias: iniciar primero los servicios de los que depende",
+        "Revisar el Visor de Eventos (Sistema) por los eventos 7000, 7009, 7011 y 7034",
+        "Comprobar que la cuenta de inicio del servicio sea correcta y que la contrasena no haya expirado",
+        "Reparar o reinstalar la aplicacion duena del servicio si el binario no existe o esta danado"
+      ],
+      "verificacion": "El servicio figura En ejecucion con inicio Automatico, sobrevive a un reinicio y el evento de error deja de aparecer."
     }
   ]
 }

@@ -30,7 +30,7 @@ $result = New-DiagUsbCollectorResult -CollectorId 'disk_performance' -ScriptBloc
             write_bytes_per_sec = $disk.DiskWriteBytesPerSec
             read_ops_per_sec = $disk.DiskReadsPerSec
             write_ops_per_sec = $disk.DiskWritesPerSec
-            avg_transfer_sec = $(if ($disk.AvgDisksecPerTransfer) { [math]::Round($disk.AvgDisksecPerTransfer / 1000, 4) } else { 0 })
+            avg_transfer_sec = $(if ($null -ne $disk.AvgDisksecPerTransfer) { [math]::Round([double]$disk.AvgDisksecPerTransfer, 4) } else { $null })
             current_disk_queue_length = $disk.CurrentDiskQueueLength
             percent_disk_time = $disk.PercentDiskTime
         }

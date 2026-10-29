@@ -107,6 +107,12 @@ class RuleEngine:
         self.register("error_del_sistema", self._check_critical_events)
         self.register("apagado_inesperado", self._check_critical_events)
 
+        # ========== REGLAS DE SINTOMAS DE SOPORTE ==========
+        self.register("disco_lento", self._check_disk_slow)
+        self.register("proceso_alto_cpu", self._check_process_high_cpu)
+        self.register("seguridad_comprometida", self._check_security_compromised)
+        self.register("servicio_no_inicia", self._check_service_wont_start)
+
     def register(self, symptom: str, rule_func: callable):
         """Registra una regla para un sintoma especifico."""
         if symptom not in self._rules:
@@ -1102,6 +1108,188 @@ class RuleEngine:
                      + (f" ({n_criticos} críticos)" if n_criticos else "")),
             details={"criticos": n_criticos, "errores": n_errores},
         )]
+
+    # ========== REGLAS DE SINTOMAS DE SOPORTE ==========
+
+    def _check_disk_slow(self, observations: list[CollectorResult]) -> list[Finding]:
+        """Disco lento: latencia por transferencia o disco saturado.
+
+        Solo evalua discos con actividad; un disco inactivo no es "lento".
+        """
+        result = self._find_collector(observations, "disk_performance")
+        if not result:
+            return []
+        findings = []
+        for data in self._lista_dicts(self._get_data(result)):
+            try:
+                avg = float(data.get("avg_transfer_sec") or 0)
+                pct = float(data.get("percent_disk_time") or 0)
+                queue = float(data.get("current_disk_queue_length") or 0)
+                ops = (float(data.get("read_ops_per_sec") or 0)
+                       + float(data.get("write_ops_per_sec") or 0))
+            except (TypeError, ValueError):
+                continue
+            if ops <= 0:
+                continue
+            disco = data.get("disk") or "disco"
+            if avg >= 0.2:
+                severidad = "error"
+                motivo = f"latencia media de {avg * 1000:.0f} ms por transferencia"
+            elif avg >= 0.05 and (pct >= 70 or queue >= 2):
+                severidad = "warning"
+                motivo = (f"latencia media de {avg * 1000:.0f} ms con "
+                          f"{pct:.0f}% de tiempo ocupado")
+            elif pct >= 90 and queue >= 4:
+                severidad = "warning"
+                motivo = f"disco saturado ({pct:.0f}% de tiempo, cola {queue:g})"
+            else:
+                continue
+            findings.append(Finding(
+                severity=severidad,
+                collector_id="disk_performance",
+                message=f"Disco lento: {disco} ({motivo})",
+                details={"disk": disco, "avg_transfer_sec": avg,
+                         "percent_disk_time": pct, "queue_length": queue,
+                         "ops_per_sec": ops},
+                knowledge_id="disco_lento",
+            ))
+        return findings
+
+    def _check_process_high_cpu(self, observations: list[CollectorResult]) -> list[Finding]:
+        """Proceso que consume una parte alta de la CPU total del equipo."""
+        result = self._find_collector(observations, "top_processes")
+        if not result:
+            return []
+        findings = []
+        for data in self._lista_dicts(self._get_data(result)):
+            valor = data.get("cpu_percent")
+            if valor is None:
+                continue
+            try:
+                cpu = float(valor)
+            except (TypeError, ValueError):
+                continue
+            if cpu >= 70:
+                severidad = "error"
+            elif cpu >= 40:
+                severidad = "warning"
+            else:
+                continue
+            nombre = data.get("name") or "proceso"
+            findings.append(Finding(
+                severity=severidad,
+                collector_id="top_processes",
+                message=(f"Proceso con CPU alta: {nombre} "
+                         f"(PID {data.get('pid')}, {cpu:.1f}% del total)"),
+                details={"name": nombre, "pid": data.get("pid"),
+                         "cpu_percent": cpu,
+                         "cpu_percent_total": data.get("cpu_percent_total"),
+                         "memory_mb": data.get("memory_mb")},
+                knowledge_id="proceso_alto_cpu",
+            ))
+        return findings
+
+    def _check_security_compromised(self, observations: list[CollectorResult]) -> list[Finding]:
+        """Indicios de seguridad comprometida con evidencia de solo lectura.
+
+        No afirma una intrusion: informa combinaciones objetivas (antivirus y
+        firewall deshabilitados a la vez, intentos de inicio de sesion fallidos
+        repetidos, firmas desactualizadas).
+        """
+        findings: list[Finding] = []
+
+        av = self._find_collector(observations, "antivirus_status")
+        firewall = self._find_collector(observations, "firewall_status")
+        av_apagado = False
+        if av:
+            productos = self._lista_dicts(self._get_data(av))
+            av_apagado = bool(productos) and not any(
+                p.get("enabled") is True or p.get("real_time_protection") is True
+                for p in productos)
+        fw_apagado = False
+        if firewall:
+            perfiles = self._lista_dicts(self._get_data(firewall))
+            fw_apagado = bool(perfiles) and not any(
+                p.get("enabled") is True for p in perfiles)
+
+        if av_apagado and fw_apagado:
+            findings.append(Finding(
+                severity="critical",
+                collector_id="antivirus_status",
+                message=("Indicios de seguridad comprometida: antivirus y "
+                         "firewall deshabilitados al mismo tiempo"),
+                details={"antivirus_habilitado": False,
+                         "firewall_habilitado": False},
+                knowledge_id="seguridad_comprometida",
+            ))
+
+        eventos = self._find_collector(observations, "security_events")
+        if eventos:
+            fallidos = 0
+            for ev in self._lista_dicts(self._get_data(eventos)):
+                if ev.get("id") == 4625:
+                    fallidos += 1
+            if fallidos >= 5:
+                findings.append(Finding(
+                    severity="error" if fallidos >= 10 else "warning",
+                    collector_id="security_events",
+                    message=(f"{fallidos} inicio(s) de sesion fallidos en los "
+                             "ultimos eventos de seguridad"),
+                    details={"failed_logons": fallidos},
+                    knowledge_id="seguridad_comprometida",
+                ))
+
+        centro = self._find_collector(observations, "security_center")
+        if centro:
+            desactualizados = [
+                p.get("display_name") or p.get("type") or "producto"
+                for p in self._lista_dicts(self._get_data(centro))
+                if p.get("up_to_date") is False]
+            if desactualizados:
+                findings.append(Finding(
+                    severity="warning",
+                    collector_id="security_center",
+                    message=("Firmas de seguridad desactualizadas: "
+                             + ", ".join(str(x) for x in desactualizados)),
+                    details={"products": desactualizados},
+                    knowledge_id="seguridad_comprometida",
+                ))
+        return findings
+
+    def _check_service_wont_start(self, observations: list[CollectorResult]) -> list[Finding]:
+        """Servicio automatico que no arranca o que falla con codigo de salida."""
+        findings: list[Finding] = []
+        vistos: set[tuple] = set()
+        for collector_id in ("critical_services", "service_failures"):
+            result = self._find_collector(observations, collector_id)
+            if not result:
+                continue
+            for svc in self._extract_services(self._get_data(result)):
+                start_mode = (svc.get("start_mode") or "").lower()
+                state = (svc.get("state") or "").lower()
+                if start_mode != "auto" or state == "running":
+                    continue
+                nombre = svc.get("display_name") or svc.get("name") or "desconocido"
+                clave = (collector_id, nombre, state)
+                if clave in vistos:
+                    continue
+                vistos.add(clave)
+                exit_code = svc.get("exit_code")
+                detalle = f"estado: {svc.get('state') or 'desconocido'}"
+                if exit_code not in (None, 0, "0"):
+                    detalle += f", codigo de salida: {exit_code}"
+                findings.append(Finding(
+                    severity="error",
+                    collector_id=collector_id,
+                    message=f"Servicio no inicia: {nombre} ({detalle})",
+                    details={"name": svc.get("name"),
+                             "display_name": svc.get("display_name"),
+                             "state": svc.get("state"),
+                             "start_mode": svc.get("start_mode"),
+                             "exit_code": exit_code},
+                    knowledge_id="servicio_no_inicia",
+                ))
+        return findings
 
 
 # Instancia global del motor de reglas
