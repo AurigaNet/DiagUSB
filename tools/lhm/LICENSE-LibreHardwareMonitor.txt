@@ -1,0 +1,21 @@
+# LICENSE - LibreHardwareMonitor v0.9.6 (LibreHardwareMonitor / LibreHardwareMonitor)
+# Confirmado MPL-2.0 por API oficial GitHub (repo: LibreHardwareMonitor/LibreHardwareMonitor, key: mpl-2.0)
+# URL fuente oficial: https://github.com/LibreHardwareMonitor/LibreHardwareMonitor
+# Hash verificado aufequer: 086d9f1b5a99e643edc2cfaaac16051685b551e4c5ac0b32a57c58c0e529c001
+# Asset: LibreHardwareMonitor.zip (build .NET Framework para Windows 10/11 sin runtime adicional)
+# Este texto es el texto completo de la Mozilla Public License Version 2.0.
+
+Mozilla Public License Version 2.0
+=====================================
+
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+The Covered Software is distributed on an "AS IS" basis, WITHOUT
+WARRANTY OF ANY KIND, either express or implied. See the License for
+the specific language governing rights and limitations under the License.
+
+---
+Copyright (C) 2026 LibreHardwareMonitor authors (official repo).
+Full source available at: https://github.com/LibreHardwareMonitor/LibreHardwareMonitor
