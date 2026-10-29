@@ -31,7 +31,7 @@ Los datos se guardan localmente en `config/` y `reports/`, dentro de la carpeta 
 - Quien reciba el kit tiene derecho a acceder al código fuente completo correspondiente.
 - Este repositorio constituye la oferta de fuente del código propio distribuido junto con el proyecto.
 - Los binarios, ISOs y utilidades de terceros no están incluidos en el repositorio y conservan sus propias licencias y condiciones de uso.
-- El detalle de herramientas externas, junto con su estado de redistribución, se registra en `tools/tools.manifest.json`.
+- El detalle de herramientas externas, junto con su estado de redistribución, se registra en `tools/tools.manifest.json`; las que no tienen URL, versión, SHA-256 y licencia oficiales quedan excluidas y con su motivo. La guía del live USB está en `docs/LIVE_USB.md`.
 
 ## Terceros y redistribución
 

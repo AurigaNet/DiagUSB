@@ -494,6 +494,23 @@ def cmd_list_packages(args):
         print()
 
 
+def cmd_live_usb(args) -> int:
+    """Muestra el estado del live USB o verifica las imagenes descargadas."""
+    from .core import live_usb
+
+    try:
+        if getattr(args, "verificar", None):
+            resultado = live_usb.verificar_archivos(args.verificar)
+            print(live_usb.formatear_verificacion(resultado))
+            return 0 if resultado["todo_correcto"] else 1
+        estado = live_usb.estado_live_usb()
+        print(live_usb.formatear_estado(estado))
+        return 0 if estado["todo_verificado"] else 1
+    except (OSError, ValueError) as exc:
+        print(f"Error: {exc}")
+        return 1
+
+
 def construir_parser() -> argparse.ArgumentParser:
     """Construye el parser de argumentos de la linea de comandos."""
     parser = argparse.ArgumentParser(
@@ -507,6 +524,8 @@ Ejemplos:
   python -m diagusb snapshot                 # Crear instantanea
   python -m diagusb list-packages             # Ver paquetes disponibles
   python -m diagusb web                       # Interfaz web en http://localhost:8080
+  python -m diagusb live-usb                  # Estado de las imagenes del live USB
+  python -m diagusb live-usb --verificar tools\\downloads
         """
     )
 
@@ -546,6 +565,16 @@ Ejemplos:
     # Comando web
     web_parser = subparsers.add_parser("web", help="Abrir la interfaz web interactiva")
     web_parser.add_argument("--port", type=int, default=8080, help="Puerto del servidor (8080)")
+
+    # Comando live-usb
+    live_parser = subparsers.add_parser(
+        "live-usb", help="Estado y verificacion del pendrive de arranque")
+    live_parser.add_argument(
+        "--estado", action="store_true",
+        help="Mostrar el estado del manifiesto (opcion predeterminada)")
+    live_parser.add_argument(
+        "--verificar", metavar="CARPETA",
+        help="Verificar el SHA-256 de las imagenes descargadas en CARPETA")
 
     return parser
 
@@ -599,6 +628,8 @@ def main():
         from .core.elevation import comando_relanzable
         run_server(args.port, elevar=args.elevar,
                    comando=comando_relanzable("diagusb"))
+    elif args.command == "live-usb":
+        sys.exit(cmd_live_usb(args))
 
 
 if __name__ == "__main__":

@@ -530,8 +530,51 @@
             renderHistorialEntregas(entregaEstado.entregas || []);
         }
 
-        async function cargarEntrega() {
+        async function cargarLiveUSB() {
+            const cont = document.getElementById('liveUsbLista');
+            const est = document.getElementById('liveUsbEstado');
+            if (!cont || !est) return;
             try {
+                const r = await fetch('/api/live-usb');
+                const d = await r.json();
+                if (d.error) throw new Error(d.error);
+                const total = d.verificadas || 0;
+                const listas = d.listas || 0;
+                const excluidas = d.excluidas || 0;
+                est.className = 'config-estado ' + (d.todo_verificado ? 'ok' : 'warn');
+                est.textContent = (d.todo_verificado
+                    ? 'Manifiesto completo: '
+                    : 'Manifiesto incompleto: ') + listas + ' de ' + total +
+                    ' imágenes con datos oficiales; ' + excluidas +
+                    ' excluidas y documentadas.';
+                let html = '<table class="diff-table"><thead><tr>' +
+                    '<th>Herramienta</th><th>Estado</th><th>Versión</th>' +
+                    '<th>Licencia</th><th>Detalle</th></tr></thead><tbody>';
+                (d.herramientas || []).forEach(h => {
+                    const excluida = h.estado === 'excluido';
+                    const etiqueta = excluida ? 'Excluida' : (h.lista ? 'Verificada' : 'Pendiente');
+                    const insignia = excluida
+                        ? '<span class="muted">Excluida</span>'
+                        : '<span class="diag-badge ' + (h.lista ? 'ok' : 'warning') + '">' + etiqueta + '</span>';
+                    const detalle = excluida
+                        ? (h.motivo || 'sin motivo')
+                        : ((h.motivos || []).join('; ') || h.archivo || '');
+                    html += '<tr><td><b>' + escHtml(h.nombre) + '</b></td>' +
+                        '<td>' + insignia + '</td>' +
+                        '<td>' + escHtml(h.version || '—') + '</td>' +
+                        '<td>' + escHtml(h.licencia || '—') + '</td>' +
+                        '<td>' + escHtml(detalle) + '</td></tr>';
+                });
+                html += '</tbody></table>';
+                cont.innerHTML = html;
+            } catch (e) {
+                est.className = 'config-estado warn';
+                est.textContent = 'No se pudo leer el manifiesto de live USB: ' + e.message;
+                cont.innerHTML = '';
+            }
+        }
+
+        async function cargarEntrega() {            try {
                 const r = await fetch('/api/entrega');
                 const data = await r.json();
                 if (data.error) throw new Error(data.error);
@@ -2241,6 +2284,7 @@
             loadIdentidad();
             cargarReferencia();
             cargarEntrega();
+            cargarLiveUSB();
             conectarPruebaPerifericos();
             loadElevation();
             cargarCapacidades(false);

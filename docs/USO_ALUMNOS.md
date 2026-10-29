@@ -33,12 +33,23 @@ DiagUSB se distribuye como kit portable (`DiagUSB-kit-<version>.zip`): incluye u
 
 ## Procedimiento manual para armar el pendrive de arranque
 
-1. Descargar manualmente las herramientas externas desde sus sitios oficiales, una vez que `tools/tools.manifest.json` tenga versiones, URLs y hashes confirmados.
-2. Verificar cada archivo descargado con `scripts\calcular_hash.cmd` o `scripts\calcular_hash.ps1`.
-3. Instalar Ventoy manualmente con su herramienta oficial, fuera de este repositorio.
-4. Copiar al pendrive los archivos autorizados y preparados por el técnico.
-5. Incorporar manualmente las imágenes de arranque aprobadas, respetando sus licencias.
+La guía completa, con versiones, SHA-256 y licencias verificadas, está en
+[`docs/LIVE_USB.md`](LIVE_USB.md). Resumen:
+
+1. Respaldar el pendrive: Ventoy lo reparticiona y DiagUSB no hace ese paso.
+2. Instalar Ventoy manualmente desde su sitio oficial (<https://www.ventoy.net/>)
+   con `Ventoy2Disk.exe`, fuera de este repositorio.
+3. Descargar SystemRescue y memtest86+ desde sus sitios oficiales, según la
+   tabla de `docs/LIVE_USB.md`.
+4. Verificar cada archivo con `scripts\verificar_live_usb.cmd CARPETA` (solo
+   lectura) o con `python -m diagusb live-usb --verificar CARPETA`.
+5. Copiar las ISO a la partición de datos de Ventoy y la carpeta del kit
+   DiagUSB al mismo pendrive.
 6. Probar el arranque en un entorno controlado antes de entregar el kit.
+
+DiagUSB no formatea, no particiona y no descarga imágenes en tiempo de
+ejecución. Las herramientas sin URL, versión, SHA-256 y licencia oficiales
+quedan excluidas y documentadas en `tools/tools.manifest.json`.
 
 ## Salvaguardas
 

@@ -37,6 +37,7 @@ from diagusb.core import identidad
 from diagusb.core import identidad_sesion
 from diagusb.core import referencia
 from diagusb.core import entrega
+from diagusb.core import live_usb
 from diagusb.core.procesos import opciones_sin_ventana
 from diagusb.core.rules import diagnose_symptoms
 from diagusb.core.metricas import (calcular_metricas, recomendaciones_de,
@@ -1208,6 +1209,13 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
         elif parsed.path == "/api/entrega":
             # Configuracion de correo/copia (sin contrasenas)
             self._json_response(entrega.estado())
+
+        elif parsed.path == "/api/live-usb":
+            # Estado del manifiesto de imagenes externas (solo lectura)
+            try:
+                self._json_response(live_usb.estado_live_usb())
+            except (OSError, ValueError) as exc:
+                self._json_response({"error": str(exc)}, 500)
 
         elif parsed.path == "/api/knowledge":
             # Base de conocimiento local (estado esperado + soluciones)

@@ -16,6 +16,7 @@ DiagUSB es un kit de diagnóstico para soporte de infraestructura TI pensado par
 - **Informes Word (.doc) y PDF (.pdf)** en español, con un **resumen gráfico** de métricas (puntaje, severidad, categorías, medidores y comparación antes/después), hallazgos, soluciones de la base de conocimiento, acciones del técnico, mejoras sugeridas y diferencias antes/después. Los gráficos del `.doc` se incrustan como imágenes PNG reales (formato MHTML), por lo que se ven al abrir el archivo en Word aunque se mueva o comparta.
 - **Base de conocimiento local**: 35 entradas embebidas más capa editable en `config/base_conocimiento.json` (alta/edición/baja desde la interfaz, buscador por palabra clave).
 - **Entrega opcional del informe (apagada por defecto)**: envío por correo con el servidor SMTP del técnico (STARTTLS, SSL/TLS o sin cifrado solo en el propio equipo) y copia en una carpeta local como ZIP con PDF, HTML y JSON. Exige consentimiento explícito en cada entrega; la contraseña del correo se usa en memoria o se cifra con DPAPI de Windows y nunca se guarda en texto plano. DiagUSB no tiene servidor central ni sube datos por su cuenta.
+- **Live USB opcional y manual**: DiagUSB no arranca solo ni incluye una ISO propia. La guía `docs/LIVE_USB.md` describe cómo preparar un pendrive Ventoy con SystemRescue 13.02 y memtest86+ 9.00, cuyos URL, versión, SHA-256 y licencia se registran desde las fuentes oficiales. El comando `python -m diagusb live-usb --verificar CARPETA` y `scripts\verificar_live_usb.cmd` comprueban los archivos descargados sin descargar, formatear ni escribir en el pendrive. Ventoy, WinPE, Sysinternals y Npcap quedan excluidos y documentados.
 - **Arranque sin UAC**: DiagUSB inicia sin pedir permisos (modo estándar). Los permisos de Administrador se solicitan solo a pedido: botón "Dar permisos de administrador" en la interfaz web, o flag `--elevar` en la línea de comandos.
 - **Kit portable** (`DiagUSB-kit-<version>.zip`): incluye una distribución embebida oficial de Python (python.org) más el código fuente, sin necesidad de instalar Python en el equipo destino. Incluye `LICENSE`, `LEGAL.md`, `THIRD_PARTY_NOTICES.md` y `CHANGELOG.md`. Es la distribución principal y se arma con `scripts\armar_kit.ps1`.
 - **Ejecutable portable opcional** (`dist/diagusb/diagusb.exe`) construido con PyInstaller, como variante sin Python embebido.
@@ -73,7 +74,7 @@ python -m diagusb list-packages
 ## Pruebas y build
 
 ```
-python tests\run_tests.py                        # suite completa (347 pruebas; 1 manual omitida por defecto)
+python tests\run_tests.py                        # suite completa (358 pruebas; 1 manual omitida por defecto)
 scripts\armar_kit.cmd -Salida dist\kit           # arma el kit (Python embebido + fuente) y lo comprime
 scripts\probar_kit.ps1 -Kit dist\kit\DiagUSB     # prueba de humo del kit
 scripts\build_exe.cmd                            # reconstruye dist\diagusb\diagusb.exe (variante opcional)
@@ -98,7 +99,7 @@ scripts\build_exe.cmd                            # reconstruye dist\diagusb\diag
 - Código propio bajo `GPL-3.0-or-later`.
 - Solo biblioteca estándar de Python; el PDF se genera con un motor propio sin dependencias (`src/diagusb/core/informe.py`).
 - Sin telemetría ni envío de datos a servidores de DiagUSB. El colector de red realiza pruebas de conectividad (ping a 8.8.8.8/1.1.1.1, puerta de enlace y DNS google.com) sin enviar el diagnóstico. Los colectores son de solo lectura y no modifican la configuración del equipo analizado.
-- El repositorio no incluye binarios ni ISOs de terceros; el kit descarga y verifica el Python embebido al armarlo. Ver `tools/tools.manifest.json`.
+- El repositorio no incluye binarios ni ISOs de terceros; el kit descarga y verifica el Python embebido al armarlo y verifica el SHA-256 de las imágenes externas del live USB cuando el técnico las descarga. Ver `tools/tools.manifest.json` y `docs/LIVE_USB.md`.
 
 ## Firma de código e integridad
 

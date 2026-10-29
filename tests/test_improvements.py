@@ -2271,14 +2271,15 @@ def test_modulos_y_fetch_sin_cambios():
     js = (Path(ws.__file__).with_name("static") / "app.js").read_text(encoding="utf-8")
     assert "/api/capacidades" in js
     destinos = [u for _, u in re.findall(r"fetch\(\s*(['\"])(.*?)\1", js)]
-    assert len(destinos) == 28, destinos
+    assert len(destinos) == 29, destinos
     assert set(destinos) == {
         '/api/snapshot', '/api/compare', '/api/report?format=',
         '/api/diagnose?package=', '/api/full-scan', '/api/knowledge',
         '/api/registro?id=', '/api/registro', '/api/datos', '/api/apagar',
         '/api/latido', '/api/progreso', '/api/elevation', '/api/elevar',
         '/api/identidad', '/api/referencia', '/api/entrega',
-        '/api/entrega/config', '/api/entrega/probar', '/api/entrega/secreto'}
+        '/api/entrega/config', '/api/entrega/probar', '/api/entrega/secreto',
+        '/api/live-usb'}
 
 
 def test_run_powershell_timeout_termina_arbol():

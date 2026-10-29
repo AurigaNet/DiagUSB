@@ -141,7 +141,16 @@ python -X utf8 (Join-Path $Repo 'scripts\generar_manifiesto.py') $manifiesto
 if ($LASTEXITCODE -ne 0) { throw 'Fallo la generacion del manifiesto de hashes.' }
 if (-not (Test-Path -LiteralPath $manifiesto)) { throw "No se genero el manifiesto: $manifiesto" }
 
-# 3d) LICENSE y documentacion legal
+# 3d) manifiesto de imagenes externas del live USB y su guia
+$toolsDst = Join-Path $KitRoot 'tools'
+New-Item -ItemType Directory -Path $toolsDst -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $Repo 'tools\tools.manifest.json') `
+    -Destination (Join-Path $toolsDst 'tools.manifest.json') -Force
+Copy-Item -LiteralPath (Join-Path $Repo 'docs\LIVE_USB.md') `
+    -Destination (Join-Path $KitRoot 'LIVE_USB.md') -Force
+Write-Host 'Manifiesto de live USB y guia incluidos en el kit.'
+
+# 3e) LICENSE y documentacion legal
 Copy-Item -LiteralPath (Join-Path $Repo 'LICENSE') -Destination (Join-Path $KitRoot 'LICENSE') -Force
 $legales = @(
     @{ Origen = 'docs\LEGAL.md'; Destino = 'LEGAL.md' },

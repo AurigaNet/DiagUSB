@@ -495,6 +495,16 @@
                 </div>
                 <div class="panel" style="margin-top:16px;">
                     <div class="panel-head">
+                        <h2 class="panel-title">Pendrive de arranque (live USB)</h2>
+                        <span class="panel-nota">Opcional y manual</span>
+                    </div>
+                    <p class="acciones-hint">DiagUSB corre desde Windows. El arranque con SystemRescue y memtest86+ se prepara aparte con Ventoy; DiagUSB no descarga, formatea ni escribe en el pendrive. Solo muestra qué imágenes tienen URL, versión, SHA-256 y licencia publicados por su fuente oficial.</p>
+                    <div class="config-estado" id="liveUsbEstado">Comprobando…</div>
+                    <div id="liveUsbLista"></div>
+                    <p class="acciones-hint">Para verificar las imágenes descargadas: <code>python -m diagusb live-usb --verificar CARPETA</code> o <code>scripts\verificar_live_usb.cmd CARPETA</code>. Guía completa en <code>docs/LIVE_USB.md</code>.</p>
+                </div>
+                <div class="panel" style="margin-top:16px;">
+                    <div class="panel-head">
                         <h2 class="panel-title">Aplicación</h2>
                     </div>
                     <p class="acciones-hint">Cierra el servidor local de DiagUSB y libera el puerto. Para volver a usarlo, abrí DiagUSB desde el acceso directo o el lanzador del pendrive.</p>

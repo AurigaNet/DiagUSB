@@ -8,6 +8,12 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ### Agregado
 
+- Live USB opcional y manual: manifiesto `tools/tools.manifest.json` con SystemRescue 13.02 (GPL-3.0) y memtest86+ 9.00 (GPL-2.0), incluyendo URL, versión, SHA-256 y licencia tomados de las fuentes oficiales el 2026-10-28. Ventoy, WinPE, Sysinternals y Npcap quedan excluidos con su motivo documentado.
+- `core/live_usb.py`: estado del manifiesto, evaluación de cada herramienta con fallo cerrado (URL, versión, SHA-256, licencia y dominio oficial) y verificación de los archivos descargados sin descargar, formatear ni escribir.
+- Subcomando `python -m diagusb live-usb [--verificar CARPETA]`, endpoint `GET /api/live-usb` y panel «Pendrive de arranque» en Configuración con el estado, la versión, la licencia y el motivo de cada herramienta.
+- `scripts/verificar_live_usb.ps1` y `scripts/verificar_live_usb.cmd`: verificación de SHA-256 en modo solo lectura con `Get-FileHash`, sin depender de Python. `fetch_tools.ps1` ahora descarga solo entradas verificadas y muestra las excluidas.
+- Guía `docs/LIVE_USB.md` con el procedimiento Ventoy, las fuentes y checksums oficiales, las licencias, las limitaciones de Secure Boot y las herramientas excluidas. El kit incluye el manifiesto y la guía.
+- Pruebas unitarias `tests/test_live_usb.py` sobre manifiesto, fallo cerrado, verificación de archivos, API, interfaz y script de PowerShell.
 - Entrega opcional del informe, apagada por defecto: envío por correo con SMTP propio (STARTTLS, SSL/TLS o sin cifrado solo para un servidor en este equipo) y copia en una carpeta local como ZIP con el informe en PDF, HTML y JSON. Nada sale del equipo sin marcar la casilla de consentimiento y pulsar el botón; DiagUSB no tiene servidor central ni sube datos por su cuenta.
 - La contraseña del correo nunca se guarda en texto plano: se usa en memoria o se cifra con DPAPI de Windows en `config/correo_secreto.bin` (ámbito del usuario actual). La configuración vive en `config/entrega.json` y la bitácora local de entregas en `config/entregas.json` (máximo 50 entradas, sin contraseñas ni contenido de los informes).
 - Endpoints `/api/entrega` (GET) y `/api/entrega/{config,probar,secreto,enviar,copia}` (POST), panel «Entrega del informe» en Configuración y tarjeta «Entrega» en Resultados, con consentimiento explícito por entrega.
@@ -47,7 +53,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 ### Corregido
 
 - Documentación: el registro de la versión 0.1.0 anunciaba un comando `report` que nunca existió en la CLI. Los comandos reales son `diagnose`, `snapshot`, `compare`, `list-packages` y `web`; los informes HTML/DOC/PDF los genera `diagnose`. Se conserva la entrada histórica y se deja esta corrección explícita.
-- Documentación: las cifras de pruebas y de paquetes quedaron unificadas con el código real (20 paquetes y 347 pruebas, de las cuales 346 pasan y 1 es manual y se omite por defecto).
+- Documentación: las cifras de pruebas y de paquetes quedaron unificadas con el código real (20 paquetes y 358 pruebas, de las cuales 357 pasan y 1 es manual y se omite por defecto).
 - Documentación: `docs/LIMITACIONES.md` decía que la conectividad no hacía ping real; el colector ejecuta ICMP y DNS reales desde hace varias versiones. Se corrigió la limitación.
 - Pruebas: `tests/run_tests.py` ahora descubre y ejecuta todos los `tests/test_*.py` con pytest, en lugar de importar una lista fija de seis suites.
 

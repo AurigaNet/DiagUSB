@@ -194,7 +194,7 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 ### 5.12 CLI (`__main__.py`)
 
 - Sin argumentos → menú interactivo (lista paquetes/síntomas, ejecuta diagnóstico, genera informes).
-- Subcomandos: `diagnose --package X --symptom Y --output-dir DIR`, `snapshot [-p paquete] -o archivo`, `compare antes.json despues.json`, `list-packages`, `web [--port]`.
+- Subcomandos: `diagnose --package X --symptom Y --output-dir DIR`, `snapshot [-p paquete] -o archivo`, `compare antes.json despues.json`, `list-packages`, `web [--port]`, `live-usb [--verificar CARPETA]`.
 - Flags globales: `--yes` (no preguntar), `--open` (abrir navegador), `--elevar` (pedir permisos de Administrador; opt-in) y `--no-elevate` (compatibilidad, sin efecto).
 - El CLI **no** eleva automáticamente: arranca en modo estándar y solo pide permisos si se pasa `--elevar`.
 
@@ -203,6 +203,16 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 - **Principal — kit con Python embebido**: `scripts/armar_kit.ps1` descarga el zip oficial `python-3.13.15-embed-amd64.zip` de python.org, verifica su SHA-256 contra una constante fija, lo descomprime en `python\`, y arma la carpeta `DiagUSB\` con: `python\` (intérprete embebido, con todos sus binarios PE verificados por firma — Python Software Foundation, y Microsoft para `vcruntime*`), `src\diagusb\` (código, sin `__pycache__`), `src\collectors\_common.ps1`, `manifiesto_hashes.json`, `LICENSE`, `LEEME.txt`, los lanzadores `Iniciar_DiagUSB.cmd`/`Iniciar_DiagUSB_consola.cmd` (copiados byte a byte desde `scripts\kit\` con CRLF normalizado, para no corromper tildes en PowerShell 5.1), `python313._pth` (`python313.zip`, `.`, `..\src`, sin `import site`) y `SHA256SUMS.txt` (hashes de todos los archivos). Luego lo comprime en `DiagUSB-kit-<version>.zip`.
 - El kit no requiere instalar Python en el destino: usa el intérprete de `python\`. `scripts\probar_kit.ps1` es la prueba de humo reutilizable por CI (integridad, firma, versión, `list-packages`, un `diagnose` real sin UAC y la validación estructural del PDF).
 - **Opcional — ejecutable PyInstaller**: `onedir` desde `build/diagusb.spec` con entry point `build/entry_console.py`; `datas` embebidos (20 paquetes, `collectors/_common.ps1`, KB) → `dist/diagusb/_internal/...`; en runtime se resuelven con `Path(__file__)` o el bucle de búsqueda hacia arriba de los colectores. Verificado en Windows real: `diagusb.exe` (CLI con banner), `diagusb.exe web`, diagnósticos `[OK]` e informes Word/PDF.
+
+### 5.14 Live USB opcional (`core/live_usb.py`, `tools/tools.manifest.json`)
+
+- **Alcance**: DiagUSB no incluye ISO propia ni arranca solo; es una aplicación portable para Windows ya iniciado. El complemento live USB es un pendrive Ventoy preparado manualmente por el técnico con SystemRescue y memtest86+.
+- **Manifiesto**: `tools/tools.manifest.json` (schema 1) registra por herramienta `name`, `official_domain`, `url`, `version`, `sha256`, `license`, `file`, `source`, `checksum_url`, `estado` y, si corresponde, `motivo`. Solo `estado: "verificado"` entra en la verificación. SystemRescue 13.02 (GPL-3.0) y memtest86+ 9.00 (GPL-2.0) tienen URL, versión, SHA-256 y licencia tomados de sus fuentes oficiales el 2026-10-28. Ventoy, WinPE, Sysinternals y Npcap quedan `excluido` con su motivo.
+- **Fallo cerrado**: `evaluar_herramienta` exige los seis campos, un SHA-256 de 64 hexadecimales y que la URL pertenezca al dominio oficial. `verificar_archivos` calcula el SHA-256 en bloques de 1 MiB y compara; nunca descarga ni escribe.
+- **CLI**: `python -m diagusb live-usb` muestra el estado y termina con código 0 solo si todas las entradas verificadas están completas; `--verificar CARPETA` comprueba los archivos descargados y termina con código 1 si falta alguno o el hash no coincide.
+- **API y UI**: `GET /api/live-usb` devuelve el resumen y el panel «Pendrive de arranque» de Configuración muestra herramienta, estado, versión, licencia y motivo.
+- **Script auxiliar**: `scripts/verificar_live_usb.ps1` (y su `.cmd`) hace la misma verificación con `Get-FileHash`, sin Python, en modo solo lectura. `scripts/fetch_tools.ps1` descarga solo entradas `verificado` y falla cerrado con las demás.
+- **Kit**: `armar_kit.ps1` copia `tools/tools.manifest.json` y `docs/LIVE_USB.md` para que el estado y la guía estén disponibles sin conexión; los `datas` de PyInstaller incluyen los mismos archivos.
 
 ## 6. Formatos de datos principales
 
@@ -261,6 +271,7 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 | POST | `/api/snapshot` | Guardar snapshot ANTES (recibe `results`) |
 | POST | `/api/compare` | Comparar actuales contra el snapshot guardado |
 | POST | `/api/report?format=doc\|pdf` | Generar informe Word/PDF con acciones del técnico |
+| GET | `/api/live-usb` | Estado del manifiesto de imágenes externas del live USB |
 | GET | `/api/entrega` | Estado de correo/copia, secreto guardado y últimas entregas |
 | POST | `/api/entrega/config` | Guardar configuración de correo/copia (sin contraseña) |
 | POST | `/api/entrega/probar` | Probar servidor SMTP y acceso sin enviar nada |
@@ -286,7 +297,7 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 ## 9. Estrategia de pruebas
 
 - **Con pytest**: `python tests\run_tests.py` descubre todos los `test_*.py` y ejecuta pytest (también `python -m pytest -q`); las suites (modelos, reglas, registry, KB, informes, elevación, registro) se ejecutan directamente con pytest.
-- **347 pruebas** (346 pasan y 1 manual se omite por defecto). Cubren, entre otros: creación de modelos; reglas con fixtures (spooler caído, WiFi débil, BSOD, drivers); descubrimiento de paquetes; KB (guardar/editar/eliminar en archivo temporal, embebida intacta); informes (PDF bytes, HTML, sección de diferencias, `_resumen_datos`, código de verificación); elevación (comandos, rechazo UAC simulado, hijo que sirve puerto); registro persistente (guardado, poda, full-scan, y **endpoints HTTP reales** con servidor en hilo sobre puerto efímero); endurecimiento web de Ronda 2 (bind local, token de sesión, `Host`/`Origin`, `Content-Type`, límite de cuerpo, rutas 404); escritura atómica y preservación de JSON corrupto; identidad del equipo en la comparación (mismo equipo / distinto / forzado); integridad de colectores (hash correcto, archivo alterado, manifiesto ausente); resolución de rutas portables (congelado vs desarrollo vs respaldo `%LOCALAPPDATA%`); y la Ronda 11 (arranque sin UAC, `POST /api/elevar` con y sin token, colector `denied` en reglas y línea de alcance en los informes).
+- **358 pruebas** (357 pasan y 1 manual se omite por defecto). Cubren, entre otros: creación de modelos; reglas con fixtures (spooler caído, WiFi débil, BSOD, drivers); descubrimiento de paquetes; KB (guardar/editar/eliminar en archivo temporal, embebida intacta); informes (PDF bytes, HTML, sección de diferencias, `_resumen_datos`, código de verificación); elevación (comandos, rechazo UAC simulado, hijo que sirve puerto); registro persistente (guardado, poda, full-scan, y **endpoints HTTP reales** con servidor en hilo sobre puerto efímero); endurecimiento web de Ronda 2 (bind local, token de sesión, `Host`/`Origin`, `Content-Type`, límite de cuerpo, rutas 404); escritura atómica y preservación de JSON corrupto; identidad del equipo en la comparación (mismo equipo / distinto / forzado); integridad de colectores (hash correcto, archivo alterado, manifiesto ausente); resolución de rutas portables (congelado vs desarrollo vs respaldo `%LOCALAPPDATA%`); y la Ronda 11 (arranque sin UAC, `POST /api/elevar` con y sin token, colector `denied` en reglas y línea de alcance en los informes).
 - Los colectores se validan contra Windows real (no hay mocks de PowerShell en la suite); las pruebas unitarias simulan `run_powershell` solo donde se prueba el conteo de estados.
 - Verificación manual periódica: full-scan completo sobre un equipo de prueba, `node --check` del JS embebido, smoke test del exe reconstruido.
 
@@ -320,4 +331,4 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 
 ---
 
-*Documento generado para revisión externa. El sistema vive en el repositorio descrito; los componentes mencionados están implementados y cubiertos por la suite (347 pruebas), con las limitaciones declaradas en la §10 — entre ellas, la ausencia de validación en Windows 11 y bajo antivirus/EDR. Tener cobertura de pruebas no equivale a validación en todos los entornos de producción.*
+*Documento generado para revisión externa. El sistema vive en el repositorio descrito; los componentes mencionados están implementados y cubiertos por la suite (358 pruebas), con las limitaciones declaradas en la §10 — entre ellas, la ausencia de validación en Windows 11 y bajo antivirus/EDR. Tener cobertura de pruebas no equivale a validación en todos los entornos de producción.*

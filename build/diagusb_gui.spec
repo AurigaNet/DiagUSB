@@ -21,6 +21,8 @@ a = Analysis(
         (R('src/diagusb/packages'), 'diagusb/packages'),
         (R('src/diagusb/static'), 'diagusb/static'),
         (R('src/diagusb/core/base_conocimiento.json'), 'diagusb/core'),
+        (R('tools/tools.manifest.json'), 'tools'),
+        (R('docs/LIVE_USB.md'), '.'),
         (R('collectors'), 'collectors'),
         (R('manifiesto_hashes.json'), '.'),
     ],

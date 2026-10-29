@@ -1,31 +1,56 @@
 {
   "schema_version": 1,
-  "generated_at": null,
+  "generated_at": "2026-10-28",
   "notes": [
     "No inventar versiones, hashes ni URLs.",
-    "Toda entrada con sha256 null o URL no confirmada debe fallar cerrado en fetch_tools.",
-    "Los binarios de terceros no se redistribuyen en este repositorio."
+    "Solo se integran herramientas con URL, version, SHA-256 y licencia publicados por su fuente oficial.",
+    "Los hashes se copiaron del archivo de checksums oficial en la fecha indicada; las imagenes no se descargan en tiempo de ejecucion.",
+    "DiagUSB no redistribuye estos binarios: el tecnico los descarga y los verifica en su equipo.",
+    "Toda entrada con estado distinto de 'verificado' se excluye del live USB y se registra con su motivo."
   ],
   "tools": [
     {
-      "name": "Ventoy",
-      "official_domain": null,
-      "url": null,
-      "version": null,
-      "sha256": null,
-      "license": null,
-      "redistribuible": "verificar",
-      "estado": "pendiente"
+      "name": "SystemRescue",
+      "official_domain": "system-rescue.org",
+      "url": "https://fastly-cdn.system-rescue.org/releases/13.02/systemrescue-13.02-amd64.iso",
+      "version": "13.02",
+      "sha256": "ad4d670b72859d887c7960142a9a9d36a3e50446694a035e254442f65d6e7572",
+      "license": "GPL-3.0",
+      "file": "systemrescue-13.02-amd64.iso",
+      "source": "https://www.system-rescue.org/Download/",
+      "checksum_url": "https://www.system-rescue.org/releases/13.02/systemrescue-13.02-amd64.iso.sha256",
+      "redistribuible": "no: se descarga desde la fuente oficial",
+      "estado": "verificado",
+      "notes": "ISO amd64 de 1318 MiB publicada el 2026-08-01. SHA-256 copiado del archivo .sha256 oficial el 2026-10-28; la ISO no se descargo en este equipo."
     },
     {
-      "name": "SystemRescue",
-      "official_domain": null,
+      "name": "memtest86+",
+      "official_domain": "memtest.org",
+      "url": "https://www.memtest.org/download/v9.00/mt86plus_9.00_x86_64.iso.zip",
+      "version": "9.00",
+      "sha256": "55d378c0d7d2e1a99edb6a1ff4bd5c78c179801b1f7cfe5893786c397bc19702",
+      "license": "GPL-2.0",
+      "file": "mt86plus_9.00_x86_64.iso.zip",
+      "source": "https://www.memtest.org/",
+      "checksum_url": "https://www.memtest.org/download/v9.00/sha256sum.txt",
+      "redistribuible": "no: se descarga desde la fuente oficial",
+      "estado": "verificado",
+      "notes": "ZIP con la ISO de 64 bits para Ventoy; hay que descomprimirlo antes de copiar la ISO. SHA-256 copiado del sha256sum.txt oficial el 2026-10-28. La version 9.00 aun no esta firmada por Microsoft para Secure Boot."
+    },
+    {
+      "name": "Ventoy",
+      "official_domain": "ventoy.net",
       "url": null,
       "version": null,
       "sha256": null,
       "license": null,
-      "redistribuible": "verificar",
-      "estado": "pendiente"
+      "file": null,
+      "source": "https://www.ventoy.net/en/download.html",
+      "checksum_url": null,
+      "redistribuible": "no",
+      "estado": "excluido",
+      "motivo": "La pagina oficial no publica URL directa, version ni SHA-256: remite a SourceForge. Se instala manualmente con su herramienta oficial y no se verifica ni automatiza desde DiagUSB.",
+      "notes": "Sigue siendo la herramienta recomendada para el multiboot, pero su binario queda fuera del manifiesto verificado."
     },
     {
       "name": "WinPE",
@@ -34,18 +59,13 @@
       "version": null,
       "sha256": null,
       "license": null,
-      "redistribuible": "verificar",
-      "estado": "pendiente"
-    },
-    {
-      "name": "memtest86+",
-      "official_domain": null,
-      "url": null,
-      "version": null,
-      "sha256": null,
-      "license": null,
-      "redistribuible": "verificar",
-      "estado": "pendiente"
+      "file": null,
+      "source": "https://learn.microsoft.com/windows-hardware/manufacture/desktop/winpe-intro",
+      "checksum_url": null,
+      "redistribuible": "no",
+      "estado": "excluido",
+      "motivo": "Requiere Windows ADK y una licencia de Microsoft; no se publica un binario unico con SHA-256 verificable ni se puede redistribuir en este kit.",
+      "notes": "El tecnico puede preparar su propio WinPE con ADK fuera de DiagUSB."
     },
     {
       "name": "Sysinternals",
@@ -54,8 +74,13 @@
       "version": null,
       "sha256": null,
       "license": null,
+      "file": null,
+      "source": "https://learn.microsoft.com/sysinternals/",
+      "checksum_url": null,
       "redistribuible": "no",
-      "estado": "pendiente"
+      "estado": "excluido",
+      "motivo": "La licencia de Microsoft no permite redistribuir los binarios en un kit de terceros; se descargan aparte solo si el tecnico los necesita.",
+      "notes": "DiagUSB no depende de Sysinternals para funcionar."
     },
     {
       "name": "Npcap",
@@ -64,8 +89,13 @@
       "version": null,
       "sha256": null,
       "license": null,
+      "file": null,
+      "source": "https://npcap.com/",
+      "checksum_url": null,
       "redistribuible": "requiere licencia OEM para redistribuir",
-      "estado": "pendiente"
+      "estado": "excluido",
+      "motivo": "La redistribucion requiere una licencia OEM. DiagUSB solo detecta controladores de captura ya instalados; no instala Npcap.",
+      "notes": "El paquete captura_sospechosa informa si Npcap o WinPcap estan presentes, sin instalarlos."
     }
   ]
 }

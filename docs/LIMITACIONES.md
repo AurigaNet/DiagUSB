@@ -17,7 +17,7 @@ Documento de limitaciones y estado actual del proyecto.
 - Ejecutable portable con PyInstaller (`dist\diagusb\diagusb.exe`) como variante opcional, verificado con diagnose y reportes
 - Registro persistente de analisis (`config/registro_analisis.json`): auto-guardado, consulta, borrado individual y borrado total
 - Entrega opcional del informe (`core/entrega.py`): correo SMTP y copia en carpeta local como ZIP (PDF, HTML y JSON), apagada por defecto y con consentimiento explicito en cada envio; contrasena del correo en memoria o cifrada con DPAPI de Windows, nunca en texto plano
-- Suite de pruebas unitarias (347 pruebas; 346 pasan y 1 manual se omite por defecto)
+- Suite de pruebas unitarias (358 pruebas; 357 pasan y 1 manual se omite por defecto)
 
 ### Pendiente de validacion
 - Windows 11 (validado hasta ahora en Windows 10)
@@ -59,6 +59,12 @@ Documento de limitaciones y estado actual del proyecto.
 - El cifrado de la contrasena usa DPAPI de Windows y queda ligado al usuario y al equipo actuales: al copiar el kit a otro equipo hay que volver a escribirla. En sistemas sin DPAPI la contrasena solo se usa en memoria durante el envio
 - La copia en carpeta no es una nube propia: escribe un ZIP en la carpeta que el tecnico elija (por ejemplo, una carpeta que ya sincronice con su nube personal). DiagUSB no sube nada ni conserva copias fuera de esa carpeta
 - La bitacora de entregas (`config/entregas.json`) guarda fecha, tipo, destinatarios o carpeta, adjuntos y resultado; no guarda contrasenas ni el contenido de los informes, y se limita a 50 entradas
+- El live USB no se probo en hardware real: el procedimiento, los hashes y la deteccion de archivos se validaron por lectura y con archivos de prueba, pero falta arrancar SystemRescue y memtest86+ en equipos BIOS/UEFI reales y con Secure Boot activo
+- DiagUSB no formatea, no particiona y no instala Ventoy: el tecnico usa `Ventoy2Disk.exe` por su cuenta. `scripts\armar_pendrive.ps1` solo copia el kit a una unidad ya preparada y verifica hashes
+- Las imagenes de SystemRescue 13.02 y memtest86+ 9.00 no se descargaron en este equipo: el SHA-256 se copio del checksum oficial el 2026-10-28. Vuelva a verificarlo despues de descargar y antes de usar el pendrive
+- Ventoy, WinPE, Sysinternals y Npcap estan excluidos de la verificacion automatica: Ventoy no publica URL directa, version ni SHA-256 en su pagina oficial; WinPE requiere ADK y licencia de Microsoft; Sysinternals no permite redistribucion; Npcap requiere licencia OEM
+- memtest86+ 9.00 aun no esta firmado por Microsoft para Secure Boot; el arranque puede requerir agregar el certificado del proyecto o desactivar Secure Boot de forma temporal, segun la documentacion oficial
+- La version de Ventoy no queda fijada por DiagUSB: si el arranque falla, actualicela desde su sitio oficial y revise la configuracion de Secure Boot antes de cambiar otros parametros
 - `Get-WindowsFeature` (roles de servidor) no existe en Windows 10: `windows_features` queda vacio en estaciones
 - Los "program groups" (Win32_ProgramGroup) no existen en Windows 10: se omitieron del inventario
 

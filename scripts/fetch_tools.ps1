@@ -52,6 +52,17 @@ foreach ($tool in $manifest.tools) {
     Write-Host ''
     Write-Host ("[{0}] estado={1}" -f $tool.name, $tool.estado)
 
+    if ($tool.estado -eq 'excluido') {
+        $motivo = if ($tool.motivo) { $tool.motivo } else { 'sin motivo documentado' }
+        Write-Host ("  EXCLUIDA: {0}" -f $motivo)
+        continue
+    }
+
+    if ($tool.estado -ne 'verificado') {
+        Write-Host ("  RECHAZADO: estado '{0}' distinto de 'verificado'. Falla cerrado." -f $tool.estado)
+        continue
+    }
+
     if (-not $tool.url) {
         Write-Host '  RECHAZADO: URL pendiente o nula. Falla cerrado.'
         continue
@@ -79,7 +90,12 @@ foreach ($tool in $manifest.tools) {
     }
 
     New-Item -ItemType Directory -Path $DownloadDir -Force | Out-Null
-    $fileName = Split-Path -Path ([Uri]$tool.url).AbsolutePath -Leaf
+    if ($tool.file) {
+        $fileName = $tool.file
+    }
+    else {
+        $fileName = Split-Path -Path ([Uri]$tool.url).AbsolutePath -Leaf
+    }
     $destination = Join-Path $DownloadDir $fileName
 
     Write-Host ("  DESCARGANDO: {0}" -f $tool.url)
