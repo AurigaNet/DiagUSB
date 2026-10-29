@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from diagusb.core import integridad
+from diagusb.core.procesos import opciones_sin_ventana
 
 
 class TimeExpiredExpired(Exception):
@@ -52,7 +53,8 @@ class CollectorExecutor:
                 ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script_path)],
                 capture_output=True,
                 text=True,
-                timeout=timeout
+                timeout=timeout,
+                **opciones_sin_ventana()
             )
 
             stdout = result.stdout.strip()
@@ -107,7 +109,8 @@ class CollectorExecutor:
                 ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script_path)],
                 capture_output=True,
                 text=True,
-                timeout=timeout
+                timeout=timeout,
+                **opciones_sin_ventana()
             )
 
             stdout = result.stdout.strip()

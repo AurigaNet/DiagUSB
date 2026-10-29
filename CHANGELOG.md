@@ -4,6 +4,20 @@ Todos los cambios relevantes de DiagUSB se registran en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el versionado [SemVer](https://semver.org/lang/es/).
 
+## [Sin publicar]
+
+### Agregado
+
+- Paquete de diagnóstico `temperatura` (paquete número 14): lee la temperatura del CPU desde LibreHardwareMonitor (LHM) mediante su servidor web local (`http://127.0.0.1:8085`, configurable con `DIAGUSB_LHM_URL`), sin empacar LHM ni PawnIO en el kit. EXPERIMENTAL: no validado todavía con una lectura real de sensores (ver `docs/LIMITACIONES.md`).
+- Regla `cpu_caliente`: aviso a partir de 80 °C y hallazgo crítico a partir de 90 °C, sobre la máxima lectura válida del CPU (package/core), con detección previa de capacidades que bloquea el paquete (con motivo visible) si LHM no está activo, sin afectar al resto del diagnóstico.
+- Entrada nueva de base de conocimiento `cpu_caliente` con soluciones (polvo, pasta térmica, ventilación, plan de energía); la base embebida pasa de 19 a 22 entradas.
+- Paquete de diagnóstico `bateria` (EXPERIMENTAL, no verificado en hardware real): aparece solo en equipos con batería. Lee carga, estado y ciclos, y calcula el desgaste comparando la carga plena con la capacidad de diseño del reporte de batería (`powercfg /batteryreport`; el XML temporal se borra siempre). Regla `bateria_agotada`: aviso bajo el 60 % de la capacidad de diseño y crítico bajo el 40 %. En equipos sin batería el paquete queda oculto.
+- Detección previa de capacidades extendida: además de impresoras, red y CPU, consulta si el equipo tiene batería (por el requisito `battery`).
+
+### Seguridad
+
+- El colector de temperatura solo consulta `127.0.0.1` (loopback), no envía datos del equipo a ningún servidor externo y funciona sin permisos de Administrador de DiagUSB (LHM debe correr elevado aparte).
+
 ## [0.1.0] - 2026-10-20
 
 Primera versión portable para Windows 10.

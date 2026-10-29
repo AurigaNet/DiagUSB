@@ -1,5 +1,6 @@
 
         let isRunning = false;
+        let capacidadesActuales = null;
         let currentDiag = null;
         let lastDiffs = null;
         let lastComparacionForzada = false;
@@ -7,6 +8,32 @@
         let lastMetricasActual = null;
 
         const DIAGUSB = (document.body && document.body.dataset) ? document.body.dataset : {};
+
+        const DIAGUSB_CLIENT_ID = (() => {
+            try {
+                if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+            } catch (e) {}
+            return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2);
+        })();
+
+        function latidoDiagUSB() {
+            fetch('/api/latido', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({id: DIAGUSB_CLIENT_ID}),
+                keepalive: true
+            }).catch(() => {});
+        }
+
+        function despedidaDiagUSB() {
+            try {
+                const cuerpo = JSON.stringify({id: DIAGUSB_CLIENT_ID});
+                if (navigator.sendBeacon) {
+                    navigator.sendBeacon('/api/despedida',
+                        new Blob([cuerpo], {type: 'application/json'}));
+                }
+            } catch (e) {}
+        }
 
         function escHtml(s) {
             const d = document.createElement('div');
@@ -356,6 +383,214 @@
             return '<div class="loading"><div class="spinner"></div><p class="loading-text">' + message + '</p></div>';
         }
 
+        const NOMBRES_PAQUETE = {
+            impresion: 'Impresión',
+            redes: 'Adaptadores de Red',
+            conectividad: 'Conectividad',
+            wifi: 'WiFi',
+            disco: 'Disco',
+            memoria: 'Memoria',
+            temperatura: 'Temperatura CPU',
+            bateria: 'Batería',
+            servicios: 'Servicios',
+            seguridad: 'Seguridad',
+            windows_update: 'Windows Update',
+            drivers: 'Drivers',
+            eventos: 'Eventos Críticos',
+            contexto: 'Contexto Sistema',
+            inventario_general: 'Inventario General'
+        };
+
+        function nombrePaquete(id) {
+            return NOMBRES_PAQUETE[id] || String(id || '').replace(/_/g, ' ');
+        }
+
+        function aplicarCapacidades(caps) {
+            capacidadesActuales = caps || null;
+            const resumen = document.getElementById('capacidadesResumen');
+            if (resumen) {
+                if (!caps) {
+                    resumen.textContent = 'Detección de hardware no disponible';
+                } else if (!caps.ok) {
+                    resumen.textContent = caps.error || 'Detección de hardware no disponible';
+                } else {
+                    resumen.textContent = caps.resumen || '';
+                }
+            }
+            const paquetes = (caps && caps.paquetes) || [];
+            document.querySelectorAll('.mod-btn[data-paquete]').forEach(btn => {
+                const id = btn.getAttribute('data-paquete');
+                const info = paquetes.find(p => p.id === id);
+                const motivo = btn.querySelector('.mod-motivo');
+                const noAplica = !!(info && info.available === false);
+                btn.disabled = noAplica || isRunning;
+                btn.classList.toggle('no-aplica', noAplica);
+                let texto = '';
+                if (info) {
+                    texto = info.reason || (info.available ? 'Disponible' : 'No aplica');
+                    if (noAplica) texto = 'No aplica: ' + texto;
+                }
+                if (motivo) {
+                    motivo.textContent = texto;
+                    motivo.classList.toggle('con-advertencia', !!(info && info.warning));
+                }
+                btn.title = nombrePaquete(id) + (texto ? ': ' + texto : '');
+                btn.setAttribute('aria-label', btn.title);
+            });
+        }
+
+        function setBotonesOcupados(ocupado) {
+            const botones = document.querySelectorAll('.mod-btn:not(#btnKb):not(#btnRegistro)');
+            const actualizar = document.getElementById('btnActualizarCapacidades');
+            if (actualizar) actualizar.disabled = ocupado;
+            if (ocupado) {
+                botones.forEach(b => { b.disabled = true; });
+                return;
+            }
+            botones.forEach(b => {
+                if (!b.hasAttribute('data-paquete')) b.disabled = false;
+            });
+            aplicarCapacidades(capacidadesActuales);
+        }
+
+        async function cargarCapacidades(forzar) {
+            const boton = document.getElementById('btnActualizarCapacidades');
+            if (boton) boton.disabled = true;
+            const resumen = document.getElementById('capacidadesResumen');
+            if (resumen && !capacidadesActuales) {
+                resumen.textContent = 'Detectando hardware y conexiones…';
+            }
+            try {
+                const url = '/api/capacidades' + (forzar ? '?force=1' : '');
+                const r = await fetch(url, {cache: 'no-store'});
+                const data = await r.json();
+                aplicarCapacidades(data);
+            } catch (e) {
+                if (resumen) resumen.textContent = 'No se pudo detectar el hardware';
+            } finally {
+                if (boton) boton.disabled = isRunning;
+            }
+        }
+
+        function nombreColector(id) {
+            return String(id || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        }
+
+        function segundosLegibles(valor) {
+            const s = Math.max(0, Math.round(Number(valor) || 0));
+            if (s < 60) return s + ' s';
+            const m = Math.floor(s / 60);
+            return m + ' min ' + (s % 60) + ' s';
+        }
+
+        let progresoTimer = null;
+        let progresoConsultando = false;
+
+        function detenerProgreso() {
+            if (progresoTimer) {
+                clearInterval(progresoTimer);
+                progresoTimer = null;
+            }
+            progresoConsultando = false;
+        }
+
+        function mostrarProgreso(titulo, modo) {
+            document.getElementById('resultsContent').innerHTML =
+                '<div class="progreso-panel" id="progresoPanel">' +
+                    '<div class="progreso-cabecera">' +
+                        '<div class="progreso-anillo" id="progresoAnillo" style="--pct:0%">' +
+                            '<div class="progreso-anillo-centro"><span id="progresoAnilloPct">0%</span></div>' +
+                        '</div>' +
+                        '<div class="progreso-texto">' +
+                            '<span class="progreso-eyebrow">ANÁLISIS EN CURSO</span>' +
+                            '<h3 class="progreso-titulo" id="progresoTitulo"></h3>' +
+                            '<p class="progreso-detalle" id="progresoDetalle">Preparando colectores…</p>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="progreso-barra activa"><span id="progresoBarra" style="width:0%"></span></div>' +
+                    '<div class="progreso-meta">' +
+                        '<span id="progresoCuenta">0 de 0 colectores</span>' +
+                        '<span id="progresoTiempo">0 s</span>' +
+                    '</div>' +
+                    '<div class="progreso-paquetes" id="progresoPaquetes"></div>' +
+                    '<p class="progreso-hint">El análisis se ejecuta en segundo plano. No se abrirán ventanas de consola.</p>' +
+                '</div>';
+            const tituloEl = document.getElementById('progresoTitulo');
+            if (tituloEl) tituloEl.textContent = titulo;
+            const paquetesEl = document.getElementById('progresoPaquetes');
+            if (paquetesEl && modo !== 'full') paquetesEl.style.display = 'none';
+        }
+
+        function renderProgreso(p) {
+            if (!p || !document.getElementById('progresoPanel')) return;
+            const pct = Math.max(0, Math.min(100, Number(p.porcentaje) || 0));
+            const anillo = document.getElementById('progresoAnillo');
+            const barra = document.getElementById('progresoBarra');
+            const pctEl = document.getElementById('progresoAnilloPct');
+            const cuenta = document.getElementById('progresoCuenta');
+            const tiempo = document.getElementById('progresoTiempo');
+            const detalle = document.getElementById('progresoDetalle');
+            if (anillo) anillo.style.setProperty('--pct', pct + '%');
+            if (barra) barra.style.width = pct + '%';
+            if (pctEl) pctEl.textContent = Math.round(pct) + '%';
+            if (cuenta) {
+                cuenta.textContent = p.total ? (p.completados + ' de ' + p.total + ' colectores')
+                                             : 'Preparando colectores…';
+            }
+            if (tiempo) {
+                let texto = segundosLegibles(p.transcurrido);
+                if (p.restante !== null && p.restante !== undefined) {
+                    texto += ' · ~' + segundosLegibles(p.restante) + ' restantes';
+                }
+                tiempo.textContent = texto;
+            }
+            if (detalle) {
+                const activos = (p.paquetes || []).filter(x => x.estado === 'ejecutando');
+                if (p.actual) {
+                    detalle.textContent = 'Ejecutando ' + nombreColector(p.actual) + '…';
+                } else if (activos.length > 1) {
+                    detalle.textContent = activos.length + ' módulos en paralelo…';
+                } else if (p.activo) {
+                    detalle.textContent = 'Preparando el siguiente colector…';
+                } else {
+                    detalle.textContent = 'Finalizando el análisis…';
+                }
+            }
+            const contPaquetes = document.getElementById('progresoPaquetes');
+            if (contPaquetes && p.modo === 'full' && (p.paquetes || []).length) {
+                contPaquetes.style.display = '';
+                contPaquetes.innerHTML = p.paquetes.map(paquete => {
+                    const ppct = Math.max(0, Math.min(100, Number(paquete.porcentaje) || 0));
+                    const estado = paquete.estado || 'pendiente';
+                    return '<div class="progreso-paquete ' + estado + '">' +
+                        '<div class="progreso-paquete-top">' +
+                            '<span class="progreso-paquete-nombre">' + escHtml(paquete.label) + '</span>' +
+                            '<span class="progreso-paquete-cuenta">' + paquete.completados + '/' + paquete.total + '</span>' +
+                        '</div>' +
+                        '<div class="progreso-mini"><span style="width:' + ppct + '%"></span></div>' +
+                    '</div>';
+                }).join('');
+            }
+        }
+
+        function iniciarProgreso(titulo, modo) {
+            detenerProgreso();
+            mostrarProgreso(titulo, modo);
+            const consultar = async () => {
+                if (progresoConsultando) return;
+                progresoConsultando = true;
+                try {
+                    const r = await fetch('/api/progreso', {cache: 'no-store'});
+                    if (r.ok) renderProgreso(await r.json());
+                } catch (e) {
+                } finally {
+                    progresoConsultando = false;
+                }
+            };
+            consultar();
+            progresoTimer = setInterval(consultar, 650);
+        }
+
         function formatJson(data) {
             try {
                 return JSON.stringify(data, null, 2);
@@ -379,22 +614,28 @@
             isRunning = true;
             mostrarVista('diagnosticos');
 
-            const buttons = document.querySelectorAll('.mod-btn:not(#btnKb):not(#btnRegistro)');
-            buttons.forEach(b => b.disabled = true);
+            setBotonesOcupados(true);
 
             setStatus('running', 'Ejecutando diagnóstico de ' + package + '...');
-            document.getElementById('resultsContent').innerHTML = showLoading('Ejecutando colectores...');
+            iniciarProgreso(nombrePaquete(package), 'paquete');
 
             try {
                 const response = await fetch('/api/diagnose?package=' + encodeURIComponent(package));
                 const data = await response.json();
 
                 if (data.error) {
+                    detenerProgreso();
                     hideAcciones();
                     mostrarIntegridad([]);
                     document.getElementById('resultsContent').innerHTML = '<div class="diag-card error"><p>' + escHtml(data.error) + '</p></div>';
-                    setStatus('error', 'Error: ' + data.error);
+                    if (data.unavailable) {
+                        setStatus('error', 'No aplica: ' + (data.reason || data.error));
+                        cargarCapacidades(true);
+                    } else {
+                        setStatus('error', 'Error: ' + data.error);
+                    }
                 } else {
+                    detenerProgreso();
                     currentDiag = data;
                     lastDiffs = null;
                     lastComparacionForzada = false;
@@ -417,6 +658,7 @@
                     html += '<span>Sin datos: ' + (data.empty_count || 0) + '</span>';
                     html += '<span>Problemas: ' + nProblemas + '</span>';
                     html += '<span>' + escHtml(data.timestamp) + '</span>';
+                    if (data.identidad && data.identidad.id_corto) html += '<span>Equipo: ' + escHtml(data.identidad.id_corto) + '</span>';
                     html += '</div>';
 
                     for (const result of data.results) {
@@ -438,13 +680,15 @@
                     loadRegistro();
                 }
             } catch (e) {
+                detenerProgreso();
                 hideAcciones();
                 document.getElementById('resultsContent').innerHTML = '<div class="diag-card error"><p>Error: ' + escHtml(e.message) + '</p></div>';
                 setStatus('error', 'Error de conexión');
             }
 
-            buttons.forEach(b => b.disabled = false);
+            detenerProgreso();
             isRunning = false;
+            setBotonesOcupados(false);
         }
 
         async function runFullScan() {
@@ -453,21 +697,21 @@
             hideAcciones();
             mostrarVista('diagnosticos');
 
-            const buttons = document.querySelectorAll('.mod-btn:not(#btnKb):not(#btnRegistro)');
-            buttons.forEach(b => b.disabled = true);
+            setBotonesOcupados(true);
 
             setStatus('running', 'Ejecutando revisión total del equipo...');
-            document.getElementById('resultsContent').innerHTML = showLoading('Ejecutando todos los diagnósticos...');
+            iniciarProgreso('Revisión Total', 'full');
 
             try {
                 const response = await fetch('/api/full-scan');
                 const data = await response.json();
 
                 if (data.error) {
+                    detenerProgreso();
                     document.getElementById('resultsContent').innerHTML = '<div class="diag-card error"><p>' + escHtml(data.error) + '</p></div>';
                     setStatus('error', 'Error: ' + data.error);
-                    buttons.forEach(b => b.disabled = false);
                     isRunning = false;
+                    setBotonesOcupados(false);
                     return;
                 }
 
@@ -540,19 +784,39 @@
                     html += '</div>';
                 }
 
+                const omitidos = data.skipped || [];
+                const nOmitidos = omitidos.length;
+                let htmlOmitidos = '';
+                if (nOmitidos) {
+                    htmlOmitidos = '<div class="diag-card warning" style="margin-bottom: 20px;">' +
+                        '<div class="diag-header">' +
+                        '<span class="diag-title">MÓDULOS OMITIDOS</span>' +
+                        '<span class="diag-badge warning">' + nOmitidos + ' no aplica(n)</span>' +
+                        '</div>' +
+                        '<div class="diag-stats"><span>No se ejecutaron porque el hardware o la conexión no están presentes.</span></div>';
+                    omitidos.forEach(o => {
+                        htmlOmitidos += '<div class="diag-json" style="margin-top: 8px; padding: 8px;">' +
+                            '<strong>' + escHtml(o.package_label || o.package || 'Módulo') + ':</strong> ' +
+                            escHtml('No aplica — ' + (o.reason || 'sin hardware detectado')) +
+                            '</div>';
+                    });
+                    htmlOmitidos += '</div>';
+                }
+
                 html = '<div class="diag-card ' + ((totalErrors > 0 || totalProblems > 0) ? 'warning' : 'success') + '" style="margin-bottom: 20px;">' +
                     '<div class="diag-header">' +
                     '<span class="diag-title">RESUMEN TOTAL</span>' +
                     getStatusBadge(totalOk, totalErrors, totalProblems, totalEmpty) +
                     '</div>' +
                     '<div class="diag-stats">' +
-                    '<span>Paquetes: ' + data.diagnostics.length + '</span>' +
+                    '<span>Paquetes analizados: ' + data.diagnostics.length + '</span>' +
+                    (nOmitidos ? '<span>Omitidos: ' + nOmitidos + '</span>' : '') +
                     '<span>Colectores OK: ' + totalOk + '</span>' +
                     '<span>Colectores con error: ' + totalErrors + '</span>' +
                     '<span>Sin datos: ' + totalEmpty + '</span>' +
                     '<span>Problemas detectados: ' + totalProblems + '</span>' +
                     '</div>' +
-                    '</div>' + html;
+                    '</div>' + htmlOmitidos + html;
 
                 lastDiffs = null;
                 lastComparacionForzada = false;
@@ -576,18 +840,22 @@
                 };
                 renderProblemas(allFindings);
                 renderMetricas(data.metricas);
+                detenerProgreso();
 
                 document.getElementById('resultsContent').innerHTML = html;
                 setStatus('ready', 'Revisión total completada' +
+                    (nOmitidos ? ' · ' + nOmitidos + ' módulo(s) omitido(s)' : '') +
                     (data.registro_id ? ' · guardado en registro' : ''));
                 loadRegistro();
             } catch (e) {
+                detenerProgreso();
                 document.getElementById('resultsContent').innerHTML = '<div class="diag-card error"><p>Error: ' + escHtml(e.message) + '</p></div>';
                 setStatus('error', 'Error de conexión');
             }
 
-            buttons.forEach(b => b.disabled = false);
+            detenerProgreso();
             isRunning = false;
+            setBotonesOcupados(false);
         }
 
         function copyResults() {
@@ -1217,9 +1485,52 @@
             }
         }
 
+        async function cerrarDiagUSB() {
+            if (!confirm('¿Cerrar DiagUSB? La interfaz dejará de estar disponible hasta que lo abras de nuevo.')) return;
+            const btn = document.getElementById('btnCerrarDiagUSB');
+            const estado = document.getElementById('cierreEstado');
+            if (btn) btn.disabled = true;
+            try {
+                const r = await fetch('/api/apagar', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: '{}'
+                });
+                const d = await r.json();
+                if (!r.ok || !d.ok) throw new Error(d.error || ('HTTP ' + r.status));
+                if (estado) estado.textContent = d.mensaje || 'DiagUSB se cerró.';
+                setStatus('ready', 'DiagUSB cerrado');
+            } catch (e) {
+                if (estado) estado.textContent = 'No se pudo cerrar DiagUSB: ' + e.message;
+                if (btn) btn.disabled = false;
+                setStatus('error', 'Error al cerrar DiagUSB');
+            }
+        }
+
         // ---------------------------------------------------------------
         // Elevacion / permisos
         // ---------------------------------------------------------------
+        async function loadIdentidad() {
+            const b = document.getElementById('identidadBanner');
+            if (!b) return;
+            try {
+                const r = await fetch('/api/identidad');
+                const d = await r.json();
+                const nombre = d.computer_name ? escHtml(d.computer_name) : '(sin nombre)';
+                if (d.id_corto) {
+                    const firme = (d.nivel === 'fuerte' && d.calidad === 'alta');
+                    b.className = 'identidad-banner' + (firme ? '' : ' warn');
+                    b.innerHTML = '<b>Equipo:</b> ' + nombre + ' &middot; <b>ID:</b> <span class="id-codigo">' + escHtml(d.id_corto) + '</span> &middot; identificaci\u00f3n ' + escHtml(d.nivel || '') + (d.aviso ? '<br>' + escHtml(d.aviso) : '');
+                } else {
+                    b.className = 'identidad-banner warn';
+                    b.innerHTML = '<b>Equipo:</b> ' + nombre + ' &middot; <b>ID:</b> sin identificar<br>' + escHtml(d.aviso || '');
+                }
+            } catch (e) {
+                b.className = 'identidad-banner warn';
+                b.textContent = 'No se pudo consultar la identidad del equipo.';
+            }
+        }
+
         async function loadElevation() {
             try {
                 const r = await fetch('/api/elevation');
@@ -1309,6 +1620,11 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
+            latidoDiagUSB();
+            setInterval(latidoDiagUSB, 4000);
+            window.addEventListener('pagehide', ev => {
+                if (!ev.persisted) despedidaDiagUSB();
+            });
             document.querySelectorAll('#navPrincipal .nav-item').forEach(b =>
                 b.addEventListener('click', () => mostrarVista(b.getAttribute('data-view'))));
             const s = document.getElementById('kbSearch');
@@ -1338,6 +1654,8 @@
                 }
             });
             inicializarAcerca();
+            loadIdentidad();
             loadElevation();
+            cargarCapacidades(false);
             loadRegistro();
         });

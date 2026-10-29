@@ -2,11 +2,15 @@
 # Copyright (C) 2026 Daniel Ricardo Novoa
 """Resolucion de rutas persistentes (config/ y reports/) para DiagUSB.
 
-Congelado (PyInstaller), la carpeta de datos es la que contiene ``diagusb.exe``
+Congelado (PyInstaller), la carpeta de datos es la que contiene el ejecutable
 (``Path(sys.executable).parent``), nunca ``_internal`` ni el directorio actual.
-Si esa carpeta no es escribible (p. ej. un pendrive protegido), se usa como
-respaldo ``%LOCALAPPDATA%\\DiagUSB``. En desarrollo la base es la raiz del
-repositorio.
+Una instalacion en PC escribe ``instalado.flag`` junto al ejecutable con la
+carpeta de datos de usuario; asi el programa queda instalado en
+``%LOCALAPPDATA%\\Programs\\DiagUSB`` pero los datos se guardan en
+``%LOCALAPPDATA%\\DiagUSB``. El modo portable no tiene ese archivo y conserva
+los datos junto al ejecutable. Si la carpeta no es escribible (p. ej. un
+pendrive protegido), se usa como respaldo ``%LOCALAPPDATA%\\DiagUSB``. En
+desarrollo la base es la raiz del repositorio.
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ import sys
 from pathlib import Path
 
 _NOMBRE_RESPALDO = "DiagUSB"
+_MARCADOR_INSTALADO = "instalado.flag"
 
 _base: Path | None = None
 _usa_respaldo = False
@@ -29,6 +34,20 @@ def _raiz_repositorio() -> Path:
 def _dir_local_appdata() -> Path:
     base = os.environ.get("LOCALAPPDATA") or str(Path.home())
     return Path(base) / _NOMBRE_RESPALDO
+
+
+def _ruta_instalada(carpeta_programa: Path) -> Path | None:
+    """Lee la carpeta de datos indicada por ``instalado.flag``, si existe."""
+    marcador = carpeta_programa / _MARCADOR_INSTALADO
+    try:
+        lineas = marcador.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for linea in lineas:
+        texto = linea.strip().strip('"')
+        if texto and not texto.startswith("#"):
+            return Path(texto)
+    return _dir_local_appdata()
 
 
 def _escribible(carpeta: Path) -> bool:
@@ -50,6 +69,17 @@ def dir_base() -> Path:
         return _base
     if getattr(sys, "frozen", False):
         candidato = Path(sys.executable).resolve().parent
+        datos_instalados = _ruta_instalada(candidato)
+        if datos_instalados is not None:
+            if not datos_instalados.is_absolute():
+                datos_instalados = candidato / datos_instalados
+            if _escribible(datos_instalados):
+                _base = datos_instalados
+                _usa_respaldo = False
+                return _base
+            _base = _dir_local_appdata()
+            _usa_respaldo = True
+            return _base
     else:
         candidato = _raiz_repositorio()
     if _escribible(candidato):

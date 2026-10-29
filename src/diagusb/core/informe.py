@@ -487,6 +487,10 @@ def informe_desde_diagnostico(diag: dict, acciones: list[dict] | None = None,
                 "build": win.get("build_number", ""),
             }
             break
+    ident = diag.get("identidad")
+    if isinstance(ident, dict) and ident.get("id_corto"):
+        equipo["id_equipo"] = (str(ident["id_corto"]) + " (identificaci\u00f3n "
+                               + str(ident.get("nivel") or "") + ")")
 
     colectores: list[InformeColector] = []
     for r in diag.get("results", []):
@@ -932,6 +936,7 @@ def _ficha_tecnica(e: InformeData) -> list:
 
     equipo = [
         ("Equipo", _g(eq.get("computer_name") or si.get("name"))),
+        ("ID del equipo", _g(eq.get("id_equipo"))),
         ("Usuario", _g(eq.get("user"))),
         ("Modo de ejecución", _modo(e)),
         ("Sistema operativo", _g(eq.get("os") or so.get("caption") or ctx.get("os_version"))),

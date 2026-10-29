@@ -130,12 +130,20 @@ def discover_packages() -> list[PackageManifest]:
                         script=col_data.get("script", "")
                     ))
 
+            requisitos = data.get("requirements", [])
+            if isinstance(requisitos, str):
+                requisitos = [requisitos]
+            if not isinstance(requisitos, list):
+                requisitos = []
+            requisitos = [str(r).strip() for r in requisitos if str(r).strip()]
+
             package = PackageManifest(
                 name=data.get("name", item.name),
                 version=data.get("version", "1.0.0"),
                 label=data.get("label", item.name),
                 description=data.get("description", ""),
                 symptoms=data.get("symptoms", []),
+                requirements=requisitos,
                 collectors=collectors
             )
             packages.append(package)

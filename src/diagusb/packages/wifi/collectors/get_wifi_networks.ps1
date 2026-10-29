@@ -20,14 +20,28 @@ if (-not $__diagusb_common) {
 . $__diagusb_common
 
 $result = New-DiagUsbCollectorResult -CollectorId 'wifi_networks' -ScriptBlock {
+    $connectedSsid = $null
+    try {
+        foreach ($line in @(netsh wlan show interfaces)) {
+            if ($line -match '^\s*SSID\s*:\s*(.+)$') {
+                $connectedSsid = $matches[1].Trim()
+                break
+            }
+        }
+    } catch {
+        $connectedSsid = $null
+    }
+
     $networks = netsh wlan show networks mode=bssid
     $output = @()
     $current = $null
     foreach ($line in $networks) {
         if ($line -match '^\s*SSID\s+\d+\s*:\s*(.+)$') {
             if ($current) { $output += $current }
+            $ssid = $matches[1].Trim()
             $current = [ordered]@{
-                ssid = $matches[1].Trim()
+                ssid = $ssid
+                connected = [bool]($connectedSsid -and $ssid -eq $connectedSsid)
                 bssid = @()
                 signal = @()
                 channel = @()
@@ -37,15 +51,15 @@ $result = New-DiagUsbCollectorResult -CollectorId 'wifi_networks' -ScriptBlock {
             }
         } elseif ($line -match '^\s*BSSID\s+\d+\s*:\s*(.+)$') {
             $current.bssid += $matches[1].Trim()
-        } elseif ($line -match '^\s*Signal\s*:\s*(\d+)%') {
+        } elseif ($line -match '^\s*(?:Signal|Se\u00f1al)\s*:\s*(\d+)%') {
             $current.signal += [int]$matches[1]
-        } elseif ($line -match '^\s*Channel\s*:\s*(\d+)') {
+        } elseif ($line -match '^\s*(?:Channel|Canal)\s*:\s*(\d+)') {
             $current.channel += [int]$matches[1]
-        } elseif ($line -match '^\s*Network type\s*:\s*(.+)$') {
+        } elseif ($line -match '^\s*(?:Network type|Tipo de red)\s*:\s*(.+)$') {
             $current.type = $matches[1].Trim()
-        } elseif ($line -match '^\s*Authentication\s*:\s*(.+)$') {
+        } elseif ($line -match '^\s*(?:Authentication|Autenticaci(?:on|\u00f3n))\s*:\s*(.+)$') {
             $current.authentication = $matches[1].Trim()
-        } elseif ($line -match '^\s*Radio type\s*:\s*(.+)$') {
+        } elseif ($line -match '^\s*(?:Radio type|Tipo de radio)\s*:\s*(.+)$') {
             $current.radio_type = $matches[1].Trim()
         }
     }

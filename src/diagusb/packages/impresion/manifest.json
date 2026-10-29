@@ -1,10 +1,9 @@
 ﻿{
-    "version":  "1.0.0",
-    "name":  "impresion",
-    "symptoms":  [
-                     "la_impresora_no_imprime"
-                 ],
-    "collectors":  {},
-    "description":  "Diagnóstico guiado del síntoma: \"la impresora no imprime\"",
-    "label":  "Impresión"
+    "version": "1.0.0",
+    "name": "impresion",
+    "label": "Impresión",
+    "description": "Diagnóstico guiado del síntoma: \"la impresora no imprime\"",
+    "symptoms": ["la_impresora_no_imprime"],
+    "requirements": ["printer"],
+    "collectors": {}
 }

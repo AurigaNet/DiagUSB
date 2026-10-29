@@ -8,11 +8,12 @@ from typing import Any
 
 from .models import CollectorResult, ComputerId, Difference, Snapshot
 from . import almacen
+from . import identidad
 
 
 def load_snapshot(path: Path) -> Snapshot:
     """
-    Carga una instantanea desde un archivo JSON.
+    Carga una instantánea desde un archivo JSON.
 
     Args:
         path: Ruta al archivo de instantanea.
@@ -23,14 +24,34 @@ def load_snapshot(path: Path) -> Snapshot:
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    # Reconstruir ComputerId
+    # Reconstruir el ComputerId
     computer_id_data = data.get("computer_id", {})
+    comp_guardadas = computer_id_data.get("componentes")
+    if isinstance(comp_guardadas, dict):
+        componentes = dict(comp_guardadas)
+    else:
+        componentes = {}
+        for nombre in identidad.FUERTES + identidad.DEBILES:
+            valor = computer_id_data.get(nombre, "")
+            if isinstance(valor, str) and valor.strip():
+                componentes[nombre] = valor.strip()
+    machine_id = computer_id_data.get("machine_id", "")
+    if not isinstance(machine_id, str):
+        machine_id = ""
+    respaldos = computer_id_data.get("respaldos")
+    if not isinstance(respaldos, dict):
+        respaldos = {}
     computer_id = ComputerId(
         smbios_uuid=computer_id_data.get("smbios_uuid", ""),
         bios_serial=computer_id_data.get("bios_serial", ""),
         machine_guid=computer_id_data.get("machine_guid", ""),
         mac_addresses=computer_id_data.get("mac_addresses", []),
-        weak_candidate=computer_id_data.get("weak_candidate", False)
+        weak_candidate=computer_id_data.get("weak_candidate", False),
+        machine_id=machine_id or identidad.fingerprint(componentes),
+        componentes=componentes,
+        calidad=str(computer_id_data.get("calidad", "") or "")
+        or identidad.calidad(componentes),
+        respaldos=respaldos
     )
 
     # Reconstruir CollectorResults
@@ -94,7 +115,7 @@ def load_snapshot(path: Path) -> Snapshot:
 
 def save_snapshot(snapshot: Snapshot, path: Path) -> None:
     """
-    Guarda una instantanea en un archivo JSON.
+    Guarda una instantánea en un archivo JSON.
 
     Args:
         snapshot: Objeto Snapshot a guardar.
@@ -106,7 +127,13 @@ def save_snapshot(snapshot: Snapshot, path: Path) -> None:
             "bios_serial": snapshot.computer_id.bios_serial,
             "machine_guid": snapshot.computer_id.machine_guid,
             "mac_addresses": snapshot.computer_id.mac_addresses,
-            "weak_candidate": snapshot.computer_id.weak_candidate
+            "weak_candidate": snapshot.computer_id.weak_candidate,
+            "machine_id": snapshot.computer_id.machine_id
+            or identidad.fingerprint(snapshot.computer_id.componentes),
+            "componentes": snapshot.computer_id.componentes,
+            "calidad": snapshot.computer_id.calidad
+            or identidad.calidad(snapshot.computer_id.componentes),
+            "respaldos": snapshot.computer_id.respaldos,
         },
         "captured_at_utc": snapshot.captured_at_utc,
         "observations": []
@@ -176,10 +203,10 @@ def _compare_values(
     if baseline_value == current_value:
         return differences
 
-    # Determinar severidad
+    # Determinar la severidad
     severity = "warning"
     if isinstance(baseline_value, (int, float)) and isinstance(current_value, (int, float)):
-        # Cambio numerico significativo
+        # Cambio numérico significativo
         if baseline_value == 0 and current_value != 0:
             severity = "error"
         elif current_value == 0:
@@ -208,16 +235,16 @@ def compare_snapshots(baseline: Snapshot, current: Snapshot) -> list[Difference]
     """
     differences = []
 
-    # Crear mapa de observations por collector_id
+    # Armar el mapa de observaciones por collector_id
     baseline_obs = {obs.collector_id: obs for obs in baseline.observations}
     current_obs = {obs.collector_id: obs for obs in current.observations}
 
-    # Comparar cada collector presente en baseline
+    # Comparar cada colector presente en la baseline
     for collector_id, baseline_observation in baseline_obs.items():
         current_observation = current_obs.get(collector_id)
 
         if current_observation is None:
-            # Collector presente en baseline pero no en current
+            # Colector presente en la baseline pero ausente en la actual
             differences.append(Difference(
                 collector_id=collector_id,
                 field_path="",
@@ -227,11 +254,11 @@ def compare_snapshots(baseline: Snapshot, current: Snapshot) -> list[Difference]
             ))
             continue
 
-        # Comparar datos del collector
+        # Comparar los datos del colector
         baseline_data = baseline_observation.data
         current_data = current_observation.data
 
-        # Las salidas pueden ser dict (campos) o list (registros): comparar segun forma
+        # Las salidas pueden ser dict (campos) o list (registros): comparar según forma
         if isinstance(baseline_data, dict) and isinstance(current_data, dict):
             all_keys = set(baseline_data.keys()) | set(current_data.keys())
             for key in all_keys:
@@ -251,7 +278,7 @@ def compare_snapshots(baseline: Snapshot, current: Snapshot) -> list[Difference]
                 severity="warning"
             ))
 
-    # Verificar collectors nuevos (presentes en current pero no en baseline)
+    # Verificar colectores nuevos (presentes en actual pero ausentes en baseline)
     for collector_id in current_obs:
         if collector_id not in baseline_obs:
             differences.append(Difference(

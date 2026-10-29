@@ -12,6 +12,7 @@ import socket
 import socketserver
 import sys
 import threading
+import time
 import uuid
 import webbrowser
 import subprocess
@@ -29,8 +30,12 @@ from diagusb.core.registry import discover_packages
 from diagusb.core.models import CollectorResult, QueryInfo, Snapshot, ComputerId
 from diagusb.core.comparator import compare_snapshots
 from diagusb.core import almacen
+from diagusb.core import capacidades
 from diagusb.core import integridad
 from diagusb.core import rutas
+from diagusb.core import identidad
+from diagusb.core import identidad_sesion
+from diagusb.core.procesos import opciones_sin_ventana
 from diagusb.core.rules import diagnose_symptoms
 from diagusb.core.metricas import (calcular_metricas, recomendaciones_de,
                                    tendencia)
@@ -91,6 +96,66 @@ def _id_registro_valido(valor) -> bool:
 
 REGISTRO_MAX = 200
 _REGISTRO_LOCK = threading.Lock()
+
+_LATIDOS_LOCK = threading.Lock()
+_LATIDOS = {}
+_CIERRE_DIFERIDO = None
+_LATIDO_TIMEOUT = 120.0
+_CIERRE_GRACIA = 5.0
+
+
+def _limpiar_latidos() -> None:
+    """Descarta clientes que dejaron de enviar latidos."""
+    ahora = time.monotonic()
+    for cliente in list(_LATIDOS):
+        if ahora - _LATIDOS[cliente] > _LATIDO_TIMEOUT:
+            del _LATIDOS[cliente]
+
+
+def _registrar_latido(cliente: str) -> None:
+    global _CIERRE_DIFERIDO
+    if not cliente:
+        return
+    with _LATIDOS_LOCK:
+        _LATIDOS[cliente] = time.monotonic()
+        _CIERRE_DIFERIDO = None
+
+
+def _quitar_latido(cliente: str) -> None:
+    global _CIERRE_DIFERIDO
+    with _LATIDOS_LOCK:
+        _LATIDOS.pop(cliente, None)
+        _limpiar_latidos()
+        if _LATIDOS:
+            _CIERRE_DIFERIDO = None
+        else:
+            _CIERRE_DIFERIDO = time.monotonic() + _CIERRE_GRACIA
+
+
+def _reiniciar_latidos() -> None:
+    global _CIERRE_DIFERIDO
+    with _LATIDOS_LOCK:
+        _LATIDOS.clear()
+        _CIERRE_DIFERIDO = None
+
+
+def _vigilar_latidos(servidor) -> None:
+    """Cierra el servidor cuando no quedan pestanas abiertas."""
+    while True:
+        time.sleep(1.0)
+        with _LATIDOS_LOCK:
+            _limpiar_latidos()
+            ahora = time.monotonic()
+            cerrar = (_CIERRE_DIFERIDO is not None
+                      and ahora >= _CIERRE_DIFERIDO)
+            if not cerrar and _LATIDOS:
+                cerrar = ahora - max(_LATIDOS.values()) > _LATIDO_TIMEOUT
+        if cerrar:
+            try:
+                servidor.shutdown()
+            except Exception:
+                pass
+            return
 
 
 def _is_elevated() -> bool | None:
@@ -324,51 +389,26 @@ def _snapshot_from_results(results: list) -> Snapshot:
     )
 
 
-_CLAVES_IDENTIDAD = ("smbios_uuid", "uuid", "bios_serial", "machine_guid",
-                     "serial_number")
-
-
-def _buscar_identificador(datos):
-    """Primer valor de identidad (UUID/serial) hallado en los datos."""
-    cola = [datos]
-    vistos = 0
-    while cola and vistos < 500:
-        actual = cola.pop(0)
-        vistos += 1
-        if isinstance(actual, dict):
-            for clave in _CLAVES_IDENTIDAD:
-                valor = actual.get(clave)
-                if isinstance(valor, str) and valor.strip():
-                    return valor.strip()
-            cola.extend(actual.values())
-        elif isinstance(actual, list):
-            cola.extend(actual)
-    return ""
-
-
 def _identidad_equipo(results) -> dict:
-    """Identidad visible del equipo: nombre y UUID/serial si estan disponibles."""
-    nombre = ""
-    ident = ""
-    for r in results or []:
-        if not isinstance(r, dict):
-            continue
-        ctx = r.get("context") or {}
-        if not nombre and str(ctx.get("computer_name") or "").strip():
-            nombre = str(ctx["computer_name"]).strip()
-        if not ident:
-            ident = _buscar_identificador(r.get("data"))
-    return {"computer_name": nombre, "hardware_id": ident}
+    """Identidad legacy del equipo; wrapper fino sobre core.identidad.
+
+    ``hardware_id`` conserva el formato anterior (primer componente fuerte
+    valido) para que los baselines guardados sigan comparandose igual.
+    """
+    comp = identidad.componentes_de_results(results)
+    hardware_id = ""
+    for nombre in identidad.FUERTES + identidad.DEBILES:
+        valor = str(comp.get(nombre) or "").strip()
+        if valor and identidad.es_valido(valor):
+            hardware_id = valor
+            break
+    return {"computer_name": identidad.nombre_equipo(results),
+            "hardware_id": hardware_id}
 
 
 def _identidad_coincide(base: dict, actual: dict) -> bool:
-    """True si no se puede probar que los equipos sean distintos."""
-    for clave in ("computer_name", "hardware_id"):
-        a = str(base.get(clave) or "").strip().lower()
-        b = str(actual.get(clave) or "").strip().lower()
-        if a and b and a != b:
-            return False
-    return True
+    """Wrapper fino: True si el veredicto no es 'distinto'."""
+    return identidad.comparar(base, actual) != "distinto"
 
 
 def _parse_json_output(output: str):
@@ -402,7 +442,8 @@ def _matar_arbol_procesos(proc) -> None:
     """
     try:
         subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)],
-                       capture_output=True, timeout=10)
+                       capture_output=True, timeout=10,
+                       **opciones_sin_ventana())
     except Exception:
         pass
     try:
@@ -427,6 +468,7 @@ def run_powershell(script_path: str, timeout: int = 30) -> dict:
             text=True,
             encoding="utf-8",
             errors="replace",
+            **opciones_sin_ventana(),
         )
     except Exception as e:
         return {"query": {"status": "error", "message": str(e)}, "data": {}}
@@ -465,21 +507,217 @@ def _normalize_results(raw) -> list[dict]:
     return normalized
 
 
-def run_diagnostic(package_name: str, symptom: str = None) -> dict:
+def _scripts_colectores(package_name: str) -> list[Path]:
+    """Scripts .ps1 de un paquete, en el mismo orden en que se ejecutan."""
+    collectors_dir = Path(__file__).parent / "packages" / package_name / "collectors"
+    if not collectors_dir.exists():
+        return []
+    return sorted(collectors_dir.glob("*.ps1"))
+
+
+_PROGRESO_LOCK = threading.Lock()
+_PROGRESO = {
+    "modo": "",
+    "etiqueta": "",
+    "inicio": None,
+    "fin": None,
+    "paquetes": {},
+}
+
+
+def _nuevo_paquete_progreso(label: str, total: int) -> dict:
+    return {
+        "label": label or "",
+        "total": max(0, int(total or 0)),
+        "completados": 0,
+        "actual": "",
+        "estado": "pendiente",
+        "inicio": None,
+        "fin": None,
+    }
+
+
+def _progreso_reiniciar(modo: str, etiqueta: str, paquetes) -> None:
+    """Inicia una sesion de progreso con los paquetes que se van a ejecutar."""
+    with _PROGRESO_LOCK:
+        _PROGRESO["modo"] = modo
+        _PROGRESO["etiqueta"] = etiqueta
+        _PROGRESO["inicio"] = time.monotonic()
+        _PROGRESO["fin"] = None
+        _PROGRESO["paquetes"] = {
+            nombre: _nuevo_paquete_progreso(label, total)
+            for nombre, label, total in paquetes
+        }
+
+
+def _progreso_iniciar_paquete(nombre: str, label: str, total: int) -> None:
+    with _PROGRESO_LOCK:
+        ahora = time.monotonic()
+        if _PROGRESO["inicio"] is None:
+            _PROGRESO["inicio"] = ahora
+        paquete = _PROGRESO["paquetes"].get(nombre)
+        if paquete is None:
+            paquete = _nuevo_paquete_progreso(label, total)
+            _PROGRESO["paquetes"][nombre] = paquete
+        else:
+            paquete["label"] = label or paquete["label"]
+            paquete["total"] = max(paquete["total"], max(0, int(total or 0)))
+        paquete["estado"] = "ejecutando"
+        paquete["inicio"] = paquete["inicio"] or ahora
+
+
+def _progreso_actual(nombre: str, colector: str) -> None:
+    with _PROGRESO_LOCK:
+        paquete = _PROGRESO["paquetes"].get(nombre)
+        if paquete is None:
+            return
+        paquete["actual"] = colector
+        paquete["estado"] = "ejecutando"
+
+
+def _progreso_completado(nombre: str) -> None:
+    with _PROGRESO_LOCK:
+        paquete = _PROGRESO["paquetes"].get(nombre)
+        if paquete is None:
+            return
+        paquete["completados"] = min(
+            paquete["total"], paquete["completados"] + 1)
+        paquete["actual"] = ""
+
+
+def _progreso_paquete_fin(nombre: str, estado: str = "completado") -> None:
+    with _PROGRESO_LOCK:
+        paquete = _PROGRESO["paquetes"].get(nombre)
+        if paquete is None:
+            return
+        if estado == "completado":
+            paquete["completados"] = paquete["total"]
+        paquete["actual"] = ""
+        paquete["estado"] = estado
+        paquete["fin"] = time.monotonic()
+
+
+def _progreso_fin() -> None:
+    """Cierra la sesion; los paquetes que quedaron pendientes se marcan error."""
+    with _PROGRESO_LOCK:
+        ahora = time.monotonic()
+        _PROGRESO["fin"] = ahora
+        for paquete in _PROGRESO["paquetes"].values():
+            if paquete["estado"] in ("pendiente", "ejecutando"):
+                paquete["estado"] = "error"
+                paquete["actual"] = ""
+                paquete["fin"] = paquete["fin"] or ahora
+
+
+def _progreso_snapshot() -> dict:
+    """Estado de progreso apto para la interfaz (sin bloquear el diagnostico)."""
+    with _PROGRESO_LOCK:
+        ahora = time.monotonic()
+        paquetes = []
+        total = 0
+        completados = 0
+        activos = 0
+        actual = ""
+        for nombre, paquete in _PROGRESO["paquetes"].items():
+            total += paquete["total"]
+            completados += paquete["completados"]
+            if paquete["estado"] in ("pendiente", "ejecutando"):
+                activos += 1
+            if not actual and paquete["estado"] == "ejecutando":
+                actual = paquete["actual"]
+            paquetes.append({
+                "id": nombre,
+                "label": paquete["label"],
+                "total": paquete["total"],
+                "completados": paquete["completados"],
+                "actual": paquete["actual"],
+                "estado": paquete["estado"],
+                "porcentaje": (round(100 * paquete["completados"] /
+                                      paquete["total"], 1)
+                               if paquete["total"] else 0),
+            })
+        inicio = _PROGRESO["inicio"]
+        transcurrido = max(0.0, ahora - inicio) if inicio else 0.0
+        porcentaje = (round(100 * completados / total, 1)
+                      if total else 0.0)
+        restante = None
+        if completados and total > completados and transcurrido:
+            restante = round(transcurrido / completados *
+                             (total - completados), 1)
+        return {
+            "activo": activos > 0,
+            "modo": _PROGRESO["modo"],
+            "etiqueta": _PROGRESO["etiqueta"],
+            "total": total,
+            "completados": completados,
+            "porcentaje": porcentaje,
+            "actual": actual,
+            "activos": activos,
+            "transcurrido": round(transcurrido, 1),
+            "restante": restante,
+            "paquetes": paquetes,
+        }
+
+
+def _scripts_totales_por_paquete(packages) -> list[tuple[str, str, int]]:
+    return [(pkg.name, pkg.label, len(_scripts_colectores(pkg.name)))
+            for pkg in packages]
+
+
+def _disponibilidad_paquete(pkg, caps: dict | None = None) -> dict:
+    requisitos = getattr(pkg, "requirements", None) or []
+    if not requisitos:
+        return {"available": True, "reason": "", "warning": False}
+    if caps is None:
+        caps = capacidades.detectar()
+    return capacidades.evaluar_requisitos(requisitos, caps)
+
+
+def _clasificar_paquetes(packages, caps: dict):
+    disponibles = []
+    omitidos = []
+    for pkg in packages:
+        disp = _disponibilidad_paquete(pkg, caps)
+        if disp.get("available"):
+            disponibles.append(pkg)
+        else:
+            omitidos.append({
+                "package": pkg.name,
+                "package_label": pkg.label,
+                "reason": disp.get("reason") or "No aplica en este equipo",
+            })
+    return disponibles, omitidos
+
+
+def run_diagnostic(package_name: str, symptom: str = None,
+                   caps: dict | None = None) -> dict:
     """Ejecuta un diagnostico completo para un paquete."""
     packages = discover_packages()
 
     pkg = next((p for p in packages if p.name == package_name), None)
     if not pkg:
         return {"error": f"Paquete '{package_name}' no encontrado"}
+
+    disponibilidad = _disponibilidad_paquete(pkg, caps)
+    if not disponibilidad.get("available"):
+        return {
+            "error": "No aplica: " + disponibilidad.get("reason", ""),
+            "unavailable": True,
+            "reason": disponibilidad.get("reason", ""),
+            "package": pkg.name,
+            "package_label": pkg.label,
+        }
+
     results = []
     integridad_fallida = []
 
     # Ejecutar colectores
-    collectors_dir = Path(__file__).parent / "packages" / package_name / "collectors"
+    scripts = _scripts_colectores(package_name)
+    _progreso_iniciar_paquete(package_name, pkg.label, len(scripts))
 
-    if collectors_dir.exists():
-        for ps_file in sorted(collectors_dir.glob("*.ps1")):
+    for ps_file in scripts:
+        _progreso_actual(package_name, ps_file.stem)
+        try:
             ok_firma, motivo = integridad.verificar(ps_file)
             if ok_firma:
                 comun = integridad.localizar_common(ps_file)
@@ -495,6 +733,10 @@ def run_diagnostic(package_name: str, symptom: str = None) -> dict:
                 continue
             raw = run_powershell(str(ps_file))
             results.extend(_normalize_results(raw))
+        finally:
+            _progreso_completado(package_name)
+
+    _progreso_paquete_fin(package_name)
 
     # Contar resultados
     def _status(r):
@@ -543,6 +785,7 @@ def run_diagnostic(package_name: str, symptom: str = None) -> dict:
         "findings": findings_json,
         "improvements": mejoras_sugeridas(results),
         "integridad_fallida": integridad_fallida,
+        "identidad": identidad_sesion.para_diag(run_powershell),
         "recommendations": recommendations,
         "estados_accion": ESTADOS_ACCION,
         "timestamp": datetime.now().isoformat()
@@ -599,6 +842,7 @@ def _entrada_registro(diag: dict, tipo: str) -> dict:
         "paquete": diag.get("package") or "",
         "paquete_label": diag.get("package_label") or diag.get("package") or "",
         "sintoma": diag.get("symptom") or "",
+        "identidad": identidad_sesion.resumen_registro(diag.get("identidad")),
         "puntaje": metricas["puntaje"],
         "alcance": alcance,
         "conteos": {
@@ -896,22 +1140,64 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
     def _handle_get(self):
         parsed = urlparse(self.path)
         
-        if parsed.path == "/api/diagnose":
+        if parsed.path == "/api/progreso":
+            self._json_response(_progreso_snapshot())
+
+        elif parsed.path == "/api/capacidades":
+            params = parse_qs(parsed.query)
+            forzar = (params.get("force", [""])[0] or "").lower() in ("1", "true", "si")
+            caps = capacidades.detectar(force=forzar)
+            paquetes = []
+            for pkg in discover_packages():
+                disp = _disponibilidad_paquete(pkg, caps)
+                paquetes.append({
+                    "id": pkg.name,
+                    "label": pkg.label,
+                    "requirements": list(pkg.requirements or []),
+                    "available": bool(disp.get("available")),
+                    "reason": disp.get("reason") or "",
+                    "warning": bool(disp.get("warning")),
+                })
+            salida = dict(caps)
+            salida["paquetes"] = paquetes
+            self._json_response(salida)
+
+        elif parsed.path == "/api/diagnose":
             # API para diagnostico individual
             params = parse_qs(parsed.query)
             package = params.get("package", [None])[0]
-            
-            result = run_diagnostic(package) if package else {"error": "Package required"}
+            caps = capacidades.detectar()
+            if package:
+                pkg = next((p for p in discover_packages()
+                            if p.name == package), None)
+                disp = _disponibilidad_paquete(pkg, caps) if pkg else {
+                    "available": True, "reason": "", "warning": False}
+                if pkg and not disp.get("available"):
+                    result = {
+                        "error": "No aplica: " + disp.get("reason", ""),
+                        "unavailable": True,
+                        "reason": disp.get("reason", ""),
+                        "package": pkg.name,
+                        "package_label": pkg.label,
+                    }
+                else:
+                    _progreso_reiniciar("paquete", package,
+                                        [(package, package, 0)])
+                    try:
+                        result = run_diagnostic(package, caps=caps)
+                    finally:
+                        _progreso_fin()
+            else:
+                result = {"error": "Package required"}
             if not result.get("error"):
                 entrada = registrar_analisis(result, "paquete")
                 if entrada:
                     result["registro_id"] = entrada["id"]
-            
-            self.send_response(200)
-            self.send_header("Content-type", "application/json; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(json.dumps(redactar(result), ensure_ascii=False).encode("utf-8"))
-            
+            self._json_response(result, 409 if result.get("unavailable") else 200)
+
+        elif parsed.path == "/api/identidad":
+            self._json_response(identidad_sesion.para_diag(run_powershell))
+
         elif parsed.path == "/api/knowledge":
             # Base de conocimiento local (estado esperado + soluciones)
             result = {
@@ -961,23 +1247,33 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
 
         elif parsed.path == "/api/full-scan":
             # API para diagnostico completo (paquetes en paralelo)
-            packages = discover_packages()
-            
-            with ThreadPoolExecutor(max_workers=4) as pool:
-                diagnostics = list(pool.map(lambda p: run_diagnostic(p.name), packages))
-            
-            result = {"diagnostics": diagnostics, "timestamp": datetime.now().isoformat()}
+            caps = capacidades.detectar()
+            packages, omitidos = _clasificar_paquetes(discover_packages(), caps)
+            _progreso_reiniciar("full", "Revisión Total",
+                                _scripts_totales_por_paquete(packages))
+            try:
+                with ThreadPoolExecutor(max_workers=4) as pool:
+                    diagnostics = list(pool.map(
+                        lambda p: run_diagnostic(p.name, caps=caps), packages))
+            finally:
+                _progreso_fin()
+
+            result = {
+                "diagnostics": diagnostics,
+                "skipped": omitidos,
+                "capacidades": caps,
+                "paquetes_analizados": len(packages),
+                "paquetes_omitidos": len(omitidos),
+                "identidad": identidad_sesion.para_diag(run_powershell),
+                "timestamp": datetime.now().isoformat(),
+            }
             result["metricas"] = _metricas_de_full_scan(diagnostics)
             result["recommendations"] = recomendaciones_de(
                 result["metricas"].get("severidad") or {})
             entrada = _registrar_full_scan(diagnostics)
             if entrada:
                 result["registro_id"] = entrada["id"]
-            
-            self.send_response(200)
-            self.send_header("Content-type", "application/json; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(json.dumps(redactar(result), ensure_ascii=False).encode("utf-8"))
+            self._json_response(result)
             
         else:
             self.send_error(404, "No encontrado")
@@ -1015,6 +1311,12 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             self._post_knowledge()
         elif parsed.path == "/api/elevar":
             self._post_elevar()
+        elif parsed.path == "/api/latido":
+            self._post_latido()
+        elif parsed.path == "/api/despedida":
+            self._post_despedida()
+        elif parsed.path == "/api/apagar":
+            self._post_apagar()
         else:
             self.send_error(404, "Not found")
 
@@ -1117,10 +1419,17 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             payload = self._read_payload()
             results = redactar(payload.get("results") or [])
             ident = _identidad_equipo(results)
+            comp = identidad.componentes_de_results(results)
+            machine_id = identidad.fingerprint(comp) or None
+            respaldos = identidad.respaldos_de_results(results)
             doc = {
                 "captured_at": datetime.now().isoformat(),
                 "computer_name": ident["computer_name"],
                 "hardware_id": ident["hardware_id"],
+                "machine_id": machine_id,
+                "componentes": comp,
+                "calidad": identidad.calidad(comp),
+                "respaldos": respaldos,
                 "results": results,
             }
             almacen.escribir_json_atomico(BASELINE_PATH, doc, indent=1)
@@ -1144,12 +1453,26 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             ident_base = {
                 "computer_name": base.get("computer_name") or "",
                 "hardware_id": base.get("hardware_id") or "",
+                "componentes": base.get("componentes")
+                if isinstance(base.get("componentes"), dict) else {},
+                "respaldos": base.get("respaldos")
+                if isinstance(base.get("respaldos"), dict) else {},
             }
-            ident_actual = _identidad_equipo(payload.get("results") or [])
-            tiene_identidad = bool(ident_base["computer_name"] or ident_base["hardware_id"])
+            resumen_actual = identidad.de_results(payload.get("results") or [])
+            ident_actual = {
+                "computer_name": resumen_actual["computer_name"],
+                "hardware_id": _identidad_equipo(payload.get("results") or [])["hardware_id"],
+                "componentes": resumen_actual["componentes"],
+                "respaldos": resumen_actual["respaldos"],
+            }
+            tiene_identidad = bool(ident_base["computer_name"]
+                                   or ident_base["hardware_id"]
+                                   or ident_base["componentes"])
+            veredicto = (identidad.comparar(ident_base, ident_actual)
+                         if tiene_identidad else "indeterminado")
             equipos_distintos = False
             advertencia = ""
-            if tiene_identidad and not _identidad_coincide(ident_base, ident_actual):
+            if veredicto == "distinto":
                 if not payload.get("forzar"):
                     nombre_guardado = ident_base["computer_name"] or "(sin nombre)"
                     nombre_actual = ident_actual["computer_name"] or "(sin nombre)"
@@ -1167,6 +1490,25 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             elif not tiene_identidad:
                 advertencia = ("El snapshot ANTES no tiene identidad de equipo; se "
                                "compara sin poder verificarla.")
+            elif veredicto == "probable":
+                advertencia = ("Hubo un cambio de hardware con identidad fuerte; "
+                               "se compara igualidad parcial (mismo equipo, "
+                               "componente cambiado).")
+            elif (veredicto == "indeterminado"
+                  and identidad.nombre_distinto(ident_base, ident_actual)):
+                advertencia = ("El snapshot ANTES no comparte componentes de "
+                               "identidad fuertes; el nombre del equipo tambien "
+                               "difiere.")
+            if not advertencia:
+                advertencia = identidad.advertencia_calidad(
+                    identidad.calidad_de_base(ident_base),
+                    resumen_actual["calidad"])
+            else:
+                extra = identidad.advertencia_calidad(
+                    identidad.calidad_de_base(ident_base),
+                    resumen_actual["calidad"])
+                if extra:
+                    advertencia = f"{advertencia}. {extra}"
             diffs = compare_snapshots(
                 _snapshot_from_results(base.get("results") or []),
                 _snapshot_from_results(payload.get("results") or []),
@@ -1175,6 +1517,7 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
                 "ok": True,
                 "baseline_en": base.get("captured_at"),
                 "equipos_distintos": equipos_distintos,
+                "veredicto_identidad": veredicto,
                 "advertencia": advertencia,
                 "diferencias": [asdict(d) for d in diffs],
                 "metricas_base": _metricas_de_results(
@@ -1234,6 +1577,30 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
                 {"ok": False,
                  "error": ("No se otorgaron los permisos de administrador "
                            "(el diálogo UAC se canceló).")})
+
+    def _post_latido(self):
+        """Marca que una pestaña sigue abierta usando la interfaz."""
+        try:
+            payload = self._read_payload()
+        except Exception:
+            payload = {}
+        _registrar_latido(str(payload.get("id") or ""))
+        self._json_response({"ok": True})
+
+    def _post_despedida(self):
+        """Registra el cierre de una pestaña; cierra si no quedan otras."""
+        try:
+            payload = self._read_payload()
+        except Exception:
+            payload = {}
+        _quitar_latido(str(payload.get("id") or ""))
+        self._json_response({"ok": True})
+
+    def _post_apagar(self):
+        """Cierra el servidor local cuando el usuario lo pide desde la interfaz."""
+        self._json_response({"ok": True,
+                             "mensaje": "DiagUSB se cerrará. Ya podés cerrar esta pestaña."})
+        threading.Timer(0.8, self._apagar_servidor).start()
 
     def _apagar_servidor(self):
         """Detiene serve_forever para que el proceso original termine."""
@@ -1351,6 +1718,9 @@ def run_server(port: int = 8080, elevar: bool = False,
         sys.exit(1)
 
     httpd.diagusb_port = port
+    _reiniciar_latidos()
+    threading.Thread(target=_vigilar_latidos, args=(httpd,),
+                     daemon=True).start()
 
     with httpd:
         url = f"http://localhost:{port}/?t={_token_sesion()}"

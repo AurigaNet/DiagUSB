@@ -24,24 +24,25 @@ $result = New-DiagUsbCollectorResult -CollectorId 'antivirus_status' -ScriptBloc
 
     try {
         $mpStatus = Get-MpComputerStatus -ErrorAction Stop
+        $signatureLastUpdated = Get-DiagUsbPropertyValue -InputObject $mpStatus -PropertyName 'AntivirusSignatureLastUpdated'
         $antivirusInfo += [ordered]@{
             source = 'Windows Defender'
-            enabled = [bool]$mpStatus.AntivirusEnabled
-            real_time_protection = [bool]$mpStatus.RealTimeProtectionEnabled
-            behavior_monitor = [bool]$mpStatus.BehaviorMonitorEnabled
-            ioav_protection = [bool]$mpStatus.IOAVProtectionEnabled
-            signatures_enabled = [bool]$mpStatus.AntispywareEnabled
-            signature_version = $mpStatus.AntivirusSignatureVersion
-            signature_age_days = if ($mpStatus.AntivirusSignatureLastUpdated) {
-                ((Get-Date) - $mpStatus.AntivirusSignatureLastUpdated).Days
+            enabled = [bool](Get-DiagUsbPropertyValue -InputObject $mpStatus -PropertyName 'AntivirusEnabled')
+            real_time_protection = [bool](Get-DiagUsbPropertyValue -InputObject $mpStatus -PropertyName 'RealTimeProtectionEnabled')
+            behavior_monitor = [bool](Get-DiagUsbPropertyValue -InputObject $mpStatus -PropertyName 'BehaviorMonitorEnabled')
+            ioav_protection = [bool](Get-DiagUsbPropertyValue -InputObject $mpStatus -PropertyName 'IOAVProtectionEnabled')
+            signatures_enabled = [bool](Get-DiagUsbPropertyValue -InputObject $mpStatus -PropertyName 'AntispywareEnabled')
+            signature_version = Get-DiagUsbPropertyValue -InputObject $mpStatus -PropertyName 'AntivirusSignatureVersion'
+            signature_age_days = if ($signatureLastUpdated) {
+                ((Get-Date) - $signatureLastUpdated).Days
             } else { $null }
-            signature_last_updated = if ($mpStatus.AntivirusSignatureLastUpdated) {
-                Convert-DiagUsbDateTime -Value $mpStatus.AntivirusSignatureLastUpdated
+            signature_last_updated = if ($signatureLastUpdated) {
+                Convert-DiagUsbDateTime -Value $signatureLastUpdated
             } else { $null }
-            computer_antispyware_enabled = [bool]$mpStatus.AntispywareEnabled
-            antivirus_configured = [bool]$mpStatus.AntivirusConfigured
-            antispyware_configured = [bool]$mpStatus.AntispywareConfigured
-            real_time_contamination = [bool]$mpStatus.RealTimeContaminationProtection
+            computer_antispyware_enabled = [bool](Get-DiagUsbPropertyValue -InputObject $mpStatus -PropertyName 'AntispywareEnabled')
+            antivirus_configured = Get-DiagUsbPropertyValue -InputObject $mpStatus -PropertyName 'AntivirusConfigured'
+            antispyware_configured = Get-DiagUsbPropertyValue -InputObject $mpStatus -PropertyName 'AntispywareConfigured'
+            real_time_contamination = Get-DiagUsbPropertyValue -InputObject $mpStatus -PropertyName 'RealTimeContaminationProtection'
         }
     }
     catch {
@@ -58,8 +59,9 @@ $result = New-DiagUsbCollectorResult -CollectorId 'antivirus_status' -ScriptBloc
                 display_name = $product.displayName
                 instance_guid = $product.instanceGuid
                 product_state = $product.productState
-                enabled = ($product.productState -band 0x1000) -eq 0
-                up_to_date = (($product.productState -shr 16) -band 0xFF) -eq 0
+                enabled = (($product.productState -band 0xF000) -eq 0x1000)
+                up_to_date = (($product.productState -band 0xF0) -eq 0)
+                signature_status = ($product.productState -band 0xF0)
             }
         }
     }

@@ -261,6 +261,76 @@
       "verificacion": "SMART en 'Healthy', chkdsk sin errores pendientes y copias de seguridad actualizadas; si se reemplazó, el disco nuevo reporta estado correcto."
     },
     {
+      "id": "disco_caliente",
+      "titulo": "Disco con temperatura elevada",
+      "categoria": "Disco",
+      "colectores": ["physical_disks"],
+      "sintomas": ["disco_salud"],
+      "estado_esperado": "La temperatura del disco debe mantenerse por debajo de ~60 °C. Los SSD/NVMe toleran más calor que un HDD, pero una temperatura sostenida alta acorta la vida útil y puede provocar pérdida de rendimiento o apagones.",
+      "por_que_importa": "El calor degrada los componentes del disco y puede hacer que el equipo se apague o funcione lento. Si la temperatura sube por falta de ventilación o por un disco con problemas, conviene corregirlo antes de que haya pérdida de datos.",
+      "soluciones": [
+        "Verificar que el gabinete tenga ventilación y que las rejillas no estén obstruidas",
+        "Limpiar el polvo de ventiladores, filtros y disipadores",
+        "Comprobar que el disco tenga espacio libre y que el flujo de aire no esté bloqueado",
+        "En notebooks, usar una base con ventilación y evitar apoyarla sobre superficies blandas",
+        "Revisar el estado SMART del disco y, si la temperatura sigue alta, revisar el disipador o la pasta térmica"
+      ],
+      "verificacion": "La temperatura del disco se mantiene por debajo de 60 °C en reposo y no supera 70 °C bajo carga."
+    },
+    {
+      "id": "cpu_caliente",
+      "titulo": "CPU con temperatura elevada",
+      "categoria": "Procesador",
+      "colectores": ["cpu_temperature"],
+      "sintomas": ["cpu_caliente"],
+      "estado_esperado": "La temperatura del CPU debe mantenerse idealmente por debajo de 80 °C en uso normal y no superar 90 °C de forma sostenida. Las lecturas se obtienen de LibreHardwareMonitor (LHM), que debe estar activo con su servidor web local y con el controlador PawnIO para leer los sensores.",
+      "por_que_importa": "El calor excesivo reduce el rendimiento (throttling), provoca apagones, reinicios y acorta la vida del procesador. Si la temperatura sube por polvo, ventilación obstruida o pasta térmica seca, el problema empeora con el tiempo y puede dañar el equipo.",
+      "soluciones": [
+        "Cerrar aplicaciones y procesos que mantengan el CPU al 100% y repetir la lectura",
+        "Verificar que el ventilador del CPU gire y que las rejillas del gabinete no estén obstruidas",
+        "Limpiar el polvo de ventiladores, filtros y disipador con aire comprimido y el equipo apagado",
+        "En notebooks, usar una base con ventilación y evitar apoyarla sobre superficies blandas",
+        "Si la temperatura sigue alta en reposo, revisar la pasta térmica y el apoyo del disipador (requiere técnico)",
+        "Confirmar que LHM se ejecuta como administrador y que PawnIO está instalado; sin eso la lectura puede faltar o ser incorrecta",
+        "Revisar el plan de energía y desactivar overclocking o perfiles de rendimiento extremos"
+      ],
+      "verificacion": "Con LHM activo, la temperatura del CPU se mantiene por debajo de 80 °C en reposo y no supera 90 °C de forma sostenida bajo carga, sin throttling ni apagones."
+    },
+    {
+      "id": "ventilador_0_rpm_con_cpu_caliente",
+      "titulo": "CPU caliente con ventilador sin girar (indicio)",
+      "categoria": "Procesador",
+      "colectores": ["cpu_temperature", "fan_speeds"],
+      "sintomas": ["ventilador_0_rpm_con_cpu_caliente"],
+      "estado_esperado": "Con el CPU a 70 \u00b0C o mas, al menos un ventilador debe marcar RPM mayores a 0 y el del CPU no debe marcar 0 RPM. Las lecturas salen de LibreHardwareMonitor (LHM), que debe estar activo con su servidor web local; sin el no se puede comprobar.",
+      "por_que_importa": "Un ventilador detenido con el CPU caliente provoca throttling, apagones y dano en el procesador. Este aviso es un INDICIO y no una prueba: un 0 RPM tambien puede deberse a un sensor sin conectar, a un cabezal de placa vacio, a un ventilador que se apaga a proposito en frio o a que LHM no lee el sensor correcto.",
+      "soluciones": [
+        "Mirar el equipo abierto o escuchar si el ventilador del CPU gira: es la unica forma de confirmar el indicio",
+        "Confirmar en la BIOS o en LHM que el sensor corresponde al ventilador del CPU y no a un cabezal vacio",
+        "Limpiar el polvo del ventilador y del disipador con aire comprimido y el equipo apagado",
+        "Revisar que el conector del ventilador este firme en la placa y que el cable no toque las aspas",
+        "Si el ventilador esta trabado o no gira, reemplazarlo (requiere tecnico)"
+      ],
+      "verificacion": "Con LHM activo, el ventilador del CPU marca RPM mayores a 0 cuando el CPU supera los 70 \u00b0C y la temperatura se mantiene por debajo de 80 \u00b0C en uso normal."
+    },
+    {
+      "id": "bateria_agotada",
+      "titulo": "Bateria con desgaste elevado",
+      "categoria": "Bateria",
+      "colectores": ["battery"],
+      "sintomas": ["bateria_agotada"],
+      "estado_esperado": "La carga plena de la bateria debe ser mayor al 60 % de su capacidad de diseno. El dato se obtiene del reporte de bateria de Windows (powercfg); los ciclos y la quimica aparecen solo si el fabricante los declara.",
+      "por_que_importa": "Una bateria con muchos ciclos acumula dano permanente y pierde autonomia; al quedar sin capacidad util puede apagar el equipo aun con porcentaje declarado alto. Comparar la carga plena con la capacidad de diseno evalua el desgaste con un criterio objetivo y permite decidir el reemplazo.",
+      "soluciones": [
+        "Comparar la carga plena con la capacidad de diseno para dimensionar el desgaste",
+        "Revisar la cantidad de ciclos: los valores altos aceleran el desgaste",
+        "Evitar mantener la bateria al 100 % de carga permanente con calor ambiental alto",
+        "Si la bateria es extraible, reemplazarla por una original o certificada; si no, pedir el servicio tecnico",
+        "Revisar el plan de energia: los perfiles agresivos reducen la autonomia efectiva"
+      ],
+      "verificacion": "La carga plena se mantiene por encima del 60 % de la capacidad de diseno y la autonomia observada responde a ese porcentaje, sin apagados inesperados con carga declarada."
+    },
+    {
       "id": "actualizaciones_pendientes",
       "titulo": "Actualizaciones de Windows pendientes o fallidas",
       "categoria": "Sistema",

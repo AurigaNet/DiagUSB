@@ -12,9 +12,12 @@ venv/
 # Build (se versionan solo los fuentes; el resto es generado por PyInstaller)
 build/*
 !build/diagusb.spec
+!build/diagusb_gui.spec
 !build/entry_console.py
+!build/entry_gui.py
 !build/README.md
 build/version_info.txt
+build/version_info_gui.txt
 dist/
 *.spec.tmp
 *.pyz

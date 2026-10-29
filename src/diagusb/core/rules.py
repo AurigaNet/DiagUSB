@@ -18,6 +18,24 @@ def _normalizar_driver(nombre: Any) -> str:
     return re.sub(r"[\s_]+", "", texto)
 
 
+def _velocidad_mbps(valor: Any) -> float | None:
+    """Convierte una velocidad tipo '1 Gbps' o '100 Mbps' a Mbps."""
+    if valor is None or isinstance(valor, bool):
+        return None
+    if isinstance(valor, (int, float)):
+        return float(valor) / 1_000_000
+    texto = str(valor).strip().replace(",", ".")
+    match = re.search(r"(\d+(?:\.\d+)?)\s*([KMG])?bps", texto, re.IGNORECASE)
+    if not match:
+        try:
+            return float(texto) / 1_000_000
+        except ValueError:
+            return None
+    factor = {"k": 0.001, "m": 1.0, "g": 1000.0}.get(
+        (match.group(2) or "m").lower(), 1.0)
+    return float(match.group(1)) * factor
+
+
 class RuleEngine:
     """Motor de reglas para diagnosticos."""
 
@@ -36,6 +54,7 @@ class RuleEngine:
         self.register("la_impresora_no_imprime", self._check_port_connectivity)
 
         # ========== REGLAS DE RED ==========
+        self.register("adaptador_red_no_funciona", self._check_network_adapter_enabled)
         self.register("no_hay_internet", self._check_network_adapter_enabled)
         self.register("no_hay_internet", self._check_gateway_reachable)
         self.register("no_hay_internet", self._check_internet_connectivity)
@@ -45,6 +64,14 @@ class RuleEngine:
         # ========== REGLAS DE DISCO ==========
         self.register("disco_lleno", self._check_disk_space)
         self.register("disco_salud", self._check_disk_health)
+        self.register("disco_salud", self._check_disk_temperature)
+
+        # ========== REGLAS DE TEMPERATURA DEL CPU ==========
+        self.register("cpu_caliente", self._check_cpu_temperature)
+        self.register("ventilador_0_rpm_con_cpu_caliente", self._check_fan_health)
+
+        # ========== REGLAS DE BATERIA ==========
+        self.register("bateria_agotada", self._check_battery_health)
 
         # ========== REGLAS DE SERVICIOS ==========
         self.register("servicio_detenido", self._check_critical_services)
@@ -131,10 +158,10 @@ class RuleEngine:
         if not result:
             return []
         findings = []
-        data = self._get_data(result)
-        if isinstance(data, dict):
-            spooler = data.get("spooler", {})
-            if isinstance(spooler, dict) and spooler.get("state") != "Running":
+        data = self._primer_dict(self._get_data(result))
+        if data:
+            spooler = data.get("spooler", data)
+            if isinstance(spooler, dict) and spooler.get("state") not in (None, "Running"):
                 findings.append(Finding(
                     severity="critical",
                     collector_id="spooler_service",
@@ -223,12 +250,13 @@ class RuleEngine:
         findings = []
         printers = self._get_data(result) if isinstance(self._get_data(result), list) else []
         for printer in printers:
-            if printer.get("detected_error_state", 0) != 0:
+            estado = printer.get("detected_error_state", 0)
+            if estado not in (0, 2):
                 findings.append(Finding(
                     severity="error",
                     collector_id="printers",
                     message="Estado de error detectado en impresora",
-                    details={"printer": printer.get("name", ""), "error_state": printer.get("detected_error_state")}
+                    details={"printer": printer.get("name", ""), "error_state": estado}
                 ))
         return findings
 
@@ -252,57 +280,76 @@ class RuleEngine:
     # ========== REGLAS DE RED ==========
 
     def _check_network_adapter_enabled(self, observations: list[CollectorResult]) -> list[Finding]:
-        """Verifica que los adaptadores de red esten habilitados."""
+        """Verifica que exista al menos un adaptador de red conectado."""
         result = self._find_collector(observations, "network_adapters")
         if not result:
             return []
-        findings = []
-        adapters = self._get_data(result) if isinstance(self._get_data(result), list) else []
-        enabled_adapters = [a for a in adapters if a.get("status") == "Up"]
-        if not enabled_adapters:
-            findings.append(Finding(
+        adapters = self._lista_dicts(self._get_data(result))
+        if not adapters:
+            return []
+        if any(a.get("status") == "Up" or a.get("state") == "Up" for a in adapters):
+            return []
+
+        deshabilitados = [a for a in adapters if a.get("status") == "Disabled"]
+        if len(deshabilitados) == len(adapters):
+            return [Finding(
                 severity="critical",
                 collector_id="network_adapters",
-                message="No hay adaptadores de red habilitados",
+                message="Todos los adaptadores de red están deshabilitados",
                 details={"total_adapters": len(adapters), "enabled": 0}
-            ))
-        return findings
+            )]
+
+        return [Finding(
+            severity="warning",
+            collector_id="network_adapters",
+            message="Ningún adaptador de red tiene conexión activa",
+            details={
+                "total_adapters": len(adapters),
+                "enabled": 0,
+                "status": sorted({str(a.get("status") or "desconocido")
+                                  for a in adapters}),
+            }
+        )]
 
     def _check_gateway_reachable(self, observations: list[CollectorResult]) -> list[Finding]:
         """Verifica que el gateway sea alcanzable."""
         result = self._find_collector(observations, "connectivity")
         if not result:
             return []
-        findings = []
-        data = self._get_data(result)
-        if isinstance(data, dict):
-            gateway = data.get("gateway_ping", {})
-            if gateway.get("reachable") is False:
-                findings.append(Finding(
-                    severity="error",
-                    collector_id="connectivity",
-                    message="El gateway no es alcanzable",
-                    details={"gateway": gateway.get("address"), "latency": gateway.get("latency")}
-                ))
-        return findings
+        pruebas = self._lista_dicts(self._get_data(result))
+        if not pruebas or any(t.get("success") is True for t in pruebas):
+            return []
+        gateways = [t for t in pruebas if str(t.get("type") or "").lower() == "gateway"]
+        if not gateways or any(t.get("success") is not False for t in gateways):
+            return []
+        gateway = gateways[0]
+        return [Finding(
+            severity="error",
+            collector_id="connectivity",
+            message="El gateway no es alcanzable",
+            details={"gateway": gateway.get("target"),
+                     "latency": gateway.get("latency_ms")}
+        )]
 
     def _check_internet_connectivity(self, observations: list[CollectorResult]) -> list[Finding]:
         """Verifica conectividad a internet."""
         result = self._find_collector(observations, "connectivity")
         if not result:
             return []
-        findings = []
-        data = self._get_data(result)
-        if isinstance(data, dict):
-            internet = data.get("internet_test", {})
-            if internet.get("reachable") is False:
-                findings.append(Finding(
-                    severity="critical",
-                    collector_id="connectivity",
-                    message="No hay conectividad a internet",
-                    details={"target": internet.get("target")}
-                ))
-        return findings
+        pruebas = self._lista_dicts(self._get_data(result))
+        internet = [t for t in pruebas
+                    if str(t.get("type") or "").lower() in ("icmp", "dns")]
+        if not internet or any(t.get("success") is True for t in internet):
+            return []
+        fallos = [t for t in internet if t.get("success") is False]
+        if len(fallos) != len(internet):
+            return []
+        return [Finding(
+            severity="critical",
+            collector_id="connectivity",
+            message="No hay conectividad a internet",
+            details={"targets": [t.get("target") for t in fallos]}
+        )]
 
     def _check_network_speed(self, observations: list[CollectorResult]) -> list[Finding]:
         """Verifica velocidad del adaptador de red."""
@@ -310,15 +357,16 @@ class RuleEngine:
         if not result:
             return []
         findings = []
-        adapters = self._get_data(result) if isinstance(self._get_data(result), list) else []
-        for adapter in adapters:
-            speed = adapter.get("speed", 0)
-            if speed and speed < 100_000_000:  # Menos de 100 Mbps
+        for adapter in self._lista_dicts(self._get_data(result)):
+            if adapter.get("status") != "Up":
+                continue
+            speed = _velocidad_mbps(adapter.get("speed"))
+            if speed is not None and 0 < speed < 20:  # Menos de 20 Mbps
                 findings.append(Finding(
                     severity="warning",
                     collector_id="network_adapters",
-                    message=f"Adaptador de red con velocidad baja: {speed // 1_000_000} Mbps",
-                    details={"adapter": adapter.get("name"), "speed": speed}
+                    message=f"Adaptador de red con velocidad baja: {speed:g} Mbps",
+                    details={"adapter": adapter.get("name"), "speed_mbps": speed}
                 ))
         return findings
 
@@ -327,18 +375,17 @@ class RuleEngine:
         result = self._find_collector(observations, "dns_servers")
         if not result:
             return []
-        findings = []
-        data = self._get_data(result)
-        if isinstance(data, dict):
-            dns = data.get("dns_servers", [])
-            if not dns:
-                findings.append(Finding(
-                    severity="error",
-                    collector_id="dns_servers",
-                    message="No hay servidores DNS configurados",
-                    details={}
-                ))
-        return findings
+        interfaces = self._lista_dicts(self._get_data(result))
+        if not interfaces:
+            return []
+        if any(i.get("dns_servers") for i in interfaces):
+            return []
+        return [Finding(
+            severity="error",
+            collector_id="dns_servers",
+            message="No hay servidores DNS configurados",
+            details={"interfaces": [i.get("interface_alias") for i in interfaces]}
+        )]
 
     # ========== REGLAS DE DISCO ==========
 
@@ -401,6 +448,236 @@ class RuleEngine:
                     details={"status": disk.get("operational_status")}
                 ))
         return findings
+
+    def _check_disk_temperature(self, observations: list[CollectorResult]) -> list[Finding]:
+        """Verifica la temperatura SMART de los discos fisicos."""
+        result = self._find_collector(observations, "physical_disks")
+        if not result:
+            return []
+        data = self._get_data(result)
+        disks = data if isinstance(data, list) else []
+        findings = []
+        for disk in disks:
+            if not isinstance(disk, dict):
+                continue
+            raw = disk.get("temperature")
+            if raw is None or isinstance(raw, bool):
+                continue
+            try:
+                temperature = float(raw)
+            except (TypeError, ValueError):
+                continue
+            if not 0 < temperature < 120:
+                continue
+            if temperature >= 70:
+                severity = "error"
+                estado = "crítica"
+            elif temperature >= 60:
+                severity = "warning"
+                estado = "elevada"
+            else:
+                continue
+            name = disk.get("friendly_name") or f"Disco {disk.get('device_id') or '?'}"
+            findings.append(Finding(
+                severity=severity,
+                collector_id="physical_disks",
+                message=f"Temperatura {estado} del disco {name}: {temperature:.0f} °C",
+                details={
+                    "device_id": disk.get("device_id"),
+                    "temperature_c": round(temperature, 1),
+                    "media_type": disk.get("media_type"),
+                    "bus_type": disk.get("bus_type"),
+                },
+                knowledge_id="disco_caliente",
+            ))
+        return findings
+
+    def _check_cpu_temperature(self, observations: list[CollectorResult]) -> list[Finding]:
+        """Verifica la temperatura del CPU leida desde LibreHardwareMonitor."""
+        result = self._find_collector(observations, "cpu_temperature")
+        if not result:
+            return []
+        data = self._primer_dict(self._get_data(result))
+        if not data or data.get("available") is False:
+            return []
+
+        valores = []
+        for key in ("max_temp_c", "package_temp_c", "max_core_temp_c"):
+            raw = data.get(key)
+            if raw is None or isinstance(raw, bool):
+                continue
+            try:
+                valores.append(float(raw))
+            except (TypeError, ValueError):
+                continue
+        valores = [v for v in valores if 0 < v < 130]
+        if not valores:
+            return []
+
+        temperature = max(valores)
+        if temperature >= 90:
+            severity = "error"
+            estado = "crítica"
+        elif temperature >= 80:
+            severity = "warning"
+            estado = "elevada"
+        else:
+            return []
+
+        cpu_name = str(data.get("cpu_name") or "").strip()
+        etiqueta = f" ({cpu_name})" if cpu_name else ""
+        return [Finding(
+            severity=severity,
+            collector_id="cpu_temperature",
+            message=f"Temperatura {estado} del CPU{etiqueta}: {temperature:.0f} °C",
+            details={
+                "cpu_name": cpu_name,
+                "temperature_c": round(temperature, 1),
+                "package_temp_c": data.get("package_temp_c"),
+                "max_core_temp_c": data.get("max_core_temp_c"),
+                "average_core_temp_c": data.get("average_core_temp_c"),
+                "sensor_count": data.get("sensor_count"),
+                "source": data.get("source"),
+            },
+            knowledge_id="cpu_caliente",
+        )]
+
+    UMBRAL_CPU_VENTILADOR_C = 70
+
+    def _check_fan_health(self, observations: list[CollectorResult]) -> list[Finding]:
+        """CPU caliente con ventilador sin girar: es un indicio, no una prueba.
+
+        Con el CPU a UMBRAL_CPU_VENTILADOR_C o mas avisa si ningun ventilador
+        marca RPM mayores a 0 o si el sensor del CPU marca 0 RPM. Nunca es
+        error ni critico: un 0 RPM puede ser un sensor sin conectar.
+        """
+        cpu_result = self._find_collector(observations, "cpu_temperature")
+        fan_result = self._find_collector(observations, "fan_speeds")
+        if not cpu_result or not fan_result:
+            return []
+        cpu = self._primer_dict(self._get_data(cpu_result))
+        fan = self._primer_dict(self._get_data(fan_result))
+        if not cpu or cpu.get("available") is False:
+            return []
+        if not fan or fan.get("available") is False:
+            return []
+
+        valores = []
+        for key in ("max_temp_c", "package_temp_c", "max_core_temp_c"):
+            raw = cpu.get(key)
+            if raw is None or isinstance(raw, bool):
+                continue
+            try:
+                valores.append(float(raw))
+            except (TypeError, ValueError):
+                continue
+        valores = [v for v in valores if 0 < v < 130]
+        if not valores:
+            return []
+        temperature = max(valores)
+        if temperature < self.UMBRAL_CPU_VENTILADOR_C:
+            return []
+
+        def _rpm(valor):
+            if valor is None or isinstance(valor, bool):
+                return None
+            try:
+                return float(valor)
+            except (TypeError, ValueError):
+                return None
+
+        lecturas = [(str(s.get("name") or ""), _rpm(s.get("rpm")))
+                    for s in self._lista_dicts(fan.get("sensors"))]
+        if not lecturas:
+            crudos = fan.get("fan_rpms")
+            if isinstance(crudos, (int, float)) and not isinstance(crudos, bool):
+                crudos = [crudos]
+            if isinstance(crudos, list):
+                lecturas = [("", _rpm(v)) for v in crudos]
+        girando = [n for n, r in lecturas if r is not None and r > 0]
+        cpu_en_cero = any(
+            r is not None and r == 0
+            for n, r in lecturas
+            if re.search(r"cpu|processor", n, re.IGNORECASE)
+        )
+        if girando and not cpu_en_cero:
+            return []
+
+        severidad = "warning"
+        if girando:
+            detalle = "el sensor del CPU marca 0 RPM"
+        else:
+            detalle = "ning\u00fan ventilador marca RPM mayores a 0"
+        return [Finding(
+            severity=severidad,
+            collector_id="fan_speeds",
+            message=(f"CPU a {temperature:.0f} \u00b0C y {detalle}: "
+                     "puede ser un ventilador detenido o un sensor sin conectar"),
+            details={
+                "temperature_c": round(temperature, 1),
+                "umbral_c": self.UMBRAL_CPU_VENTILADOR_C,
+                "ventiladores_girando": len(girando),
+                "lecturas": [{"name": n, "rpm": r} for n, r in lecturas],
+                "sensor_count": fan.get("sensor_count"),
+                "source": fan.get("source"),
+            },
+            knowledge_id="ventilador_0_rpm_con_cpu_caliente",
+        )]
+
+    def _check_battery_health(self, observations: list[CollectorResult]) -> list[Finding]:
+        """Evalua el desgaste de la bateria: carga plena frente a diseno.
+
+        Con carga plena menor al 60 % de la capacidad de diseno es aviso y
+        con menos del 40 % es critico. La deteccion previa de capacidades
+        oculta el paquete en equipos sin bateria; el colector tambien
+        declara ``presente`` por si el paquete corre igualmente.
+        """
+        result = self._find_collector(observations, "battery")
+        if not result:
+            return []
+        data = self._primer_dict(self._get_data(result))
+        if not data or data.get("presente") is not True:
+            return []
+
+        def _numero(clave):
+            valor = data.get(clave)
+            if valor is None or isinstance(valor, bool):
+                return None
+            try:
+                numero = float(valor)
+            except (TypeError, ValueError):
+                return None
+            return numero if numero > 0 else None
+
+        diseno = _numero("design_capacity_mwh")
+        plena = _numero("full_charge_capacity_mwh")
+        if not diseno or not plena:
+            return []
+        relacion = plena / diseno
+        if relacion >= 0.6:
+            return []
+        severity = "error" if relacion < 0.4 else "warning"
+        desgaste = max(0.0, (1.0 - relacion) * 100.0)
+        estado = "crítico" if severity == "error" else "elevado"
+        return [Finding(
+            severity=severity,
+            collector_id="battery",
+            message=("Desgaste de la batería: "
+                     f"{desgaste:.0f}% "
+                     f"(carga plena {plena:.0f} mWh de {diseno:.0f} mWh de diseño, "
+                     f"desgaste {estado})"),
+            details={
+                "charge_percent": data.get("carga_percent"),
+                "battery_status": data.get("battery_status"),
+                "estado": data.get("estado"),
+                "design_capacity_mwh": round(diseno, 1),
+                "full_charge_capacity_mwh": round(plena, 1),
+                "desgaste_percent": round(desgaste, 1),
+                "ciclos": data.get("ciclos"),
+                "fuente_capacidad": data.get("fuente_capacidad"),
+            },
+            knowledge_id="bateria_agotada",
+        )]
 
     # ========== REGLAS DE SERVICIOS ==========
 
@@ -484,36 +761,42 @@ class RuleEngine:
         result = self._find_collector(observations, "antivirus_status")
         if not result:
             return []
-        findings = []
-        data = self._get_data(result)
-        if isinstance(data, dict):
-            if not data.get("antivirus_enabled"):
-                findings.append(Finding(
-                    severity="critical",
-                    collector_id="antivirus_status",
-                    message="Antivirus deshabilitado",
-                    details={"product": data.get("antivirus_product")}
-                ))
-        return findings
+        productos = self._lista_dicts(self._get_data(result))
+        if not productos:
+            return []
+        if any(p.get("enabled") is True or p.get("real_time_protection") is True
+               for p in productos):
+            return []
+        return [Finding(
+            severity="critical",
+            collector_id="antivirus_status",
+            message="Antivirus deshabilitado",
+            details={
+                "products": [p.get("display_name") or p.get("source")
+                             for p in productos],
+                "real_time": any(p.get("real_time_protection") is False
+                                 for p in productos),
+            }
+        )]
 
     def _check_firewall_enabled(self, observations: list[CollectorResult]) -> list[Finding]:
         """Verifica que el firewall este habilitado."""
         result = self._find_collector(observations, "firewall_status")
         if not result:
             return []
-        findings = []
-        data = self._get_data(result)
-        if isinstance(data, dict):
-            profiles = data.get("profiles", {})
-            enabled_count = sum(1 for p in profiles.values() if p.get("enabled"))
-            if enabled_count == 0:
-                findings.append(Finding(
-                    severity="error",
-                    collector_id="firewall_status",
-                    message="Todos los perfiles de firewall están deshabilitados",
-                    details={"enabled_profiles": enabled_count}
-                ))
-        return findings
+        perfiles = self._lista_dicts(self._get_data(result))
+        if not perfiles:
+            return []
+        habilitados = [p for p in perfiles if p.get("enabled") is True]
+        if habilitados:
+            return []
+        return [Finding(
+            severity="error",
+            collector_id="firewall_status",
+            message="Todos los perfiles de firewall están deshabilitados",
+            details={"enabled_profiles": 0,
+                     "profiles": [p.get("name") for p in perfiles]}
+        )]
 
     # ========== REGLAS DE MEMORIA ==========
 
@@ -522,43 +805,52 @@ class RuleEngine:
         result = self._find_collector(observations, "memory_status")
         if not result:
             return []
-        findings = []
-        data = self._get_data(result)
-        if isinstance(data, dict):
-            usage_percent = data.get("memory_usage_percent", 0)
-            if usage_percent > 95:
-                findings.append(Finding(
-                    severity="critical",
-                    collector_id="memory_status",
-                    message=f"Memoria casi llena: {usage_percent:.1f}% en uso",
-                    details={"usage_percent": usage_percent}
-                ))
-            elif usage_percent > 85:
-                findings.append(Finding(
-                    severity="warning",
-                    collector_id="memory_status",
-                    message=f"Memoria alta: {usage_percent:.1f}% en uso",
-                    details={"usage_percent": usage_percent}
-                ))
-        return findings
+        data = self._primer_dict(self._get_data(result))
+        if not data:
+            return []
+        usage_percent = data.get("physical_memory_usage_percent")
+        if usage_percent is None:
+            usage_percent = data.get("memory_usage_percent")
+        try:
+            usage_percent = float(usage_percent)
+        except (TypeError, ValueError):
+            return []
+        if usage_percent > 95:
+            return [Finding(
+                severity="critical",
+                collector_id="memory_status",
+                message=f"Memoria casi llena: {usage_percent:.1f}% en uso",
+                details={"usage_percent": usage_percent}
+            )]
+        if usage_percent > 85:
+            return [Finding(
+                severity="warning",
+                collector_id="memory_status",
+                message=f"Memoria alta: {usage_percent:.1f}% en uso",
+                details={"usage_percent": usage_percent}
+            )]
+        return []
 
     def _check_high_cpu_usage(self, observations: list[CollectorResult]) -> list[Finding]:
         """Verifica uso alto de CPU."""
         result = self._find_collector(observations, "system_performance")
         if not result:
             return []
-        findings = []
-        data = self._get_data(result)
-        if isinstance(data, dict):
-            cpu_usage = data.get("cpu_load_percent", 0)
-            if cpu_usage > 90:
-                findings.append(Finding(
-                    severity="warning",
-                    collector_id="system_performance",
-                    message=f"Uso alto de CPU: {cpu_usage:.1f}%",
-                    details={"cpu_usage": cpu_usage}
-                ))
-        return findings
+        data = self._primer_dict(self._get_data(result))
+        if not data:
+            return []
+        try:
+            cpu_usage = float(data.get("cpu_load_percent"))
+        except (TypeError, ValueError):
+            return []
+        if cpu_usage > 95:
+            return [Finding(
+                severity="warning",
+                collector_id="system_performance",
+                message=f"Uso alto de CPU: {cpu_usage:.1f}%",
+                details={"cpu_usage": cpu_usage}
+            )]
+        return []
 
     def _check_disk_queue(self, observations: list[CollectorResult]) -> list[Finding]:
         """Verifica cola de disco."""
@@ -566,15 +858,19 @@ class RuleEngine:
         if not result:
             return []
         findings = []
-        data = self._get_data(result)
-        if isinstance(data, dict):
-            queue = data.get("current_disk_queue_length", 0)
-            if queue > 10:
+        for data in self._lista_dicts(self._get_data(result)):
+            try:
+                queue = float(data.get("current_disk_queue_length"))
+                percent = float(data.get("percent_disk_time") or 0)
+            except (TypeError, ValueError):
+                continue
+            if queue > 20 and percent > 80:
                 findings.append(Finding(
                     severity="warning",
                     collector_id="disk_performance",
-                    message=f"Cola de disco alta: {queue}",
-                    details={"queue_length": queue}
+                    message=f"Cola de disco alta: {queue:g}",
+                    details={"disk": data.get("disk"), "queue_length": queue,
+                             "percent_disk_time": percent}
                 ))
         return findings
 
@@ -590,6 +886,15 @@ class RuleEngine:
                 if isinstance(item, dict):
                     return item
         return None
+
+    @staticmethod
+    def _lista_dicts(data) -> list[dict]:
+        """Salida de un colector como lista de diccionarios."""
+        if isinstance(data, dict):
+            return [data]
+        if isinstance(data, list):
+            return [item for item in data if isinstance(item, dict)]
+        return []
 
     @staticmethod
     def _parse_timestamp(value) -> datetime | None:
@@ -704,12 +1009,12 @@ class RuleEngine:
         result = self._find_collector(observations, "wifi_networks")
         if not result:
             return []
-        data = self._get_data(result)
-        if not isinstance(data, list):
+        redes = self._lista_dicts(self._get_data(result))
+        if not redes or not any("connected" in red for red in redes):
             return []
         debiles = []
-        for red in data:
-            if not isinstance(red, dict):
+        for red in redes:
+            if red.get("connected") is not True:
                 continue
             sig = red.get("signal")
             vals = [s for s in sig if isinstance(s, int)] if isinstance(sig, list) else (

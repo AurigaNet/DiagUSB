@@ -2,7 +2,7 @@
     "version": "1.0.0",
     "name": "disco",
     "label": "Estado del Disco",
-    "description": "Diagnostico del estado del disco: espacio, rendimiento y salud",
+    "description": "Diagnostico del estado del disco: espacio, rendimiento, salud y temperatura",
     "symptoms": ["disco_lleno", "disco_lento", "disco_salud"],
     "collectors": {}
 }

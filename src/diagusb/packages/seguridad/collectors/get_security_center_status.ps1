@@ -25,15 +25,15 @@ $result = New-DiagUsbCollectorResult -CollectorId 'security_center' -ScriptBlock
     try {
         $antivirusProducts = Get-CimInstance -Namespace Root/SecurityCenter2 -ClassName AntiVirusProduct -ErrorAction Stop
         foreach ($product in $antivirusProducts) {
-            $state = ($product.productState -shr 16) -band 0xFF
+            $signatureState = $product.productState -band 0xF0
             $securityProducts += [ordered]@{
                 type = 'antivirus'
                 display_name = $product.displayName
                 instance_guid = $product.instanceGuid
                 product_state = $product.productState
-                enabled = ($product.productState -band 0x1000) -eq 0
-                up_to_date = $state -eq 0
-                state_description = switch ($state) {
+                enabled = (($product.productState -band 0xF000) -eq 0x1000)
+                up_to_date = $signatureState -eq 0
+                state_description = switch ($signatureState) {
                     0 { 'Actualizado' }
                     16 { 'En espera de actualizaciones' }
                     32 { 'Actualizacion en progreso' }
@@ -51,15 +51,15 @@ $result = New-DiagUsbCollectorResult -CollectorId 'security_center' -ScriptBlock
     try {
         $antispywareProducts = Get-CimInstance -Namespace Root/SecurityCenter2 -ClassName AntiSpywareProduct -ErrorAction Stop
         foreach ($product in $antispywareProducts) {
-            $state = ($product.productState -shr 16) -band 0xFF
+            $signatureState = $product.productState -band 0xF0
             $securityProducts += [ordered]@{
                 type = 'antispyware'
                 display_name = $product.displayName
                 instance_guid = $product.instanceGuid
                 product_state = $product.productState
-                enabled = ($product.productState -band 0x1000) -eq 0
-                up_to_date = $state -eq 0
-                state_description = switch ($state) {
+                enabled = (($product.productState -band 0xF000) -eq 0x1000)
+                up_to_date = $signatureState -eq 0
+                state_description = switch ($signatureState) {
                     0 { 'Actualizado' }
                     16 { 'En espera de actualizaciones' }
                     32 { 'Actualizacion en progreso' }

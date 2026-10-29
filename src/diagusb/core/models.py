@@ -102,6 +102,10 @@ class ComputerId:
     machine_guid: str = ""
     mac_addresses: list[str] = field(default_factory=list)
     weak_candidate: bool = False
+    machine_id: str = ""
+    componentes: dict[str, str] = field(default_factory=dict)
+    calidad: str = ""
+    respaldos: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -153,4 +157,5 @@ class PackageManifest:
     label: str = ""
     description: str = ""
     symptoms: list[str] = field(default_factory=list)
+    requirements: list[str] = field(default_factory=list)
     collectors: list[CollectorManifest] = field(default_factory=list)

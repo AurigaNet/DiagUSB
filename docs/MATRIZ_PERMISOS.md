@@ -1,6 +1,6 @@
 # MATRIZ_PERMISOS
 
-Estado **medido** en un equipo real (ya no es plantilla). Datos crudos de la Ronda 11; `physical_disks` re-medido en la Ronda 12b tras acotar la consulta de fiabilidad.
+Estado **medido** en un equipo real (ya no es plantilla). Datos crudos medidos sobre los 39 colectores; `physical_disks` re-medido tras acotar la consulta de fiabilidad.
 
 ## Entorno de medición
 
@@ -18,7 +18,7 @@ Total de colectores: **39**. Colectores que difieren entre modo estándar y admi
 | --- | --- | --- | --- | --- |
 | `security_events` | `denied` | `ok` | sí | 0 eventos vs 10 eventos; sin admin el acceso al registro de seguridad se deniega. |
 | `installed_software` | `ok` | `ok` | sí | `optional_features`: 0 vs 24; sin admin no se listan las características opcionales de Windows. El colector lo declara con `optional_features_available: false` y el informe agrega "datos limitados: installed_software (requiere administrador)". |
-| `physical_disks` | `ok` (~6,7 s) | `ok` (~6,7 s) | sí | Ronda 12b: la consulta de fiabilidad se acota a 10 s por disco y no se hace en unidades USB, así que ya no hay timeout (antes ~93 s elevado). Elevado aparecen `power_on_hours`/`temperature`; la unidad Kingston USB nunca aporta fiabilidad (`reliability_motivo: "no aplica a unidades USB"`). |
+| `physical_disks` | `ok` (~6,7 s) | `ok` (~6,7 s) | sí | Re-medido tras acotar la consulta de fiabilidad a 10 s por disco, que no se hace en unidades USB, así que ya no hay timeout (antes ~93 s elevado). Elevado aparecen `power_on_hours`/`temperature`; la unidad Kingston USB nunca aporta fiabilidad (`reliability_motivo: "no aplica a unidades USB"`). |
 | `running_services` | `ok` (107) | `ok` (108) | sí (volátil) | El conteo de servicios en ejecución cambia entre corridas; no es efecto de permisos. |
 | `connectivity` | `ok` | `ok` | sí (formato) | `latency_ms` entero vs flotante; no es efecto de permisos. |
 
@@ -29,6 +29,14 @@ Los **34** colectores restantes dan el mismo estado y la misma estructura de dat
 - `security_events` (eventos de seguridad): `denied` sin admin.
 - `installed_software` (inventario de software): sin admin faltan las características opcionales; el colector declara `optional_features_available: false` y el informe lo reporta como "datos limitados: installed_software (requiere administrador)".
 
+## Caso especial: colector `cpu_temperature` (agregado posterior a 0.1.0)
+
+El colector de temperatura del CPU **no depende del permiso de DiagUSB**, sino de LibreHardwareMonitor (LHM), herramienta externa que se ejecuta aparte:
+
+- DiagUSB consulta `http://127.0.0.1:8085` (solo loopback; configurable con `DIAGUSB_LHM_URL`), sin permisos especiales.
+- Si LHM no esta activo (o lo esta sin su servidor web), el paquete `temperatura` queda bloqueado por el preflight de capacidades con el motivo visible; DiagUSB mismo **no necesita** elevacion para este colector.
+- Medir el cambio de lecturas con/sin admin de **DiagUSB** no aplica; el cambio relevante esta en ejecutar LHM con o sin Administrador (sin admin + sin PawnIO, LHM no expone sensores CPU).
+
 ## Contextos pendientes
 
-Falta medir el contexto "otro administrador" (no se hizo en esta ronda).
+Falta medir el contexto "otro administrador" (queda pendiente de medición).

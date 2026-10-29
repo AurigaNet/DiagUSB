@@ -37,9 +37,10 @@ def main(argv: list[str] | None = None) -> int:
 
     archivos: dict[str, str] = {}
     rutas = sorted((ROOT / "src" / "diagusb" / "packages").rglob("*.ps1"))
-    common = ROOT / "collectors" / "_common.ps1"
-    if common.is_file():
-        rutas.append(common)
+    for compartido in (ROOT / "collectors" / "_common.ps1",
+                       ROOT / "collectors" / "capacidades.ps1"):
+        if compartido.is_file():
+            rutas.append(compartido)
 
     for ruta in rutas:
         nombre = ruta.name

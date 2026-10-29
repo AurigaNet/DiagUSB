@@ -11,6 +11,8 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -156,8 +158,8 @@ def test_updates_sin_pendientes():
 def test_wifi_senal_debil():
     engine = RuleEngine()
     r = create_mock_result("wifi_networks", [
-        {"ssid": "Casa", "signal": 25},
-        {"ssid": "Oficina", "signal": [80, 75]},
+        {"ssid": "Casa", "connected": True, "signal": 25},
+        {"ssid": "Oficina", "connected": False, "signal": [80, 75]},
     ])
     findings = engine._check_wifi_signal([r])
     assert len(findings) == 1
@@ -168,7 +170,9 @@ def test_wifi_senal_debil():
 
 def test_wifi_senal_fuerte():
     engine = RuleEngine()
-    r = create_mock_result("wifi_networks", [{"ssid": "Casa", "signal": [90, 85]}])
+    r = create_mock_result("wifi_networks", [
+        {"ssid": "Casa", "connected": True, "signal": [90, 85]}
+    ])
     assert engine._check_wifi_signal([r]) == []
 
 
@@ -578,6 +582,7 @@ def test_kb_valida_campos():
 def test_kb_embebida_intacta():
     ids = {e["id"] for e in kb.entradas()}
     assert "wifi_debil" in ids and "servicio_automatico_detenido" in ids
+    assert "cpu_caliente" in ids
     entrada = kb.buscar("wifi_debil")
     assert "40%" in entrada["estado_esperado"]
 
@@ -588,7 +593,9 @@ def test_kb_embebida_intacta():
 
 def test_run_diagnostic_contadores():
     import diagusb.web_server as ws
+    from diagusb.core import integridad
 
+    # Hermético: el test no depende de manifiesto_hashes.json (ignorado por git).
     contador = {"i": 0}
 
     def fake_powershell(script_path, timeout=30):
@@ -602,12 +609,15 @@ def test_run_diagnostic_contadores():
                   / "collectors").glob("*.ps1")))
     assert n >= 3, "el paquete servicios debe tener al menos 3 colectores"
 
-    original = ws.run_powershell
+    original_powershell = ws.run_powershell
+    original_verificar = integridad.verificar
     ws.run_powershell = fake_powershell
+    integridad.verificar = lambda ruta: (True, "")
     try:
         diag = ws.run_diagnostic("servicios")
     finally:
-        ws.run_powershell = original
+        ws.run_powershell = original_powershell
+        integridad.verificar = original_verificar
 
     assert not diag.get("error"), diag.get("error")
     assert diag["collectors_count"] == n
@@ -618,6 +628,47 @@ def test_run_diagnostic_contadores():
     assert diag["empty_count"] == esperados_empty
     assert diag["error_count"] == esperados_error
     assert isinstance(diag.get("is_elevated"), (bool, type(None)))
+
+
+def test_progreso_diagnostico():
+    import diagusb.web_server as ws
+
+    ws._progreso_reiniciar("paquete", "Demo", [("demo", "Demo", 2)])
+    try:
+        ws._progreso_iniciar_paquete("demo", "Demo", 2)
+        ws._progreso_actual("demo", "get_uno")
+        estado = ws._progreso_snapshot()
+        assert estado["activo"] is True
+        assert estado["total"] == 2
+        assert estado["completados"] == 0
+        assert estado["actual"] == "get_uno"
+
+        ws._progreso_completado("demo")
+        estado = ws._progreso_snapshot()
+        assert estado["completados"] == 1
+        assert estado["porcentaje"] == 50
+
+        ws._progreso_paquete_fin("demo")
+        estado = ws._progreso_snapshot()
+        assert estado["activo"] is False
+        assert estado["completados"] == 2
+        assert estado["porcentaje"] == 100
+        assert estado["paquetes"][0]["estado"] == "completado"
+    finally:
+        ws._progreso_reiniciar("", "", [])
+
+
+def test_procesos_sin_ventana():
+    import os
+    import subprocess
+    from diagusb.core.procesos import opciones_sin_ventana
+
+    opciones = opciones_sin_ventana()
+    if os.name == "nt":
+        assert opciones["creationflags"] & subprocess.CREATE_NO_WINDOW
+        assert opciones["startupinfo"].dwFlags & subprocess.STARTF_USESHOWWINDOW
+    else:
+        assert opciones == {}
 
 
 def test_elevation_comando_y_desactivacion():
@@ -1315,7 +1366,8 @@ def test_identidad_coincide_unitario():
 
     a = {"computer_name": "PC-A", "hardware_id": "S1"}
     assert ws._identidad_coincide(a, {"computer_name": "pc-a", "hardware_id": "s1"})
-    assert not ws._identidad_coincide(a, {"computer_name": "PC-B", "hardware_id": "S1"})
+    # Renombrar la PC es normal: el hardware (S1) coincide, no invalida.
+    assert ws._identidad_coincide(a, {"computer_name": "PC-B", "hardware_id": "S1"})
     assert not ws._identidad_coincide(a, {"computer_name": "PC-A", "hardware_id": "S2"})
     assert ws._identidad_coincide(a, {"computer_name": "", "hardware_id": ""})
 
@@ -1458,8 +1510,7 @@ def test_generar_manifiesto():
     spec.loader.exec_module(gen)
 
     tmp = Path(tempfile.mkdtemp(prefix="diagusb_man_")) / "manifiesto_hashes.json"
-    gen.DESTINO = tmp
-    assert gen.main() == 0
+    assert gen.main([str(tmp)]) == 0
     data = json.loads(tmp.read_text(encoding="utf-8"))
     assert data["total"] == len(data["archivos"])
     assert "_common.ps1" in data["archivos"]
@@ -1518,6 +1569,52 @@ def test_rutas_portables():
                 os.environ["LOCALAPPDATA"] = old_local
     finally:
         rutas.resetear_cache()
+
+
+def test_rutas_modo_instalado():
+    import diagusb.core.rutas as rutas
+
+    programa = Path(tempfile.mkdtemp(prefix="diagusb_programa_"))
+    appdata = Path(tempfile.mkdtemp(prefix="diagusb_appdata_"))
+    datos = appdata / "DiagUSB"
+    (programa / "instalado.flag").write_text(
+        f"# DiagUSB: datos de usuario\n{datos}\n", encoding="utf-8")
+
+    old_frozen = getattr(sys, "frozen", None)
+    old_exec = sys.executable
+    old_local = os.environ.get("LOCALAPPDATA")
+    sys.frozen = True
+    sys.executable = str(programa / "DiagUSB.exe")
+    os.environ["LOCALAPPDATA"] = str(appdata)
+    rutas.resetear_cache()
+    try:
+        assert rutas.dir_base() == datos
+        assert rutas.dir_config() == datos / "config"
+        assert rutas.dir_reports() == datos / "reports"
+        assert rutas.usa_respaldo() is False
+    finally:
+        rutas.resetear_cache()
+        if old_frozen is None:
+            del sys.frozen
+        else:
+            sys.frozen = old_frozen
+        sys.executable = old_exec
+        if old_local is None:
+            os.environ.pop("LOCALAPPDATA", None)
+        else:
+            os.environ["LOCALAPPDATA"] = old_local
+
+
+def test_entry_gui_puerto_elevado():
+    import importlib.util
+
+    ruta = Path(__file__).resolve().parent.parent / "build" / "entry_gui.py"
+    spec = importlib.util.spec_from_file_location("diagusb_entry_gui_test", ruta)
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+    assert modulo._puerto_solicitado([]) == 8080
+    assert modulo._puerto_solicitado(["web", "--port", "8093"]) == 8093
+    assert modulo._puerto_solicitado(["web", "--port=8094"]) == 8094
 
 
 def test_codigo_verificacion_informe():
@@ -1727,6 +1824,100 @@ def test_api_elevar_token():
         httpd.server_close()
 
 
+def test_api_apagar_token():
+    import http.client
+
+    httpd, _ = _abrir_servidor()
+    port = httpd.server_address[1]
+
+    def post(headers):
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        conn.request("POST", "/api/apagar", body="{}", headers=headers)
+        r = conn.getresponse()
+        cuerpo = r.read()
+        conn.close()
+        return r.status, cuerpo
+
+    try:
+        estado, _ = post({"Content-Type": "application/json"})
+        assert estado == 401, estado
+
+        h = dict(_cookie())
+        h["Content-Type"] = "application/json"
+        estado, cuerpo = post(h)
+        assert estado == 200, estado
+        datos = json.loads(cuerpo.decode("utf-8"))
+        assert datos.get("ok") is True, datos
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_api_latido_y_despedida():
+    import http.client
+    import diagusb.web_server as ws
+
+    httpd, _ = _abrir_servidor()
+    port = httpd.server_address[1]
+    h = dict(_cookie())
+    h["Content-Type"] = "application/json"
+
+    def post(ruta, cuerpo):
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+        conn.request("POST", ruta, body=cuerpo, headers=h)
+        r = conn.getresponse()
+        r.read()
+        conn.close()
+        return r.status
+
+    ws._reiniciar_latidos()
+    try:
+        assert post("/api/latido", json.dumps({"id": "cliente-test"})) == 200
+        assert "cliente-test" in ws._LATIDOS
+        assert post("/api/despedida",
+                    json.dumps({"id": "cliente-test"})) == 200
+        assert "cliente-test" not in ws._LATIDOS
+    finally:
+        ws._reiniciar_latidos()
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_watchdog_cierra_al_cerrar_pestana():
+    import threading
+    import time
+    import diagusb.web_server as ws
+
+    class ServidorFalso:
+        cerrado = False
+
+        def shutdown(self):
+            self.cerrado = True
+
+    gracia_original = ws._CIERRE_GRACIA
+    timeout_original = ws._LATIDO_TIMEOUT
+    ws._CIERRE_GRACIA = 0.1
+    ws._LATIDO_TIMEOUT = 2.0
+    ws._reiniciar_latidos()
+    servidor = ServidorFalso()
+    hilo = threading.Thread(target=ws._vigilar_latidos,
+                            args=(servidor,), daemon=True)
+    hilo.start()
+    try:
+        ws._registrar_latido("pestana-test")
+        time.sleep(1.2)
+        assert not servidor.cerrado
+
+        ws._quitar_latido("pestana-test")
+        hilo.join(3)
+        assert servidor.cerrado
+        assert not hilo.is_alive()
+    finally:
+        ws._reiniciar_latidos()
+        ws._CIERRE_GRACIA = gracia_original
+        ws._LATIDO_TIMEOUT = timeout_original
+
+
 def test_reglas_colector_denied():
     from diagusb.core.rules import diagnose_symptoms
 
@@ -1879,6 +2070,156 @@ def test_physical_disks_usb_no_limita():
     assert esperado in ws._entrada_registro(con_falla, "diagnostico")["alcance"]
 
 
+def test_colector_temperatura_cpu_lhm():
+    """Ruta simulada: la estructura del colector alimenta la regla del CPU.
+
+    No ejecuta powershell ni consulta la red: usa los mismos campos que
+    devuelve ``get_cpu_temperature.ps1`` (comprobado textualmente abajo).
+    La prueba real con PowerShell queda como manual y omitida por defecto.
+    """
+    from diagusb.core.rules import RuleEngine
+
+    # claves que introduces el colector en su resultado (get_cpu_temperature.ps1)
+    texto_ps = (Path(__file__).parent.parent / "src" / "diagusb" / "packages"
+                / "temperatura" / "collectors" / "get_cpu_temperature.ps1").read_text(
+                    encoding="utf-8")
+    for clave in ("source = 'librehardwaremonitor'", "url = $data.url",
+                  "available = $true", "sampled_at_utc",
+                  "cpu_name = $data.cpu_name", "package_temp_c",
+                  "max_core_temp_c", "average_core_temp_c", "max_temp_c",
+                  "sensor_count = $data.sensor_count", "sensors = $data.sensors"):
+        assert clave in texto_ps, clave
+
+    # datos simulados con la misma forma que produce el colector ante un
+    # data.json simulado (Package 74, Tctl/Tdie 76, Cores 72/75)
+    simulado = CollectorResult(
+        collector_id="cpu_temperature",
+        query=QueryInfo(status="ok", duration_ms=8, timeout_seconds=15),
+        data=[{
+            "source": "librehardwaremonitor",
+            "url": "http://127.0.0.1:8085",
+            "available": True,
+            "sampled_at_utc": "2026-01-01T00:00:00Z",
+            "cpu_name": "AMD Ryzen 7 5800H",
+            "package_temp_c": 74.0,
+            "max_core_temp_c": 75.0,
+            "average_core_temp_c": 73.5,
+            "max_temp_c": 76.0,
+            "sensor_count": 4,
+            "sensors": [
+                {"name": "Package", "temperature_c": 74.0, "kind": "package"},
+                {"name": "Core (Tctl/Tdie)", "temperature_c": 76.0, "kind": "package"},
+            ],
+        }],
+    )
+
+    engine = RuleEngine()
+    # sin hallazgo por debajo del umbral
+    assert engine._check_cpu_temperature([simulado]) == []
+
+    caliente = CollectorResult(
+        collector_id="cpu_temperature",
+        query=QueryInfo(status="ok", duration_ms=8, timeout_seconds=15),
+        data=[{**simulado.data[0], "max_temp_c": 91.0}],
+    )
+    cumplido = engine._check_cpu_temperature([caliente])
+    assert len(cumplido) == 1
+    assert cumplido[0].severity == "error"
+    assert "91 °C" in cumplido[0].message
+    assert cumplido[0].knowledge_id == "cpu_caliente"
+    assert cumplido[0].details["package_temp_c"] == 74.0
+    assert cumplido[0].details["sensor_count"] == 4
+
+
+@pytest.mark.skipif(not os.environ.get("DIAGUSB_PRUEBAS_MANUALES"),
+                    reason="manual: ejecuta PowerShell real; activar con "
+                           "DIAGUSB_PRUEBAS_MANUALES=1")
+def test_manual_colector_temperatura_cpu_lhm():
+    import http.server
+    import subprocess
+    import threading
+
+    from diagusb.core.procesos import opciones_sin_ventana
+
+    if os.name != "nt":
+        return
+
+    payload = json.dumps({
+        "Children": [
+            {
+                "Text": "AMD Ryzen 7 5800H",
+                "ImageURL": "images_icon/cpu.png",
+                "Children": [{
+                    "Text": "Temperatures",
+                    "Children": [
+                        {"Text": "Package", "Value": "74.0 °C"},
+                        {"Text": "Core (Tctl/Tdie)", "Value": "76.0 °C"},
+                        {"Text": "Core #1", "Value": "72.0 °C"},
+                        {"Text": "Core #2", "Value": "75.0 °C"},
+                        {"Text": "Core Distance to TjMax", "Value": "-34.0 °C"},
+                    ],
+                }],
+            },
+            {
+                "Text": "GeForce RTX 3070",
+                "ImageURL": "images_icon/nvidia_gpu.png",
+                "Children": [{"Text": "GPU Core", "Value": "58 °C"}],
+            },
+        ],
+    }, ensure_ascii=False).encode("utf-8")
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path != "/data.json":
+                self.send_response(404)
+                self.end_headers()
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, *args):
+            pass
+
+    servidor = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    hilo = threading.Thread(target=servidor.serve_forever, daemon=True)
+    hilo.start()
+    base = f"http://127.0.0.1:{servidor.server_port}"
+
+    script = (Path(__file__).parent.parent / "src" / "diagusb" / "packages"
+              / "temperatura" / "collectors" / "get_cpu_temperature.ps1")
+    env = os.environ.copy()
+    env["DIAGUSB_LHM_URL"] = base
+    try:
+        resultado = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
+             "-File", str(script)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=25, env=env, **opciones_sin_ventana())
+        assert resultado.returncode == 0, resultado.stderr
+        salida = json.loads(resultado.stdout.strip())
+        assert salida["query"]["status"] == "ok", salida
+        data = salida["data"][0]
+        assert data["available"] is True
+        assert data["url"] == base
+        assert data["cpu_name"] == "AMD Ryzen 7 5800H"
+        assert data["package_temp_c"] == 76.0
+        assert data["max_core_temp_c"] == 75.0
+        assert data["average_core_temp_c"] == 73.5
+        assert data["max_temp_c"] == 76.0
+        assert data["sensor_count"] == 4
+        nombres = {s["name"] for s in data["sensors"]}
+        assert "Core Distance to TjMax" not in nombres
+        assert not any("GPU" in n for n in nombres)
+    finally:
+        env.pop("DIAGUSB_LHM_URL", None)
+        servidor.shutdown()
+        servidor.server_close()
+        hilo.join(timeout=2)
+
+
 def test_pagina_desde_static():
     import diagusb.web_server as ws
 
@@ -1887,8 +2228,9 @@ def test_pagina_desde_static():
     base = Path(ws.__file__).with_name("static")
     for nombre in ("index.html", "app.css", "app.js"):
         assert (base / nombre).is_file(), nombre
-    for pkg in ("impresion", "redes", "wifi", "disco", "memoria", "servicios",
-                "seguridad", "windows_update", "drivers", "eventos", "contexto"):
+    for pkg in ("impresion", "redes", "wifi", "disco", "memoria", "temperatura",
+                "servicios", "seguridad", "windows_update", "drivers", "eventos",
+                "contexto"):
         assert f"runDiagnostic('{pkg}')" in html, pkg
     assert "runFullScan()" in html
     assert "btnKb" in html and "btnRegistro" in html
@@ -1922,17 +2264,19 @@ def test_modulos_y_fetch_sin_cambios():
     import diagusb.web_server as ws
 
     html = ws._cargar_pagina()
-    assert html.count('class="mod-btn') == 15
+    assert html.count('class="mod-btn') == 17
     assert "runDiagnostic('inventario_general')" in html
+    assert "runDiagnostic('conectividad')" in html
     assert 'http://' not in html and 'https://' not in html
     js = (Path(ws.__file__).with_name("static") / "app.js").read_text(encoding="utf-8")
+    assert "/api/capacidades" in js
     destinos = [u for _, u in re.findall(r"fetch\(\s*(['\"])(.*?)\1", js)]
-    assert len(destinos) == 16, destinos
+    assert len(destinos) == 19, destinos
     assert set(destinos) == {
         '/api/snapshot', '/api/compare', '/api/report?format=',
         '/api/diagnose?package=', '/api/full-scan', '/api/knowledge',
-        '/api/registro?id=', '/api/registro', '/api/datos',
-        '/api/elevation', '/api/elevar'}
+        '/api/registro?id=', '/api/registro', '/api/datos', '/api/apagar',
+        '/api/latido', '/api/progreso', '/api/elevation', '/api/elevar'}
 
 
 def test_run_powershell_timeout_termina_arbol():
@@ -2111,6 +2455,98 @@ def test_api_snapshot_sanea_antes_de_guardar():
         httpd.shutdown()
         httpd.server_close()
         ws.BASELINE_PATH = original
+
+
+def test_saneo_pasa_puerta_y_dhcp_sin_enmascarar():
+    """redactar no enmascara gateway_mac ni dhcp_server en snapshots locales.
+
+    Los valores reales deben guardarse para que el comparador de instantáneas
+    detecte cambios reales. El enmascarado (_enmascarar_mac, _enmascarar_ip)
+    se reserva para la exportación de informes (Fase 4).
+    """
+    from diagusb.core.saneamiento import redactar
+
+    dato = {
+        "ip_configuration": [{
+            "interface_alias": "Ethernet",
+            "gateway_mac": "00-00-5E-00-53-01",
+            "dhcp_server": "192.0.2.1",
+            "mac_address": "00-00-5E-00-53-01",
+        }],
+        "clave_wifi": "secreto123",
+        "password": "clave456",
+    }
+    limpio = redactar(dato)
+    ip = limpio["ip_configuration"][0]
+    assert ip["gateway_mac"] == "00-00-5E-00-53-01"
+    assert ip["dhcp_server"] == "192.0.2.1"
+    assert ip["mac_address"] == "00-00-5E-00-53-01"
+    assert limpio["clave_wifi"] == "[OCULTO]"
+    assert limpio["password"] == "[OCULTO]"
+
+
+def _resultado_ip_config(mac: str, dhcp: str = "192.0.2.1") -> CollectorResult:
+    return CollectorResult(
+        collector_id="ip_configuration",
+        data={
+            "interface_alias": "Ethernet",
+            "gateway_mac": mac,
+            "dhcp_server": dhcp,
+        },
+    )
+
+
+def test_snapshot_ronda_conserva_y_compara_mac_y_dhcp():
+    """Guardar y cargar conserva gateway_mac y dhcp_server.
+
+    Igual -> sin diferencias; gateway_mac distinto -> diferencia real.
+    """
+    import json
+    import tempfile
+    from pathlib import Path
+
+    from diagusb.core.comparator import compare_snapshots, load_snapshot, save_snapshot
+    from diagusb.core.models import CollectorResult, ComputerId, QueryInfo, Snapshot
+
+    base = Snapshot(
+        computer_id=ComputerId(),
+        captured_at_utc="2026-01-01T00:00:00Z",
+        observations=[_resultado_ip_config("00-00-5E-00-53-01")],
+    )
+    igual = Snapshot(
+        computer_id=ComputerId(),
+        captured_at_utc="2026-01-02T00:00:00Z",
+        observations=[_resultado_ip_config("00-00-5E-00-53-01")],
+    )
+    distinto = Snapshot(
+        computer_id=ComputerId(),
+        captured_at_utc="2026-01-03T00:00:00Z",
+        observations=[_resultado_ip_config("00-00-5E-00-53-02")],
+    )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        p_base = tmp_path / "antes.json"
+        p_despues = tmp_path / "despues.json"
+        save_snapshot(base, p_base)
+        save_snapshot(igual, p_despues)
+
+        guardado = json.loads(p_base.read_text(encoding="utf-8"))
+        assert guardado["observations"][0]["data"]["gateway_mac"] == "00-00-5E-00-53-01"
+        assert guardado["observations"][0]["data"]["dhcp_server"] == "192.0.2.1"
+
+        diffs_igual = compare_snapshots(load_snapshot(p_base), load_snapshot(p_despues))
+        assert not diffs_igual, diffs_igual
+
+        save_snapshot(distinto, p_despues)
+        diffs_distinto = compare_snapshots(load_snapshot(p_base), load_snapshot(p_despues))
+        assert any(
+            d.collector_id == "ip_configuration"
+            and d.field_path == "gateway_mac"
+            and d.baseline_value == "00-00-5E-00-53-01"
+            and d.current_value == "00-00-5E-00-53-02"
+            for d in diffs_distinto
+        ), diffs_distinto
 
 
 def test_registro_sanea_findings():
@@ -2373,6 +2809,157 @@ def test_deteccion_virtual_por_fabricante_y_modelo():
     assert resultado.stdout.strip().endswith("OK"), resultado.stdout
 
 
+def test_hardware_recolecta_inventario_detallado():
+    """El colector de hardware expone firmware, chasis, ranuras y salud de disco."""
+    raiz = Path(__file__).parent.parent
+    texto = (raiz / "src" / "diagusb" / "packages" / "inventario_general"
+             / "collectors" / "get_hardware.ps1").read_text(encoding="utf-8")
+    for requerido in (
+        "Win32_SystemEnclosure",
+        "$env:firmware_type",
+        "Confirm-SecureBootUEFI",
+        "Get-PhysicalDisk",
+        "smbios_version",
+        "modo_arranque",
+        "secure_boot",
+        '"tpm" = $tpmEstado'.replace('"tpm"', 'tpm'),
+        "chassis_descriptions",
+        "device_locator",
+        "bank_label",
+        "health_status",
+        "physical_media_type",
+        "requiere_admin",
+        "no_aplica",
+    ):
+        assert requerido in texto, requerido
+    # TPM solo se consulta elevado; sin admin queda "requiere_admin"
+    guardia = texto.index("if ($esAdmin)")
+    consulta = texto.index("'root\\cimv2\\Security\\MicrosoftTpm'")
+    assert guardia < consulta
+    # Secure Boot solo en UEFI; en Legacy queda "no_aplica"
+    guardia_uefi = texto.index("if ($firmwareType -ieq 'UEFI')")
+    confirmacion = texto.index("Confirm-SecureBootUEFI")
+    assert guardia_uefi < confirmacion
+
+
+def test_bateria_colector_y_reporte_xml_simulado():
+    """El colector de bateria usa powercfg, borra el XML y calcula el desgaste."""
+    raiz = Path(__file__).parent.parent
+    texto = (raiz / "src" / "diagusb" / "packages" / "bateria"
+             / "collectors" / "get_battery.ps1").read_text(encoding="utf-8")
+    for requerido in (
+        "powercfg.exe /batteryreport /XML",
+        "Get-DiagUsbBatteryReportInfo",
+        "finally",
+        "Remove-Item",
+        "DIAGUSB_NOT_AVAILABLE",
+        "desgaste_percent",
+        "fuente_capacidad",
+        "carga_percent",
+    ):
+        assert requerido in texto, requerido
+    # el XML temporal se crea y se borra SIEMPRE (try/finally)
+    creacion = texto.index("$reporte = Join-Path")
+    borrado = texto.index("Remove-Item -LiteralPath $reporte")
+    assert borrado > creacion
+    assert "Remove-Item -LiteralPath $reporte -Force" in texto
+
+    common = raiz / "collectors" / "_common.ps1"
+    xml_simulado = (
+        "<BatteryInformation>"
+        "<Battery><Id>BAT-PRUEBA</Id><Manufacturer>FabPrueba</Manufacturer>"
+        "<Chemistry>LION</Chemistry>"
+        "<DesignCapacity>96000</DesignCapacity>"
+        "<FullChargeCapacity>52800</FullChargeCapacity>"
+        "<CycleCount>320</CycleCount></Battery>"
+        "</BatteryInformation>")
+    codigo = (
+        "$ErrorActionPreference='Stop'; "
+        f". '{common}'; "
+        "$xml = Join-Path $env:TEMP ('diagusb_pruebas_xml_' + "
+        "[Guid]::NewGuid().ToString('N') + '.xml'); "
+        f"[IO.File]::WriteAllText($xml, '{xml_simulado}'); "
+        "try { "
+        "$info = Get-DiagUsbBatteryReportInfo -XmlPath $xml; "
+        "$b = @($info)[0]; "
+        "Write-Output ($b.id + '|' + $b.design_capacity_mwh + '|' + "
+        "$b.full_charge_capacity_mwh + '|' + $b.ciclos + '|' + $b.fabricante) "
+        "} finally { Remove-Item -LiteralPath $xml -Force "
+        "-ErrorAction SilentlyContinue }"
+    )
+    import subprocess
+
+    from diagusb.core.procesos import opciones_sin_ventana
+
+    resultado = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
+         "-Command", codigo],
+        capture_output=True, text=True, timeout=40,
+        **opciones_sin_ventana())
+    assert resultado.returncode == 0, resultado.stdout + resultado.stderr
+    partes = resultado.stdout.strip().split("|")
+    assert partes[0] == "BAT-PRUEBA", resultado.stdout
+    assert partes[1] == "96000", resultado.stdout
+    assert partes[2] == "52800", resultado.stdout
+    assert partes[3] == "320", resultado.stdout
+    assert partes[4] == "FabPrueba", resultado.stdout
+
+
+def test_ip_configuration_entrega_dhcp_y_mac_gateway():
+    """El colector de IP incluye servidor DHCP y MAC del gateway por ARP."""
+    raiz = Path(__file__).parent.parent
+    texto = (raiz / "src" / "diagusb" / "packages" / "conectividad"
+             / "collectors" / "get_ip_configuration.ps1").read_text(
+                 encoding="utf-8")
+    for requerido in (
+        "Win32_NetworkAdapterConfiguration",
+        "dhcp_server",
+        "gateway_mac",
+        "Get-DiagUsbGatewayMac",
+    ):
+        assert requerido in texto, requerido
+    comun = (raiz / "collectors" / "_common.ps1").read_text(encoding="utf-8")
+    for requerido in ("Get-NetNeighbor", "LinkLayerAddress", "no_disponible"):
+        assert requerido in comun, requerido
+
+
+def test_gateway_mac_arp_simulado_devuelve_no_disponible():
+    """Con la tabla ARP simulada, sin entrada del gateway devuelve no_disponible.
+
+    Usa el rango de documentacion 192.0.2.x y una tabla ARP inyectada:
+    no consulta la red real.
+    """
+    import subprocess
+
+    from diagusb.core.procesos import opciones_sin_ventana
+
+    if os.name != "nt":
+        return
+    common = Path(__file__).parent.parent / "collectors" / "_common.ps1"
+    comando = (
+        f". '{common}'; "
+        "$v = @([pscustomobject]@{IPAddress='192.0.2.99';"
+        "State='Stale';LinkLayerAddress='AA-BB-CC-DD-EE-FF'}); "
+        "$con = Get-DiagUsbGatewayMac -GatewayIp '192.0.2.99' -Vecinos $v; "
+        "$v2 = @([pscustomobject]@{IPAddress='192.0.2.99';"
+        "State='Inarp';LinkLayerAddress='AA-BB-CC-DD-EE-FF'}); "
+        "$inarp = Get-DiagUsbGatewayMac -GatewayIp '192.0.2.99' -Vecinos $v2; "
+        "$sin = Get-DiagUsbGatewayMac -GatewayIp '192.0.2.99' -Vecinos @(); "
+        "Write-Output $con; Write-Output $inarp; Write-Output $sin"
+    )
+    resultado = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
+         "-Command", comando],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=60, **opciones_sin_ventana(),
+    )
+    assert resultado.returncode == 0, resultado.stderr
+    lineas = [l for l in resultado.stdout.strip().splitlines() if l]
+    assert lineas[0] == "AA-BB-CC-DD-EE-FF", lineas
+    assert lineas[1] == "no_disponible", lineas
+    assert lineas[2] == "no_disponible", lineas
+
+
 def run_tests():
     """Ejecuta todas las pruebas de esta suite."""
     tests = [
@@ -2387,6 +2974,16 @@ def run_tests():
          test_cabeceras_seguridad_en_respuestas),
         ("test_deteccion_virtual_por_fabricante_y_modelo",
          test_deteccion_virtual_por_fabricante_y_modelo),
+        ("test_hardware_recolecta_inventario_detallado",
+         test_hardware_recolecta_inventario_detallado),
+        ("test_bateria_colector_y_reporte_xml_simulado",
+         test_bateria_colector_y_reporte_xml_simulado),
+        ("test_ip_configuration_entrega_dhcp_y_mac_gateway",
+         test_ip_configuration_entrega_dhcp_y_mac_gateway),
+        ("test_saneo_enmascara_gateway_mac_y_dhcp_server",
+         test_saneo_enmascara_gateway_mac_y_dhcp_server),
+        ("test_gateway_mac_arp_simulado_devuelve_no_disponible",
+         test_gateway_mac_arp_simulado_devuelve_no_disponible),
         ("test_agrupa_mismo_problema", test_agrupa_mismo_problema),
         ("test_agrupa_sin_repetidos_no_altera", test_agrupa_sin_repetidos_no_altera),
         ("test_diagnose_symptoms_agrupa", test_diagnose_symptoms_agrupa),
@@ -2415,6 +3012,8 @@ def run_tests():
         ("test_kb_valida_campos", test_kb_valida_campos),
         ("test_kb_embebida_intacta", test_kb_embebida_intacta),
         ("test_run_diagnostic_contadores", test_run_diagnostic_contadores),
+        ("test_progreso_diagnostico", test_progreso_diagnostico),
+        ("test_procesos_sin_ventana", test_procesos_sin_ventana),
         ("test_elevation_comando_y_desactivacion", test_elevation_comando_y_desactivacion),
         ("test_elevation_rechazo_uac", test_elevation_rechazo_uac),
         ("test_elevation_hijo_terminado", test_elevation_hijo_terminado),
@@ -2445,6 +3044,8 @@ def run_tests():
         ("test_generar_manifiesto", test_generar_manifiesto),
         ("test_web_server_rutas_base", test_web_server_rutas_base),
         ("test_rutas_portables", test_rutas_portables),
+        ("test_rutas_modo_instalado", test_rutas_modo_instalado),
+        ("test_entry_gui_puerto_elevado", test_entry_gui_puerto_elevado),
         ("test_codigo_verificacion_informe", test_codigo_verificacion_informe),
         ("test_obs_a_dict_conserva_contexto", test_obs_a_dict_conserva_contexto),
         ("test_banner_flush", test_banner_flush),
@@ -2452,10 +3053,16 @@ def run_tests():
         ("test_pdf_validador_externo", test_pdf_validador_externo),
         ("test_arranque_sin_elevar", test_arranque_sin_elevar),
         ("test_api_elevar_token", test_api_elevar_token),
+        ("test_api_apagar_token", test_api_apagar_token),
+        ("test_api_latido_y_despedida", test_api_latido_y_despedida),
+        ("test_watchdog_cierra_al_cerrar_pestana", test_watchdog_cierra_al_cerrar_pestana),
         ("test_reglas_colector_denied", test_reglas_colector_denied),
         ("test_linea_alcance_informes", test_linea_alcance_informes),
         ("test_datos_limitados_alcance", test_datos_limitados_alcance),
         ("test_physical_disks_usb_no_limita", test_physical_disks_usb_no_limita),
+        ("test_colector_temperatura_cpu_lhm", test_colector_temperatura_cpu_lhm),
+        ("test_manual_colector_temperatura_cpu_lhm",
+         test_manual_colector_temperatura_cpu_lhm),
         ("test_pagina_desde_static", test_pagina_desde_static),
         ("test_atributos_cuerpo_escapados", test_atributos_cuerpo_escapados),
         ("test_pagina_inyectada_datos", test_pagina_inyectada_datos),
@@ -2488,6 +3095,41 @@ def run_tests():
     print(f"Resultados: {passed} pasadas, {failed} fallidas")
 
     return failed == 0
+
+
+def test_run_diagnostic_integridad_falla():
+    """Un colector con hash falso se omite y se reporta; los demás corren."""
+    import diagusb.web_server as ws
+    from diagusb.core import integridad
+
+    ejecutados = []
+
+    def fake_powershell(script_path, timeout=30):
+        ejecutados.append(Path(script_path).name)
+        return {"collector_id": "x", "query": {"status": "ok"},
+                "data": {}, "errors": []}
+
+    def verificar_falso(ruta):
+        if Path(ruta).name == "get_critical_services.ps1":
+            return False, "hash no coincide"
+        return True, ""
+
+    original_powershell = ws.run_powershell
+    original_verificar = integridad.verificar
+    ws.run_powershell = fake_powershell
+    integridad.verificar = verificar_falso
+    try:
+        diag = ws.run_diagnostic("servicios")
+    finally:
+        ws.run_powershell = original_powershell
+        integridad.verificar = original_verificar
+
+    assert not diag.get("error"), diag.get("error")
+    assert diag.get("integridad_fallida") == ["get_critical_services"], \
+        f"Se esperaba integridad_fallida con el manifiesto falso, obtuvimos: {diag.get('integridad_fallida')}"
+    assert "get_critical_services.ps1" not in ejecutados
+    assert ejecutados, "los demás colectores deberían haberse ejecutado"
+
 
 
 if __name__ == "__main__":

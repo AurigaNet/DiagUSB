@@ -28,8 +28,89 @@ $result = New-DiagUsbCollectorResult -CollectorId 'hardware' -ScriptBlock {
     $mems = @(Get-CimInstance -ClassName Win32_PhysicalMemory)
     $disks = @(Get-CimInstance -ClassName Win32_DiskDrive)
     $nets = @(Get-CimInstance -ClassName Win32_NetworkAdapter) | Where-Object { $_.PhysicalAdapter -eq $true } | Sort-Object -Property Name
+    $csproduct = @(Get-CimInstance -ClassName Win32_ComputerSystemProduct)
+    $enclosure = @(Get-CimInstance -ClassName Win32_SystemEnclosure -ErrorAction SilentlyContinue)
+    $esAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    $firmwareType = [string]$env:firmware_type
+    if (-not $firmwareType) { $firmwareType = 'desconocido' }
+    $secureBoot = 'no_aplica'
+    if ($firmwareType -ieq 'UEFI') {
+        try {
+            $secureBoot = if (Confirm-SecureBootUEFI) { 'activado' } else { 'desactivado' }
+        }
+        catch {
+            $secureBoot = 'requiere_admin'
+        }
+    }
+    $tpmEstado = 'requiere_admin'
+    if ($esAdmin) {
+        try {
+            $tpm = @(Get-CimInstance -Namespace 'root\cimv2\Security\MicrosoftTpm' -ClassName Win32_Tpm -ErrorAction Stop)
+            if ($tpm.Count -gt 0) { $tpmEstado = 'presente' } else { $tpmEstado = 'no_presente' }
+        }
+        catch {
+            $tpmEstado = 'requiere_admin'
+        }
+    }
+    $discoFisicos = @{}
+    try {
+        Get-PhysicalDisk -ErrorAction SilentlyContinue | ForEach-Object {
+            $discoFisicos[[string]$_.DeviceId] = $_
+        }
+    }
+    catch { }
+    $chassisNombres = @{
+        1  = 'Otro'
+        2  = 'Desconocido'
+        3  = 'Escritorio'
+        4  = 'Escritorio compacto'
+        5  = 'Pizza box'
+        6  = 'Mini torre'
+        7  = 'Torre'
+        8  = 'Portable'
+        9  = 'Laptop'
+        10 = 'Notebook'
+        11 = 'De mano'
+        12 = 'Estacion de acoplamiento'
+        13 = 'Todo en uno'
+        14 = 'Subnotebook'
+        24 = 'PC de mesa compacto'
+        30 = 'Tableta'
+        31 = 'Convertible'
+        32 = 'Extraible'
+    }
+    $machineGuid = [string](Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Cryptography' -Name MachineGuid -ErrorAction SilentlyContinue).MachineGuid
+    $macsFisicas = @()
+    foreach ($n in $nets) {
+        $desc = ([string]$n.Name + ' ' + [string]$n.Description)
+        if ($desc -match 'bluetooth|vpn|virtual|vmware|virtualbox|hyper-?v|tap|tunnel|teredo|loopback|wan miniport') { continue }
+        if ([string]$n.PNPDeviceID -like 'usb\*') { continue }
+        $mac = [string]$n.MACAddress
+        if ($mac) { $macsFisicas += $mac }
+    }
+    $discoArranque = ''
+    foreach ($disco in $disks) {
+        $particiones = @(Get-CimAssociatedInstance -InputObject $disco -ResultClassName Win32_DiskPartition -ErrorAction SilentlyContinue)
+        foreach ($part in $particiones) {
+            $logicos = @(Get-CimAssociatedInstance -InputObject $part -ResultClassName Win32_LogicalDisk -ErrorAction SilentlyContinue)
+            if (@($logicos | Where-Object { $_.DeviceID -eq $env:SystemDrive })) {
+                $discoArranque = [string]$disco.SerialNumber
+                break
+            }
+        }
+        if ($discoArranque) { break }
+    }
 
     return [ordered]@{
+        identidad = [ordered]@{
+            smbios_uuid = $(if ($csproduct) { [string]$csproduct[0].UUID } else { '' })
+            system_serial = $(if ($csproduct) { [string]$csproduct[0].IdentifyingNumber } else { '' })
+            chassis_serial = $(if ($enclosure) { [string]$enclosure[0].SerialNumber } else { '' })
+            chassis_asset_tag = $(if ($enclosure) { [string]$enclosure[0].SMBIOSAssetTag } else { '' })
+            machine_guid = $machineGuid
+            macs_fisicas = @($macsFisicas)
+            disco_arranque = $discoArranque
+        }
         computer_system = @($computers | ForEach-Object {
             [ordered]@{
                 manufacturer = $_.Manufacturer
@@ -46,10 +127,23 @@ $result = New-DiagUsbCollectorResult -CollectorId 'hardware' -ScriptBlock {
             [ordered]@{
                 manufacturer = $_.Manufacturer
                 bios_version = $_.SMBIOSBIOSVersion
+                smbios_version = "$($_.SMBIOSMajorVersion).$($_.SMBIOSMinorVersion)"
                 release_date_utc = Convert-DiagUsbDateTime -Value $_.ReleaseDate
                 serial_number = $_.SerialNumber
             }
         })
+        firmware = [ordered]@{
+            modo_arranque = $firmwareType
+            secure_boot = $secureBoot
+            tpm = $tpmEstado
+        }
+        enclosure = [ordered]@{
+            chassis_types = @($enclosure | ForEach-Object { $_.ChassisTypes } | ForEach-Object { [string]$_ })
+            chassis_descriptions = @($enclosure | ForEach-Object { $_.ChassisTypes } |
+                Where-Object { $chassisNombres.ContainsKey([int]$_) } |
+                ForEach-Object { $chassisNombres[[int]$_] })
+            manufacturer = $(if ($enclosure) { [string]$enclosure[0].Manufacturer } else { '' })
+        }
         baseboards = @($baseboards | ForEach-Object {
             [ordered]@{
                 manufacturer = $_.Manufacturer
@@ -86,6 +180,8 @@ $result = New-DiagUsbCollectorResult -CollectorId 'hardware' -ScriptBlock {
         })
         physical_memory = @($mems | ForEach-Object {
             [ordered]@{
+                device_locator = $_.DeviceLocator
+                bank_label = $_.BankLabel
                 capacity_bytes = $_.Capacity
                 speed_mhz = $_.Speed
                 manufacturer = $_.Manufacturer
@@ -96,6 +192,7 @@ $result = New-DiagUsbCollectorResult -CollectorId 'hardware' -ScriptBlock {
             }
         })
         disk_drives = @($disks | ForEach-Object {
+            $fi = $discoFisicos[[string]$_.Index]
             [ordered]@{
                 model = $_.Model
                 manufacturer = $_.Manufacturer
@@ -106,6 +203,9 @@ $result = New-DiagUsbCollectorResult -CollectorId 'hardware' -ScriptBlock {
                 partitions = $_.Partitions
                 firmware_revision = $_.FirmwareRevision
                 status = $_.Status
+                physical_media_type = $(if ($fi) { [string]$fi.MediaType } else { 'desconocido' })
+                bus_type = $(if ($fi) { [string]$fi.BusType } else { 'desconocido' })
+                health_status = $(if ($fi) { [string]$fi.HealthStatus } else { 'no_disponible' })
             }
         })
         network_adapters = @($nets | ForEach-Object {

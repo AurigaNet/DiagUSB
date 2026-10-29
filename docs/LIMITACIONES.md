@@ -7,8 +7,8 @@ Documento de limitaciones y estado actual del proyecto.
 ### Completado
 - Chasis del proyecto y documentacion legal (F0)
 - Sistema de paquetes con manifiestos JSON (F0)
-- 12 paquetes de colectores PowerShell validados en Windows 10 (impresion, redes, wifi, disco, memoria, servicios, seguridad, windows_update, drivers, eventos, contexto, inventario_general)
-- Nucleo Python: executor, models, rules, comparator, reporter, registry, knowledge_base (KB embebida de 19 entradas + capa local editable)
+- 13 paquetes de colectores PowerShell validados en Windows 10 (impresion, redes, wifi, conectividad, disco, memoria, servicios, seguridad, windows_update, drivers, eventos, contexto, inventario_general); los paquetes `temperatura` (numero 14) y `bateria` (numero 15) quedan como **EXPERIMENTALES** (vease Funcionalidad)
+- Nucleo Python: executor, models, rules, comparator, reporter, registry, knowledge_base (KB embebida de 22 entradas + capa local editable)
 - Informes Word (.doc) y PDF (.pdf) en español, con un resumen gráfico de métricas (puntaje, severidad, categorías, medidores y comparación antes/despues), hallazgos, soluciones, acciones del tecnico, mejoras sugeridas y diferencias antes/despues. Los graficos del .doc son imagenes PNG incrustadas (MHTML), no formas ni texto, por lo que se ven igual al abrir o mover el archivo
 - Interfaz web local (barra lateral y tema oscuro; diagnosticos rapidos, revision total, snapshot ANTES/DESPUES + comparacion, editor de KB, registro de analisis y panel de inicio con graficas de metricas)
 - Informe .doc con graficos PNG incrustados verificado en Word 16.0 (Windows 10): torta de severidad, dona de discos, barra de memoria y barras por estado se muestran como imagenes
@@ -16,7 +16,7 @@ Documento de limitaciones y estado actual del proyecto.
 - Kit portable con Python embebido (`DiagUSB-kit-<version>.zip`, armado con `scripts\armar_kit.ps1`), verificado con prueba de humo (`scripts\probar_kit.ps1`: integridad SHA-256, firma PSF del interprete, diagnostico real y PDF)
 - Ejecutable portable con PyInstaller (`dist\diagusb\diagusb.exe`) como variante opcional, verificado con diagnose y reportes
 - Registro persistente de analisis (`config/registro_analisis.json`): auto-guardado, consulta, borrado individual y borrado total
-- Suite de pruebas unitarias (130 pruebas)
+- Suite de pruebas unitarias (206 pruebas)
 
 ### Pendiente de validacion
 - Windows 11 (validado hasta ahora en Windows 10)
@@ -39,6 +39,10 @@ Documento de limitaciones y estado actual del proyecto.
 - El registro de analisis conserva hasta 200 entradas; se descartan automaticamente las mas viejas
 
 ### Funcionalidad
+- El paquete `temperatura` depende de LibreHardwareMonitor (LHM), una herramienta externa que DiagUSB **no empaca ni instala**: el tecnico debe descargarla, instalar PawnIO si el hardware lo requiere y ejecutar LHM como Administrador con el servidor web local activo (`http://127.0.0.1:8085`, configurable con la variable de entorno `DIAGUSB_LHM_URL`, solo loopback). Sin LHM activo el paquete queda bloqueado y el resto del diagnostico funciona normalmente. El paquete queda marcado EXPERIMENTAL: LHM no estuvo disponible en el equipo de prueba, por lo que no se valido con una lectura real de sensores; se validaron con pruebas unitarias la regla, los umbrales (80/90 °C), los vacios y el bloqueo por capacidades.
+- La temperatura del CPU en equipos virtualizados tipicamente no se expone a LHM (no se ajusta al hardware fisico): se trata como paquete no disponible, no como falla.
+- El paquete `bateria` esta marcado NO VERIFICADO EN HARDWARE REAL: el equipo de prueba es una computadora de escritorio sin bateria, de modo que el reporte de `powercfg /batteryreport` y el calculo de desgaste se validaron con datos simulados y con el bloqueo real del paquete en equipos sin bateria (queda oculto, no es error). El desgaste puede no coincidir con la lectura que muestra el propio fabricante porque powercfg informa la carga plena conservada por el controlador.
+- En equipos sin bateria el paquete se oculta por la deteccion previa de capacidades; `Win32_Battery` tambien cubre UPS: si el equipo detecta un UPS como bateria, la lectura describe el UPS, no una bateria interna.
 - La tendencia (evolucion del puntaje entre analisis) se muestra solo en la interfaz web (pestana Historial); todavia NO se incluye en los informes Word/PDF.
 - El informe `.doc` usa MHTML con imagenes PNG y VML. Se verifico en Word 16.0. **LibreOffice 26.2.6 NO importa este MHTML**: al abrir el `.doc` (o el mismo archivo renombrado a `.mht`) muestra el texto del MIME/base64 en lugar del documento. Para equipos sin Word, use el PDF, que es autocontenido y se abre en cualquier visor.
 - El PDF usa fuentes estandar con codificacion WinAnsi (Latin-1). Los caracteres fuera de ese rango se reemplazan por `?`; los informes estan redactados en español para evitar el problema.

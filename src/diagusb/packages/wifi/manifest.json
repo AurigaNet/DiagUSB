@@ -4,5 +4,6 @@
     "label": "WiFi",
     "description": "Diagnostico de redes WiFi: perfiles guardados y redes disponibles",
     "symptoms": ["wifi_no_conecta", "wifi_lento", "wifi_perdida"],
+    "requirements": ["wifi_adapter"],
     "collectors": {}
 }

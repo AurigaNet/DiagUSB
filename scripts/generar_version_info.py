@@ -18,13 +18,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 VERSION_PY = ROOT / "src" / "diagusb" / "_version.py"
 DESTINO = ROOT / "build" / "version_info.txt"
+DESTINO_GUI = ROOT / "build" / "version_info_gui.txt"
 
 COMPANY_NAME = "AurigaNet"
 PRODUCT_NAME = "DiagUSB"
 FILE_DESCRIPTION = "Kit de diagnóstico para soporte TI en Windows"
+FILE_DESCRIPTION_GUI = "Aplicación de diagnóstico para soporte TI en Windows"
 LEGAL_COPYRIGHT = "Copyright 2026 Daniel Ricardo Novoa"
 ORIGINAL_FILENAME = "diagusb.exe"
+ORIGINAL_FILENAME_GUI = "DiagUSB.exe"
 INTERNAL_NAME = "diagusb"
+INTERNAL_NAME_GUI = "DiagUSB"
 
 # Idioma/codigo de pagina de la tabla de cadenas (0409 = en-US, 04B0 = Unicode).
 TABLA_IDIOMA = "040904B0"
@@ -54,16 +58,19 @@ def escapar(texto: str) -> str:
     return texto.encode("unicode_escape").decode("ascii")
 
 
-def contenido(version: str) -> str:
+def contenido(version: str, gui: bool = False) -> str:
     mayor, menor, parche, revision = tupla_version(version)
     filevers = f"({mayor}, {menor}, {parche}, {revision})"
+    descripcion = FILE_DESCRIPTION_GUI if gui else FILE_DESCRIPTION
+    original = ORIGINAL_FILENAME_GUI if gui else ORIGINAL_FILENAME
+    interno = INTERNAL_NAME_GUI if gui else INTERNAL_NAME
     campos = [
         ("CompanyName", COMPANY_NAME),
-        ("FileDescription", FILE_DESCRIPTION),
+        ("FileDescription", descripcion),
         ("FileVersion", version),
-        ("InternalName", INTERNAL_NAME),
+        ("InternalName", interno),
         ("LegalCopyright", LEGAL_COPYRIGHT),
-        ("OriginalFilename", ORIGINAL_FILENAME),
+        ("OriginalFilename", original),
         ("ProductName", PRODUCT_NAME),
         ("ProductVersion", version),
     ]
@@ -106,7 +113,9 @@ def main() -> int:
     version = leer_version()
     DESTINO.parent.mkdir(parents=True, exist_ok=True)
     DESTINO.write_text(contenido(version), encoding="ascii", newline="\n")
+    DESTINO_GUI.write_text(contenido(version, gui=True), encoding="ascii", newline="\n")
     print(f"Version info escrita: {DESTINO} (version {version})")
+    print(f"Version info GUI escrita: {DESTINO_GUI} (version {version})")
     return 0
 
 

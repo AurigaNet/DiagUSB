@@ -20,18 +20,23 @@ if (-not $__diagusb_common) {
 . $__diagusb_common
 
 $result = New-DiagUsbCollectorResult -CollectorId 'network_adapters' -ScriptBlock {
-    Get-NetAdapter | Where-Object { $_.PhysicalMediaType -match 'Wireless|802.3' } | Sort-Object -Property Name | ForEach-Object {
-        [ordered]@{
-            name = $_.Name
-            status = $_.Status
-            state = if ($_.Status -eq 'Up') { 'Up' } else { 'Down' }
-            speed = $_.LinkSpeed
-            mac_address = $_.MacAddress
-            type = $_.InterfaceDescription
-            media_type = $_.PhysicalMediaType
-            vlan_id = $_.VlanID
+    Get-NetAdapter -ErrorAction Stop |
+        Where-Object { $_.Status -ne 'Not Present' } |
+        Sort-Object -Property Name |
+        ForEach-Object {
+            [ordered]@{
+                name = $_.Name
+                status = [string]$_.Status
+                state = if ($_.Status -eq 'Up') { 'Up' } else { 'Down' }
+                speed = $_.LinkSpeed
+                mac_address = $_.MacAddress
+                type = $_.InterfaceDescription
+                kind = Get-DiagUsbConnectionKind -Adapter $_
+                media_type = [string]$_.PhysicalMediaType
+                virtual = [bool]$_.Virtual
+                vlan_id = $_.VlanID
+            }
         }
-    }
 }
 
 Write-DiagUsbJson -InputObject $result

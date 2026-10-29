@@ -1,0 +1,9 @@
+{
+    "version": "1.0.0",
+    "name": "conectividad",
+    "label": "Conectividad",
+    "description": "IP, DNS, puerta de enlace e internet sobre la conexion activa",
+    "symptoms": ["no_hay_internet", "dns_no_responde"],
+    "requirements": ["network_link"],
+    "collectors": {}
+}

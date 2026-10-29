@@ -1,8 +1,9 @@
 {
     "version": "1.0.0",
     "name": "redes",
-    "label": "Conectividad de Red",
-    "description": "Diagnostico de conectividad de red: adaptadores, IP, DNS y ping",
-    "symptoms": ["no_hay_internet", "red_lenta", "dns_no_responde"],
+    "label": "Adaptadores de Red",
+    "description": "Estado y velocidad de las placas de red: Ethernet, WiFi, Bluetooth PAN, tethering USB y WWAN",
+    "symptoms": ["adaptador_red_no_funciona", "red_lenta"],
+    "requirements": ["network_adapter"],
     "collectors": {}
 }

@@ -2,16 +2,18 @@
 
 Copyright (C) 2026 Daniel Ricardo Novoa
 
-DiagUSB es un kit de diagnóstico para soporte de infraestructura TI pensado para ejecutarse desde un pendrive. Diagnostica Windows 10 (validado; Windows 11 aún no probado) con 12 paquetes de colectores PowerShell, reglas de detección de problemas, base de conocimiento editable, informes Word/PDF en español y un registro persistente de análisis.
+DiagUSB es un kit de diagnóstico para soporte de infraestructura TI pensado para ejecutarse desde un pendrive. Diagnostica Windows 10 (validado; Windows 11 aún no probado) con 15 paquetes de colectores PowerShell, reglas de detección de problemas, base de conocimiento editable, informes Word/PDF en español y un registro persistente de análisis.
 
 ## Características
 
-- **12 paquetes de diagnóstico**: impresión, redes cableadas, WiFi, disco, memoria, servicios, seguridad, Windows Update, drivers, eventos críticos, contexto del sistema e inventario general.
+- **15 paquetes de diagnóstico**: impresión, redes cableadas, WiFi, conectividad, disco, memoria, servicios, seguridad, Windows Update, drivers, eventos críticos, temperatura del CPU, batería, contexto del sistema e inventario general.
+- **Temperatura del CPU (opcional, EXPERIMENTAL)**: el paquete `temperatura` lee los sensores del CPU desde LibreHardwareMonitor, si ya está activo en el equipo con su servidor web local (`http://127.0.0.1:8085`; se puede cambiar con la variable de entorno `DIAGUSB_LHM_URL`). DiagUSB **no empaca ni instala** LHM ni PawnIO: son herramientas externas que el técnico descarga por su cuenta y ejecuta como Administrador. Sin LHM activo, el paquete queda bloqueado con el motivo visible y el resto del diagnóstico no se ve afectado. Umbral de la regla `cpu_caliente`: aviso a 80 °C y crítico a 90 °C. Estado: **EXPERIMENTAL, no validado en un equipo real con LHM** (ver `docs/LIMITACIONES.md`).
+- **Batería (EXPERIMENTAL, NO VERIFICADO EN HARDWARE REAL)**: el paquete `bateria` solo aparece en notebooks con batería: porcentaje de carga, estado, ciclos (si el fabricante los declara) y desgaste comparando carga plena con capacidad de diseño (`powercfg /batteryreport`, el XML temporal se borra siempre). Regla `bateria_agotada`: aviso con carga plena menor al 60 % de la capacidad de diseño y crítico bajo el 40 %. Validado con datos simulados y con el bloqueo real en equipos sin batería; ver `docs/LIMITACIONES.md`.
 - **Interfaz web local** (`http://localhost:8080`) con barra lateral, tema oscuro, botones de diagnóstico rápido, revisión total, snapshot ANTES/DESPUÉS con comparación de cambios, acciones del técnico y un panel de inicio con gráficas del estado del equipo.
 - **Puntaje orientativo**: cada análisis calcula un puntaje de salud (0–100), cobertura de colectores, hallazgos por severidad, estado por categoría y medidores, con tendencia entre análisis del mismo paquete. Se muestra en la interfaz y en los informes (detalles en `docs/PUNTAJE.md`). El puntaje orientativo **no reemplaza** al diagnóstico ni refleja necesariamente el estado general del equipo cuando se ejecuta un único paquete.
 - **Registro persistente de análisis**: cada diagnóstico ejecutado queda guardado automáticamente en `config/registro_analisis.json`. Botón "Registro de análisis" para consultar el detalle, eliminar análisis individuales o vaciar el registro completo.
 - **Informes Word (.doc) y PDF (.pdf)** en español, con un **resumen gráfico** de métricas (puntaje, severidad, categorías, medidores y comparación antes/después), hallazgos, soluciones de la base de conocimiento, acciones del técnico, mejoras sugeridas y diferencias antes/después. Los gráficos del `.doc` se incrustan como imágenes PNG reales (formato MHTML), por lo que se ven al abrir el archivo en Word aunque se mueva o comparta.
-- **Base de conocimiento local**: 19 entradas embebidas más capa editable en `config/base_conocimiento.json` (alta/edición/baja desde la interfaz, buscador por palabra clave).
+- **Base de conocimiento local**: 22 entradas embebidas más capa editable en `config/base_conocimiento.json` (alta/edición/baja desde la interfaz, buscador por palabra clave).
 - **Arranque sin UAC**: DiagUSB inicia sin pedir permisos (modo estándar). Los permisos de Administrador se solicitan solo a pedido: botón "Dar permisos de administrador" en la interfaz web, o flag `--elevar` en la línea de comandos.
 - **Kit portable** (`DiagUSB-kit-<version>.zip`): incluye una distribución embebida oficial de Python (python.org) más el código fuente, sin necesidad de instalar Python en el equipo destino. Incluye `LICENSE`, `LEGAL.md`, `THIRD_PARTY_NOTICES.md` y `CHANGELOG.md`. Es la distribución principal y se arma con `scripts\armar_kit.ps1`.
 - **Ejecutable portable opcional** (`dist/diagusb/diagusb.exe`) construido con PyInstaller, como variante sin Python embebido.
@@ -19,6 +21,7 @@ DiagUSB es un kit de diagnóstico para soporte de infraestructura TI pensado par
 ## Requisitos
 
 - Windows 10 (validado) con PowerShell 5.1 incluido. Windows 11 aún no está probado.
+- Para el paquete `temperatura`: LibreHardwareMonitor activo con su servidor web local; es una herramienta externa que el técnico instala aparte (no viene con el kit). El resto del kit no la necesita.
 - Para el kit: nada más (trae su propio intérprete en `python\`). Para el ejecutable: nada más. Para desarrollo: Python 3.13 (o 3.12+).
 
 ## Uso rápido
@@ -68,7 +71,7 @@ python -m diagusb list-packages
 ## Pruebas y build
 
 ```
-python tests\run_tests.py                        # suite completa (130 pruebas, sin dependencias externas)
+python tests\run_tests.py                        # suite completa (206 pruebas, sin dependencias externas)
 scripts\armar_kit.cmd -Salida dist\kit           # arma el kit (Python embebido + fuente) y lo comprime
 scripts\probar_kit.ps1 -Kit dist\kit\DiagUSB     # prueba de humo del kit
 scripts\build_exe.cmd                            # reconstruye dist\diagusb\diagusb.exe (variante opcional)
@@ -76,7 +79,7 @@ scripts\build_exe.cmd                            # reconstruye dist\diagusb\diag
 
 ## Estructura
 
-- `src/diagusb/`: paquete principal (`core/` motor, `packages/` los 12 paquetes de diagnóstico, `web_server.py` interfaz local).
+- `src/diagusb/`: paquete principal (`core/` motor, `packages/` los 15 paquetes de diagnóstico, `web_server.py` interfaz local).
 - `collectors/`: utilidades PowerShell compartidas (`_common.ps1`).
 - `config/`: datos locales (base de conocimiento editable y registro de análisis) — no versionados.
 - `docs/`: decisiones, legal, limitaciones, matriz de permisos y guía para alumnos.

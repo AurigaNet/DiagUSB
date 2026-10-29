@@ -20,15 +20,34 @@ if (-not $__diagusb_common) {
 . $__diagusb_common
 
 $result = New-DiagUsbCollectorResult -CollectorId 'ip_configuration' -ScriptBlock {
+    # DHCP server y MAC del gateway (tabla ARP) por adaptador.
+    $configPorIndice = @{}
+    foreach ($conf in @(Get-CimInstance -ClassName Win32_NetworkAdapterConfiguration -ErrorAction SilentlyContinue)) {
+        $configPorIndice[[int]$conf.InterfaceIndex] = $conf
+    }
+
     Get-NetIPConfiguration | Where-Object { $_.IPv4DefaultGateway -ne $null } | ForEach-Object {
         $ipv4Address = Get-DiagUsbPropertyValue -InputObject $_ -PropertyName 'IPv4Address'
         $gateway = Get-DiagUsbPropertyValue -InputObject $_ -PropertyName 'IPv4DefaultGateway'
         $dnsServer = Get-DiagUsbPropertyValue -InputObject $_ -PropertyName 'DNSServer'
 
-        $dhcpEnabled = $null
         $ipInterface = Get-NetIPInterface -InterfaceIndex $_.InterfaceIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue
+        $dhcpEnabled = $null
+        $dhcpServer = $null
         if ($null -ne $ipInterface) {
             $dhcpEnabled = "$($ipInterface.Dhcp)" -eq 'Enabled'
+        }
+        $conf = $configPorIndice[[int]$_.InterfaceIndex]
+        if ($null -ne $conf -and $dhcpEnabled) {
+            $dhcpServer = [string]$conf.DHCPServer
+            if (-not $dhcpServer) { $dhcpServer = $null }
+        }
+
+        $gatewayMac = $null
+        if ($gateway) {
+            $gatewayMac = Get-DiagUsbGatewayMac `
+                -GatewayIp ([string]$gateway.NextHop) `
+                -InterfaceIndex ([string]$_.InterfaceIndex)
         }
 
         [ordered]@{
@@ -36,7 +55,9 @@ $result = New-DiagUsbCollectorResult -CollectorId 'ip_configuration' -ScriptBloc
             ipv4_address = $(if ($ipv4Address) { $ipv4Address.IPAddress } else { $null })
             ipv4_prefix = $(if ($ipv4Address) { $ipv4Address.PrefixLength } else { $null })
             ipv4_gateway = $(if ($gateway) { $gateway.NextHop } else { $null })
+            gateway_mac = $gatewayMac
             dhcp_enabled = $dhcpEnabled
+            dhcp_server = $dhcpServer
             dns_servers = $(if ($dnsServer) { $dnsServer.ServerAddresses } else { $null })
             interface_index = $_.InterfaceIndex
         }

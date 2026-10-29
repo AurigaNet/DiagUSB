@@ -23,6 +23,20 @@ function Test-DiagUsbVirtual {
     return [bool]($texto -match 'vmware|virtualbox|innotek|qemu|kvm|xen|parallels|hyper-v|virtual machine|virtual platform|bhyve')
 }
 
+function Get-DiagUsbConnectionKind {
+    param($Adapter)
+
+    $texto = ("$($Adapter.InterfaceDescription) $($Adapter.Name)").ToLowerInvariant()
+    $media = ([string]$Adapter.PhysicalMediaType).ToLowerInvariant()
+
+    if ($texto -match 'bluetooth|personal area network|\bpan\b') { return 'bluetooth' }
+    if ($texto -match 'remote ndis|rndis|usb.*(tether|network)|tether|apple.*(mobile|iphone)|android.*(usb|tether)') { return 'usb_tethering' }
+    if ($texto -match 'wi-?fi|wireless|802\.11' -or $media -match '802\.11|wireless') { return 'wifi' }
+    if ($texto -match 'wwan|mobile broadband|cellular|\blte\b' -or $media -match 'wwan') { return 'wwan' }
+    if ($texto -match 'ethernet|802\.3' -or $media -match '802\.3') { return 'ethernet' }
+    return 'other'
+}
+
 function Get-DiagUsbCaptureContext {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
@@ -181,6 +195,149 @@ function Get-DiagUsbPropertyValue {
     return $property.Value
 }
 
+function Get-DiagUsbLhmUrl {
+    $default = 'http://127.0.0.1:8085'
+    $envUrl = [string]$env:DIAGUSB_LHM_URL
+    if (-not $envUrl) { return $default }
+    try {
+        $uri = [Uri]$envUrl
+        if ($uri.Scheme -notin @('http', 'https')) { return $default }
+        if (-not $uri.IsLoopback) { return $default }
+        return $uri.GetLeftPart([UriPartial]::Authority)
+    }
+    catch {
+        return $default
+    }
+}
+
+function Test-DiagUsbLhmCpuNode {
+    param($Node)
+
+    if ($null -eq $Node) { return $false }
+    $text = [string](Get-DiagUsbPropertyValue -InputObject $Node -PropertyName 'Text')
+    $image = [string](Get-DiagUsbPropertyValue -InputObject $Node -PropertyName 'ImageURL')
+
+    if ($image -match '(?i)(^|[/\\])cpu[^/\\]*\.(png|gif|jpe?g|svg)$') {
+        return $true
+    }
+    if ($text -match '(?i)\b(gpu|graphics|radeon|geforce|nvidia|arc|iris|uhd)\b') {
+        return $false
+    }
+    return [bool]($text -match '(?i)\b(ryzen|threadripper|epyc|athlon|sempron|xeon|pentium|celeron|core\s*(i[3579]|ultra)|cpu|processor)\b')
+}
+
+function Get-DiagUsbLhmCpuTemperature {
+    param([int]$TimeoutSec = 3)
+
+    $base = Get-DiagUsbLhmUrl
+    $uri = "$base/data.json"
+    $response = Invoke-WebRequest -Uri $uri -UseBasicParsing -TimeoutSec $TimeoutSec -MaximumRedirection 0 -ErrorAction Stop
+    if ([int]$response.StatusCode -ne 200) {
+        throw "LibreHardwareMonitor respondio HTTP $($response.StatusCode)."
+    }
+
+    $stream = Get-DiagUsbPropertyValue -InputObject $response -PropertyName 'RawContentStream'
+    $raw = [string](Get-DiagUsbPropertyValue -InputObject $response -PropertyName 'Content')
+    if ($stream) {
+        $bytes = [byte[]]$stream.ToArray()
+    }
+    else {
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($raw)
+    }
+    if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+        $bytes = $bytes[3..($bytes.Length - 1)]
+    }
+    $texto = [System.Text.Encoding]::UTF8.GetString($bytes)
+    $document = $texto | ConvertFrom-Json
+    $cpuNodes = @()
+    foreach ($root in @($document)) {
+        if ($null -eq $root) { continue }
+        foreach ($child in @(Get-DiagUsbPropertyValue -InputObject $root -PropertyName 'Children')) {
+            if ($null -ne $child -and (Test-DiagUsbLhmCpuNode -Node $child)) {
+                $cpuNodes += $child
+            }
+        }
+    }
+    if ($cpuNodes.Count -eq 0) { return $null }
+
+    $names = @()
+    $sensors = @()
+    foreach ($cpu in $cpuNodes) {
+        $name = [string](Get-DiagUsbPropertyValue -InputObject $cpu -PropertyName 'Text')
+        if ($name) { $names += $name }
+
+        $pending = [System.Collections.Generic.Stack[object]]::new()
+        foreach ($child in @(Get-DiagUsbPropertyValue -InputObject $cpu -PropertyName 'Children')) {
+            if ($null -ne $child) { $pending.Push($child) }
+        }
+
+        while ($pending.Count -gt 0) {
+            $node = $pending.Pop()
+            $text = [string](Get-DiagUsbPropertyValue -InputObject $node -PropertyName 'Text')
+            $value = [string](Get-DiagUsbPropertyValue -InputObject $node -PropertyName 'Value')
+            foreach ($child in @(Get-DiagUsbPropertyValue -InputObject $node -PropertyName 'Children')) {
+                if ($null -ne $child) { $pending.Push($child) }
+            }
+
+            if (-not $text -or $text -match '(?i)distance|tjmax|throttl|limit') { continue }
+            $match = [regex]::Match($value, '(?i)(-?\d+(?:[.,]\d+)?)\s*(?:\u00B0\s*)?C\b')
+            if (-not $match.Success) { continue }
+            try {
+                $temperature = [double]::Parse(
+                    $match.Groups[1].Value.Replace(',', '.'),
+                    [System.Globalization.CultureInfo]::InvariantCulture)
+            }
+            catch {
+                continue
+            }
+            if ($temperature -le 0 -or $temperature -ge 130) { continue }
+
+            $kind = 'other'
+            if ($text -match '(?i)package|tctl|tdie') { $kind = 'package' }
+            elseif ($text -match '(?i)\bcore\b') { $kind = 'core' }
+
+            $sensors += [ordered]@{
+                name = $text
+                temperature_c = [math]::Round($temperature, 1)
+                kind = $kind
+            }
+        }
+    }
+
+    if ($sensors.Count -eq 0) { return $null }
+
+    $packageTemps = @($sensors | Where-Object { $_.kind -eq 'package' } |
+        ForEach-Object { [double]$_.temperature_c })
+    $coreTemps = @($sensors | Where-Object { $_.kind -eq 'core' } |
+        ForEach-Object { [double]$_.temperature_c })
+    $allTemps = @($sensors | ForEach-Object { [double]$_.temperature_c })
+
+    $packageTemp = $null
+    if ($packageTemps.Count -gt 0) {
+        $packageTemp = ($packageTemps | Measure-Object -Maximum).Maximum
+    }
+    $maxCoreTemp = $null
+    $averageCoreTemp = $null
+    if ($coreTemps.Count -gt 0) {
+        $maxCoreTemp = ($coreTemps | Measure-Object -Maximum).Maximum
+        $averageCoreTemp = [math]::Round(
+            ($coreTemps | Measure-Object -Average).Average, 1)
+    }
+    $maxTemp = ($allTemps | Measure-Object -Maximum).Maximum
+
+    return [pscustomobject][ordered]@{
+        source = 'librehardwaremonitor'
+        url = $base
+        cpu_name = ($names -join ' + ')
+        package_temp_c = $packageTemp
+        max_core_temp_c = $maxCoreTemp
+        average_core_temp_c = $averageCoreTemp
+        max_temp_c = $maxTemp
+        sensor_count = $sensors.Count
+        sensors = $sensors
+    }
+}
+
 function Get-DiagUsbServiceRecord {
     param(
         [Parameter(Mandatory = $true)]
@@ -236,6 +393,75 @@ function Get-DiagUsbEventRecord {
         user_id = $(if ($Event.UserId) { $Event.UserId.Value } else { $null })
         event_data = $eventData
     }
+}
+
+function Get-DiagUsbBatteryReportInfo {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$XmlPath
+    )
+
+    $xml = [xml](Get-Content -LiteralPath $XmlPath -Raw -Encoding UTF8)
+    $info = Get-DiagUsbPropertyValue -InputObject $xml -PropertyName 'BatteryInformation'
+    if ($null -eq $info) {
+        throw 'El reporte de bateria no tiene el formato esperado (falta BatteryInformation).'
+    }
+
+    $baterias = @(Get-DiagUsbPropertyValue -InputObject $info -PropertyName 'Battery')
+    if ($baterias.Count -eq 0 -and $null -eq (Get-DiagUsbPropertyValue -InputObject $info -PropertyName 'Battery')) {
+        throw 'El reporte de bateria no tiene el formato esperado (falta Battery).'
+    }
+
+    function Convert-DiagUsbBatteryNumber {
+        param([string]$Texto)
+        if ([string]::IsNullOrWhiteSpace($Texto)) { return $null }
+        try {
+            $valor = [double]::Parse($Texto.Trim(), [System.Globalization.CultureInfo]::InvariantCulture)
+            if ($valor -le 0) { return $null }
+            return [math]::Round($valor, 1)
+        }
+        catch {
+            return $null
+        }
+    }
+
+    $resultados = @()
+    foreach ($bat in $baterias) {
+        if ($null -eq $bat) { continue }
+        $resultados += [ordered]@{
+            id = [string](Get-DiagUsbPropertyValue -InputObject $bat -PropertyName 'Id')
+            fabricante = [string](Get-DiagUsbPropertyValue -InputObject $bat -PropertyName 'Manufacturer')
+            chemistry = [string](Get-DiagUsbPropertyValue -InputObject $bat -PropertyName 'Chemistry')
+            design_capacity_mwh = Convert-DiagUsbBatteryNumber ([string](Get-DiagUsbPropertyValue -InputObject $bat -PropertyName 'DesignCapacity'))
+            full_charge_capacity_mwh = Convert-DiagUsbBatteryNumber ([string](Get-DiagUsbPropertyValue -InputObject $bat -PropertyName 'FullChargeCapacity'))
+            ciclos = Convert-DiagUsbBatteryNumber ([string](Get-DiagUsbPropertyValue -InputObject $bat -PropertyName 'CycleCount'))
+        }
+    }
+    return $resultados
+}
+
+function Get-DiagUsbGatewayMac {
+    param(
+        [string]$GatewayIp = '',
+        [string]$InterfaceIndex = '',
+        $Vecinos = $null
+    )
+
+    if (-not $GatewayIp) { return $null }
+    $tabla = $Vecinos
+    if ($null -eq $tabla) {
+        $parametros = @{ IPAddress = $GatewayIp; ErrorAction = 'SilentlyContinue' }
+        if ($InterfaceIndex) { $parametros['InterfaceIndex'] = $InterfaceIndex }
+        $tabla = @(Get-NetNeighbor @parametros)
+    }
+    $vecino = @($tabla | Where-Object {
+        $_.State -in @('Reachable', 'Stale', 'Probe', 'Delay', 'Permanent')
+    } | Select-Object -First 1)
+    if ($vecino.Count -gt 0) {
+        $mac = [string]$vecino[0].LinkLayerAddress
+        if ($mac) { return $mac }
+    }
+    return 'no_disponible'
 }
 
 function Write-DiagUsbJson {

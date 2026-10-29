@@ -1,0 +1,9 @@
+{
+    "version": "1.0.0",
+    "name": "bateria",
+    "label": "Bateria",
+    "description": "Diagnostico de la bateria: carga, estado y desgaste frente a la capacidad de diseno",
+    "symptoms": ["bateria_agotada"],
+    "requirements": ["battery"],
+    "collectors": {}
+}
