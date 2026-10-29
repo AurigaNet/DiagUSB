@@ -125,6 +125,8 @@
             document.getElementById('btnSnapAntes').style.display = 'none';
             document.getElementById('btnSnapCompara').style.display = 'none';
             document.getElementById('diffSection').style.display = 'none';
+            document.getElementById('referenciaSection').style.display = 'none';
+            document.getElementById('referenciaTabla').innerHTML = '';
         }
 
         function renderProblemas(findings) {
@@ -212,6 +214,8 @@
             document.getElementById('btnPdf').style.display = '';
             document.getElementById('btnSnapAntes').style.display = '';
             document.getElementById('btnSnapCompara').style.display = '';
+            document.getElementById('referenciaSection').style.display = 'block';
+            renderReferencia(currentDiag && currentDiag.referencia);
             applyForm();
         }
 
@@ -263,6 +267,112 @@
                 setStatus('ready', 'Snapshot ANTES guardado (' + d.collectors + ' colectores, ' + d.captured_at.slice(0, 19) + ')');
             } catch (e) {
                 setStatus('error', 'Error al guardar el snapshot: ' + e.message);
+            }
+        }
+
+        function renderReferencia(ref) {
+            const estadoEl = document.getElementById('referenciaEstado');
+            const tabla = document.getElementById('referenciaTabla');
+            if (!estadoEl || !tabla) return;
+            const e = (ref && ref.estado) || null;
+            if (!ref) {
+                estadoEl.textContent = 'Consultando referencia del equipo...';
+                tabla.innerHTML = '';
+                return;
+            }
+            if (e && e.disponible) {
+                estadoEl.innerHTML = '<b>Referencia disponible</b> &middot; capturada el ' +
+                    escHtml((e.capturada_en || '').slice(0, 19).replace('T', ' ')) +
+                    ' &middot; ' + escHtml(e.colectores || 0) + ' colector(es)';
+            } else {
+                estadoEl.innerHTML = '<b>Sin referencia guardada</b> &middot; guarde una captura cuando el equipo funcione bien.';
+            }
+            if (!ref.disponible) {
+                tabla.innerHTML = '';
+                return;
+            }
+            const diffs = ref.diferencias || [];
+            let html = '<div class="acciones-hint">' + escHtml(ref.mensaje || '') + '</div>';
+            if (!diffs.length) {
+                html += '<div class="diff-sin-cambios">Sin diferencias respecto de la referencia.</div>';
+            } else {
+                html += '<table class="diff-table"><tr><th>Severidad</th><th>Colector</th><th>Qué cambió</th><th>Antes</th><th>Ahora</th></tr>';
+                diffs.forEach(d => {
+                    const fmt = v => {
+                        if (v && typeof v === 'object') return '[' + (Array.isArray(v) ? v.length + ' registros' : Object.keys(v).length + ' campos') + ']';
+                        return v == null ? '-' : String(v);
+                    };
+                    html += '<tr><td>' + escHtml(d.severidad || '') + '</td><td>' + escHtml(d.collector_id || '') +
+                        '</td><td>' + escHtml(d.mensaje || '') + '</td><td>' + escHtml(fmt(d.antes)) +
+                        '</td><td>' + escHtml(fmt(d.ahora)) + '</td></tr>';
+                });
+                html += '</table>';
+            }
+            tabla.innerHTML = html;
+        }
+
+        async function cargarReferencia() {
+            try {
+                const r = await fetch('/api/referencia', {cache: 'no-store'});
+                const d = await r.json();
+                if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+                const estadoEl = document.getElementById('referenciaEstado');
+                const tabla = document.getElementById('referenciaTabla');
+                if (estadoEl && tabla) renderReferencia({disponible: false, estado: d});
+            } catch (e) {
+                const estadoEl = document.getElementById('referenciaEstado');
+                if (estadoEl) estadoEl.textContent = 'No se pudo consultar la referencia del equipo.';
+            }
+        }
+
+        async function guardarReferencia() {
+            if (!currentDiag) {
+                alert('Ejecute primero un diagnóstico.');
+                return;
+            }
+            const btn = document.getElementById('btnReferenciaGuardar');
+            if (btn) btn.disabled = true;
+            setStatus('running', 'Guardando referencia del equipo...');
+            try {
+                const resp = await fetch('/api/referencia', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({accion: 'guardar', results: currentDiag.results || []})
+                });
+                const d = await resp.json();
+                if (!resp.ok) throw new Error(d.error || ('HTTP ' + resp.status));
+                renderReferencia({disponible: false, estado: d.estado});
+                setStatus('ready', 'Referencia guardada para este equipo.');
+            } catch (e) {
+                setStatus('error', 'Error al guardar la referencia: ' + e.message);
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        async function compararReferencia() {
+            if (!currentDiag) {
+                alert('Ejecute primero un diagnóstico.');
+                return;
+            }
+            const btn = document.getElementById('btnReferenciaComparar');
+            if (btn) btn.disabled = true;
+            setStatus('running', 'Comparando contra la referencia del equipo...');
+            try {
+                const resp = await fetch('/api/referencia', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({accion: 'comparar', results: currentDiag.results || []})
+                });
+                const d = await resp.json();
+                if (!resp.ok) throw new Error(d.error || ('HTTP ' + resp.status));
+                renderReferencia(d);
+                currentDiag.referencia = d;
+                setStatus('ready', d.mensaje || 'Comparación con la referencia completada.');
+            } catch (e) {
+                setStatus('error', 'Error al comparar la referencia: ' + e.message);
+            } finally {
+                if (btn) btn.disabled = false;
             }
         }
 
@@ -1656,6 +1766,7 @@
             });
             inicializarAcerca();
             loadIdentidad();
+            cargarReferencia();
             loadElevation();
             cargarCapacidades(false);
             loadRegistro();

@@ -600,6 +600,31 @@
         "Reparar o reinstalar la aplicacion duena del servicio si el binario no existe o esta danado"
       ],
       "verificacion": "El servicio figura En ejecucion con inicio Automatico, sobrevive a un reinicio y el evento de error deja de aparecer."
+    },
+    {
+      "id": "referencia_impresion",
+      "titulo": "La impresora cambio respecto de la referencia del equipo",
+      "categoria": "Impresi?n",
+      "colectores": [
+        "printers",
+        "printer_ports",
+        "spooler_service",
+        "print_jobs"
+      ],
+      "sintomas": [
+        "la_impresora_no_imprime"
+      ],
+      "estado_esperado": "Las impresoras instaladas, su puerto, su controlador, su estado de conexion y el servicio Print Spooler deben coincidir con la captura guardada cuando la impresion funcionaba. Las diferencias senalan que cambio entre ese momento y ahora.",
+      "por_que_importa": "Comparar contra una referencia del mismo equipo separa lo que siempre estuvo asi de lo que cambio. Una impresora que desaparecio, un puerto que apunta a otra IP o un spooler detenido explican el sintoma sin adivinar.",
+      "soluciones": [
+        "Revisar en el detalle que diferencia aparece (impresora ausente, sin conexion, puerto o controlador distinto)",
+        "Si la impresora desaparecio, reinstalarla con el controlador del fabricante",
+        "Si el puerto apunta a otra IP, corregir la direccion del puerto TCP/IP de la impresora",
+        "Si dejo de estar predeterminada, seleccionarla como predeterminada en Configuracion > Impresoras",
+        "Si el servicio Print Spooler no esta en ejecucion, iniciarlo y revisar sus dependencias",
+        "Si hay trabajos en cola, cancelarlos y volver a imprimir una pagina de prueba"
+      ],
+      "verificacion": "La comparacion contra la referencia ya no muestra diferencias en impresoras, puertos ni spooler, y la pagina de prueba se imprime."
     }
   ]
 }

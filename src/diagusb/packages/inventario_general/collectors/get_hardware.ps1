@@ -28,6 +28,16 @@ $result = New-DiagUsbCollectorResult -CollectorId 'hardware' -ScriptBlock {
     $mems = @(Get-CimInstance -ClassName Win32_PhysicalMemory)
     $disks = @(Get-CimInstance -ClassName Win32_DiskDrive)
     $nets = @(Get-CimInstance -ClassName Win32_NetworkAdapter) | Where-Object { $_.PhysicalAdapter -eq $true } | Sort-Object -Property Name
+    $monitors = @(Get-CimInstance -ClassName Win32_DesktopMonitor -ErrorAction SilentlyContinue)
+    $monitorIds = @()
+    try {
+        $monitorIds = @(Get-CimInstance -Namespace 'root\wmi' -ClassName WmiMonitorID -ErrorAction Stop)
+    }
+    catch {
+        $monitorIds = @()
+    }
+    $usbDevices = @(Get-CimInstance -ClassName Win32_PnPEntity -ErrorAction SilentlyContinue |
+        Where-Object { [string]$_.PNPDeviceID -like 'USB\*' } | Sort-Object -Property Name)
     $csproduct = @(Get-CimInstance -ClassName Win32_ComputerSystemProduct)
     $enclosure = @(Get-CimInstance -ClassName Win32_SystemEnclosure -ErrorAction SilentlyContinue)
     $esAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -43,10 +53,15 @@ $result = New-DiagUsbCollectorResult -CollectorId 'hardware' -ScriptBlock {
         }
     }
     $tpmEstado = 'requiere_admin'
+    $tpmVersion = ''
     if ($esAdmin) {
         try {
             $tpm = @(Get-CimInstance -Namespace 'root\cimv2\Security\MicrosoftTpm' -ClassName Win32_Tpm -ErrorAction Stop)
-            if ($tpm.Count -gt 0) { $tpmEstado = 'presente' } else { $tpmEstado = 'no_presente' }
+            if ($tpm.Count -gt 0) {
+                $tpmEstado = 'presente'
+                $tpmVersion = [string]$tpm[0].SpecVersion
+            }
+            else { $tpmEstado = 'no_presente' }
         }
         catch {
             $tpmEstado = 'requiere_admin'
@@ -136,6 +151,10 @@ $result = New-DiagUsbCollectorResult -CollectorId 'hardware' -ScriptBlock {
             modo_arranque = $firmwareType
             secure_boot = $secureBoot
             tpm = $tpmEstado
+            tpm_version = $tpmVersion
+            fabricante = $(if ($bios) { [string]$bios[0].Manufacturer } else { '' })
+            version = $(if ($bios) { [string]$bios[0].SMBIOSBIOSVersion } else { '' })
+            fecha_utc = $(if ($bios) { Convert-DiagUsbDateTime -Value $bios[0].ReleaseDate } else { $null })
         }
         enclosure = [ordered]@{
             chassis_types = @($enclosure | ForEach-Object { $_.ChassisTypes } | ForEach-Object { [string]$_ })
@@ -184,11 +203,48 @@ $result = New-DiagUsbCollectorResult -CollectorId 'hardware' -ScriptBlock {
                 bank_label = $_.BankLabel
                 capacity_bytes = $_.Capacity
                 speed_mhz = $_.Speed
+                configured_clock_speed_mhz = $_.ConfiguredClockSpeed
                 manufacturer = $_.Manufacturer
                 part_number = $_.PartNumber
                 serial_number = $_.SerialNumber
                 memory_type = $_.MemoryType
                 form_factor = $_.FormFactor
+            }
+        })
+        monitors = @($monitors | ForEach-Object {
+            [ordered]@{
+                device_id = $_.DeviceID
+                name = $_.Name
+                manufacturer = $_.MonitorManufacturer
+                monitor_type = $_.MonitorType
+                screen_width = $_.ScreenWidth
+                screen_height = $_.ScreenHeight
+                availability = $_.Availability
+                pnp_device_id = $_.PNPDeviceID
+            }
+        })
+        monitor_ids = @($monitorIds | ForEach-Object {
+            [ordered]@{
+                instance_name = $_.InstanceName
+                manufacturer = Convert-DiagUsbUint16Text -Value $_.ManufacturerName
+                friendly_name = Convert-DiagUsbUint16Text -Value $_.UserFriendlyName
+                serial_number = Convert-DiagUsbUint16Text -Value $_.SerialNumberID
+                year_of_manufacture = $_.YearOfManufacture
+                week_of_manufacture = $_.WeekOfManufacture
+                active = $_.Active
+            }
+        })
+        usb_devices = @($usbDevices | ForEach-Object {
+            [ordered]@{
+                name = $_.Name
+                description = $_.Description
+                manufacturer = $_.Manufacturer
+                device_class = $_.PNPClass
+                service = $_.Service
+                status = $_.Status
+                config_manager_error_code = $_.ConfigManagerErrorCode
+                present = $_.Present
+                pnp_device_id = $_.PNPDeviceID
             }
         })
         disk_drives = @($disks | ForEach-Object {

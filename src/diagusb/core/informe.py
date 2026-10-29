@@ -288,6 +288,7 @@ class InformeData:
     cliente: str = ""
     observaciones: str = ""
     diferencias: list[dict] = field(default_factory=list)
+    referencia: dict = field(default_factory=dict)
     advertencias: list[str] = field(default_factory=list)
     metricas: dict = field(default_factory=dict)
     metricas_base: dict = field(default_factory=dict)
@@ -601,6 +602,8 @@ def informe_desde_diagnostico(diag: dict, acciones: list[dict] | None = None,
         cliente=cliente,
         observaciones=observaciones,
         diferencias=[d for d in (diferencias or []) if isinstance(d, dict)],
+        referencia=(diag.get("referencia")
+                    if isinstance(diag.get("referencia"), dict) else {}),
         advertencias=advertencias,
         metricas=diag.get("metricas") if isinstance(diag.get("metricas"), dict) else {},
         metricas_base=metricas_base or {},
@@ -1192,6 +1195,7 @@ def _modelo_documento(e: InformeData) -> dict:
         "problemas_tabla": problemas_tabla,
         "mejoras": e.mejoras,
         "diferencias": e.diferencias,
+        "referencia": e.referencia,
         "recomendaciones": e.recomendaciones,
         "ficha_tecnica": _ficha_tecnica(e),
         "anexo": _anexo_tecnico(e, mapa),
@@ -1282,6 +1286,7 @@ def _html_portada(doc: dict, con_svg: bool = True) -> str:
         f"<p class='portada-sintoma'>Motivo: {_esc(doc['sintoma'] or '—')}</p>"
         "<table class='kv portada-kv'>"
         f"<tr><td>Equipo</td><td>{_esc(equipo.get('computer_name') or '—')}</td></tr>"
+        f"<tr><td>ID del equipo</td><td class='mono'>{_esc(equipo.get('id_equipo') or 'sin identificar')}</td></tr>"
         f"<tr><td>Sistema operativo</td><td>{_esc(equipo.get('os') or '—')}</td></tr>"
         f"<tr><td>Usuario</td><td>{_esc(equipo.get('user') or '—')}</td></tr>"
         f"<tr><td>Modo</td><td>{_esc(doc['modo'])}</td></tr>"
@@ -1434,6 +1439,42 @@ def _html_categorias(doc: dict) -> str:
                    f"A {hall.get('warning', 0)}</td>"
                    f"<td>{_barra_apilada_html(segs)}</td></tr>")
     out.append("</table>")
+    return "".join(out)
+
+
+def _html_referencia(doc: dict) -> str:
+    """Seccion de referencia por equipo: estado y diferencias antes/ahora."""
+    ref = doc.get("referencia") if isinstance(doc.get("referencia"), dict) else {}
+    if not ref:
+        return ""
+    estado = ref.get("estado") if isinstance(ref.get("estado"), dict) else {}
+    if estado.get("disponible"):
+        texto = (f"Referencia guardada el {_g((estado.get('capturada_en') or '')[:19])} "
+                 f"con {_g(estado.get('colectores'))} colector(es).")
+    else:
+        texto = "No hay una referencia guardada para este equipo."
+    out = [f"<p>{_esc(texto)}</p>"]
+    if ref.get("disponible"):
+        out.append(f"<p class='muted'>{_esc(ref.get('mensaje') or '')}</p>")
+    diffs = ref.get("diferencias") or []
+    if diffs:
+        out.append("<table><tr><td class='th' style='width:10%'>Severidad</td>"
+                   "<td class='th' style='width:16%'>Colector</td>"
+                   "<td class='th' style='width:44%'>Diferencia</td>"
+                   "<td class='th' style='width:15%'>Antes</td>"
+                   "<td class='th' style='width:15%'>Ahora</td></tr>")
+        for d in diffs:
+            if not isinstance(d, dict):
+                continue
+            out.append(
+                f"<tr><td>{_esc(SEVERIDAD_LABEL.get(str(d.get('severidad')), d.get('severidad')))}</td>"
+                f"<td class='mono'>{_esc(d.get('collector_id'))}</td>"
+                f"<td>{_esc(d.get('mensaje'))}</td>"
+                f"<td>{_esc(_fmt_valor(d.get('antes')))}</td>"
+                f"<td>{_esc(_fmt_valor(d.get('ahora')))}</td></tr>")
+        out.append("</table>")
+    elif ref.get("disponible") and not ref.get("mismo_equipo") == "distinto":
+        out.append("<p class='diff-sin-cambios'>Sin diferencias respecto de la referencia.</p>")
     return "".join(out)
 
 
@@ -1622,6 +1663,7 @@ def informe_a_html(informe: InformeData, con_anexo: bool = False,
     equipo = doc["equipo"]
     datos = [
         ("Equipo", _g(equipo.get("computer_name"))),
+        ("ID del equipo", _g(equipo.get("id_equipo"), vacio="sin identificar")),
         ("Usuario", _g(equipo.get("user"))),
         ("Técnico", _g(doc["tecnico"])),
         ("Cliente / Sector", _g(doc["cliente"])),
@@ -1660,6 +1702,10 @@ def informe_a_html(informe: InformeData, con_anexo: bool = False,
                        f"<td>{_esc(f['estado'])}</td></tr>")
         out.append("</table>")
     out.append(_html_problemas(doc, con_svg))
+
+    if doc.get("referencia"):
+        out.append(_sec("Referencia del equipo"))
+        out.append(_html_referencia(doc))
 
     out.append(_sec("Plan de acción"))
     out.append(_html_plan_accion(doc))
@@ -2296,6 +2342,7 @@ def _pdf_portada(doc: "_PdfDoc", modelo: dict):
     eq = modelo["equipo"]
     filas = [
         ("Equipo", _g(eq.get("computer_name"))),
+        ("ID del equipo", _g(eq.get("id_equipo"), vacio="sin identificar")),
         ("Sistema operativo", _g(eq.get("os"))),
         ("Usuario", _g(eq.get("user"))),
         ("Modo", modelo["modo"]),
@@ -2341,6 +2388,7 @@ def informe_a_pdf(informe: InformeData) -> bytes:
     eq = modelo["equipo"]
     _pdf_tabla(doc, [], [
         ("Equipo", _g(eq.get("computer_name"))),
+        ("ID del equipo", _g(eq.get("id_equipo"), vacio="sin identificar")),
         ("Usuario", _g(eq.get("user"))),
         ("Técnico", _g(modelo["tecnico"])),
         ("Cliente / Sector", _g(modelo["cliente"])),
@@ -2408,6 +2456,38 @@ def informe_a_pdf(informe: InformeData) -> bytes:
             doc.text_flow(f"Solución aplicada: {p.solucion_elegida}", size=9, indent=16)
         if p.solucion:
             doc.text_flow(f"Descripción de la acción: {p.solucion}", size=9, indent=16)
+        doc.spacer(4)
+
+    if e.referencia:
+        _heading("Referencia del equipo")
+        ref = e.referencia if isinstance(e.referencia, dict) else {}
+        estado = ref.get("estado") if isinstance(ref.get("estado"), dict) else {}
+        if estado.get("disponible"):
+            doc.text_flow(
+                f"Referencia guardada el {(estado.get('capturada_en') or '')[:19]} "
+                f"con {estado.get('colectores') or 0} colector(es).", size=9, indent=8)
+        else:
+            doc.text_flow("No hay una referencia guardada para este equipo.",
+                          size=9, indent=8)
+        diffs = ref.get("diferencias") or []
+        if diffs:
+            filas_ref = []
+            for d in diffs:
+                if not isinstance(d, dict):
+                    continue
+                filas_ref.append([
+                    SEVERIDAD_LABEL.get(str(d.get("severidad")), str(d.get("severidad"))),
+                    str(d.get("collector_id") or ""),
+                    str(d.get("mensaje") or ""),
+                    _fmt_valor(d.get("antes")),
+                    _fmt_valor(d.get("ahora")),
+                ])
+            if filas_ref:
+                _pdf_tabla(doc, ["Severidad", "Colector", "Diferencia", "Antes", "Ahora"],
+                           filas_ref, [0.12, 0.16, 0.40, 0.16, 0.16], size=8)
+        elif ref.get("disponible") and ref.get("mismo_equipo") != "distinto":
+            doc.text_flow("Sin diferencias respecto de la referencia.",
+                          size=9, font="F3", indent=8)
         doc.spacer(4)
 
     _heading("Plan de acción")

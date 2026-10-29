@@ -159,7 +159,7 @@ def test_campos_existentes_no_cambian():
             "results", "findings", "improvements", "integridad_fallida",
             "recommendations", "estados_accion", "timestamp"}
     assert base <= set(r)
-    assert set(r) - base == {"metricas", "identidad"}
+    assert set(r) - base == {"metricas", "identidad", "referencia"}
 
 
 def test_metricas_de_results_reevalua():

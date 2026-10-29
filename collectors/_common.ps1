@@ -179,6 +179,20 @@ function Convert-DiagUsbDateTime {
     }
 }
 
+function Convert-DiagUsbUint16Text {
+    param($Value)
+
+    if ($null -eq $Value) { return '' }
+    try {
+        $texto = -join (@($Value) | Where-Object { $_ -ne 0 } |
+            ForEach-Object { [char][int]$_ })
+        return $texto.Trim()
+    }
+    catch {
+        return ''
+    }
+}
+
 function Get-DiagUsbPropertyValue {
     param(
         [Parameter(Mandatory = $true)]

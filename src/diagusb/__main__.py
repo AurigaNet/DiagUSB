@@ -303,6 +303,22 @@ def cmd_diagnose(args):
 
     # Generar diagnostico
     diagnostic = diagnose(symptom, observations)
+
+    # Referencia del equipo (captura previa en el pendrive) para comparar el
+    # estado actual. Solo el paquete de impresion la usa de punta a punta.
+    from .core import identidad_sesion, referencia
+
+    def _runner_identidad(ruta_script, timeout=60):
+        return CollectorExecutor().run_package_collector(
+            "inventario_general", Path(ruta_script).name, timeout=timeout)
+
+    ident = identidad_sesion.para_diag(_runner_identidad)
+    resultados_dict = [_obs_a_dict(o) for o in observations]
+    ref = referencia.comparar(ident, resultados_dict)
+    ref["estado"] = referencia.estado(ident)
+    if package_id == "impresion":
+        diagnostic.findings.extend(referencia.hallazgos(ref))
+
     for hallazgo in diagnostic.findings:
         hallazgo.message = redactar(hallazgo.message)
         hallazgo.details = redactar(hallazgo.details)
@@ -348,6 +364,8 @@ def cmd_diagnose(args):
         "collectors_count": len(observations),
         "ok_count": sum(1 for o in observations if o.query.status == "ok"),
         "error_count": sum(1 for o in observations if o.query.status != "ok"),
+        "identidad": ident,
+        "referencia": ref,
         "timestamp": datetime.now().isoformat(),
     }
     diag_dict = redactar(diag_dict)

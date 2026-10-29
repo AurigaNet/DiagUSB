@@ -155,8 +155,9 @@ def test_registro_lleva_identidad():
 
 def test_cableado_web_server():
     src = Path(ws.__file__).read_text(encoding="utf-8", errors="replace")
-    assert src.count("identidad_sesion.para_diag(run_powershell)") == 3
+    assert src.count("identidad_sesion.para_diag(run_powershell)") >= 3
     assert 'parsed.path == "/api/identidad"' in src
+    assert 'parsed.path == "/api/referencia"' in src
 
 
 def test_cableado_informe():

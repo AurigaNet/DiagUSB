@@ -35,6 +35,7 @@ from diagusb.core import integridad
 from diagusb.core import rutas
 from diagusb.core import identidad
 from diagusb.core import identidad_sesion
+from diagusb.core import referencia
 from diagusb.core.procesos import opciones_sin_ventana
 from diagusb.core.rules import diagnose_symptoms
 from diagusb.core.metricas import (calcular_metricas, recomendaciones_de,
@@ -790,6 +791,7 @@ def run_diagnostic(package_name: str, symptom: str = None,
         "estados_accion": ESTADOS_ACCION,
         "timestamp": datetime.now().isoformat()
     }
+    referencia.aplicar_a_diagnostico(salida, results, salida["identidad"])
     salida["metricas"] = calcular_metricas(salida, modulos=1)
     return salida
 
@@ -1198,6 +1200,10 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
         elif parsed.path == "/api/identidad":
             self._json_response(identidad_sesion.para_diag(run_powershell))
 
+        elif parsed.path == "/api/referencia":
+            ident = identidad_sesion.para_diag(run_powershell)
+            self._json_response(referencia.estado(ident))
+
         elif parsed.path == "/api/knowledge":
             # Base de conocimiento local (estado esperado + soluciones)
             result = {
@@ -1307,6 +1313,8 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             self._post_snapshot()
         elif parsed.path == "/api/compare":
             self._post_compare()
+        elif parsed.path == "/api/referencia":
+            self._post_referencia()
         elif parsed.path == "/api/knowledge":
             self._post_knowledge()
         elif parsed.path == "/api/elevar":
@@ -1437,6 +1445,38 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
                                  "collectors": len(results),
                                  "computer_name": ident["computer_name"],
                                  "captured_at": doc["captured_at"]})
+        except Exception as e:
+            self._json_response({"error": str(e)}, 400)
+
+    def _post_referencia(self):
+        """Guarda o compara la referencia del equipo actual (config/referencias/)."""
+        try:
+            payload = redactar(self._read_payload())
+            ident = identidad_sesion.para_diag(run_powershell)
+            accion = str(payload.get("accion") or "estado").lower()
+            results = payload.get("results") or []
+            if accion in ("guardar", "comparar"):
+                if not isinstance(results, list) or not results:
+                    self._json_response(
+                        {"error": "Ejecute un diagnostico antes de usar la referencia."},
+                        400)
+                    return
+            if accion == "guardar":
+                if not ident.get("id"):
+                    self._json_response(
+                        {"error": "No se pudo identificar el equipo: no se guarda "
+                                  "una referencia sin identidad estable."},
+                        400)
+                    return
+                self._json_response({"ok": True,
+                                     "estado": referencia.guardar(results, ident)})
+                return
+            if accion == "comparar":
+                resultado = referencia.comparar(ident, results)
+                resultado["estado"] = referencia.estado(ident)
+                self._json_response(resultado)
+                return
+            self._json_response(referencia.estado(ident))
         except Exception as e:
             self._json_response({"error": str(e)}, 400)
 

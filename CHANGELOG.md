@@ -8,6 +8,11 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ### Agregado
 
+- Referencia por equipo: captura del estado de los colectores cuando el equipo funciona bien, guardada en `config/referencias/<machine_id>.json` y comparada solo contra el mismo equipo (identidad estable). Las diferencias se muestran en la interfaz, en la sección de referencia del informe (HTML, DOC y PDF) y, para el paquete de impresión, se suman como hallazgos con la nueva entrada de conocimiento `referencia_impresion` (28 entradas en total).
+- Endpoints `/api/referencia` (GET para el estado, POST para guardar o comparar) y botones «Guardar referencia de este equipo» y «Comparar con la referencia» en la interfaz; guardar exige identidad estable y no se permite sin ella.
+- Identidad del equipo visible en el informe: fila «ID del equipo» en portada, datos del servicio y PDF, con «sin identificar» cuando no hay identidad.
+- Inventario ampliado: monitores (`Win32_DesktopMonitor`), identificadores WMI de monitor (`WmiMonitorID` con nombre, fabricante y serial), dispositivos USB (`Win32_PnPEntity`), versión de TPM y datos de BIOS (fabricante, versión, fecha), y velocidad configurada de la memoria RAM.
+- Pruebas unitarias `tests/test_referencia.py` (captura, comparación, diferencias de impresoras/puertos/spooler/trabajos, equipo distinto y hallazgos por paquete).
 - Reglas deterministas para los cuatro síntomas que estaban declarados en los `manifest.json` sin ninguna regla: `disco_lento` (latencia media por transferencia y saturación del disco, solo sobre discos con actividad), `proceso_alto_cpu` (consumo por proceso normalizado contra la cantidad de núcleos), `seguridad_comprometida` (antivirus y firewall apagados a la vez, inicios de sesión fallidos repetidos, firmas desactualizadas) y `servicio_no_inicia` (servicio Automático detenido, con código de salida cuando existe).
 - Cuatro entradas nuevas en la base de conocimiento para esos síntomas (`disco_lento`, `proceso_alto_cpu`, `seguridad_comprometida`, `servicio_no_inicia`); la base embebida pasa de 23 a 27 entradas.
 - Pruebas unitarias `tests/test_reglas_huerfanas.py` sobre las cuatro reglas, incluidos los casos en que el dato no está disponible.

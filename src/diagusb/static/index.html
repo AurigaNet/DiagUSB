@@ -256,6 +256,17 @@
                         <div id="diffTabla"></div>
                     </div>
 
+                    <div class="acciones-section" id="referenciaSection" style="display:none;">
+                        <h3>Referencia del equipo</h3>
+                        <p class="acciones-hint">Guarde una captura cuando el equipo funciona bien. Luego compare el estado actual contra esa referencia; las diferencias se relacionan con el síntoma diagnosticado.</p>
+                        <div class="config-estado" id="referenciaEstado">Consultando referencia.</div>
+                        <div class="fila-herramientas" style="margin-top:10px;">
+                            <button class="btn-small btn-copy" id="btnReferenciaGuardar" onclick="guardarReferencia()">Guardar referencia de este equipo</button>
+                            <button class="btn-small" id="btnReferenciaComparar" onclick="compararReferencia()">Comparar con la referencia</button>
+                        </div>
+                        <div id="referenciaTabla" style="margin-top:10px;"></div>
+                    </div>
+
                     <div class="acciones-section" id="accionesSection" style="display:none;">
                         <h3 id="accionesTitulo">Acciones del técnico - Generación de informe</h3>
                         <div id="problemasLista"></div>
