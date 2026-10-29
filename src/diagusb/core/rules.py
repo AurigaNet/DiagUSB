@@ -113,6 +113,15 @@ class RuleEngine:
         self.register("seguridad_comprometida", self._check_security_compromised)
         self.register("servicio_no_inicia", self._check_service_wont_start)
 
+        # ========== REGLAS DE RED, PUERTOS Y PERIFERICOS ==========
+        self.register("puerto_expuesto", self._check_exposed_ports)
+        self.register("equipos_red_no_visibles", self._check_lan_visibility)
+        self.register("trafico_red_alterado", self._check_suspicious_traffic)
+        self.register("gateway_no_responde", self._check_gateway_unreachable)
+        self.register("dns_inestable", self._check_dns_instability)
+        self.register("teclado_no_responde", self._check_keyboard)
+        self.register("mouse_no_responde", self._check_pointing_device)
+
     def register(self, symptom: str, rule_func: callable):
         """Registra una regla para un sintoma especifico."""
         if symptom not in self._rules:
@@ -1290,6 +1299,307 @@ class RuleEngine:
                     knowledge_id="servicio_no_inicia",
                 ))
         return findings
+
+
+    # ========== REGLAS DE RED, PUERTOS Y PERIFERICOS ==========
+
+    def _check_exposed_ports(self, observations: list[CollectorResult]) -> list[Finding]:
+        """Procesos de terceros que escuchan en todas las interfaces."""
+        result = self._find_collector(observations, "listening_ports")
+        if not result:
+            return []
+        data = self._primer_dict(self._get_data(result))
+        if not data:
+            return []
+        expuestos = self._lista_dicts(data.get("third_party_exposed"))
+        if not expuestos:
+            return []
+        # El mismo proceso puede escuchar en IPv4 (0.0.0.0) e IPv6 (::) para el
+        # mismo puerto: se informa una vez por proceso y puerto.
+        unicos: dict[tuple[str, Any], dict] = {}
+        for item in expuestos:
+            clave = (str(item.get("process_name") or ""), item.get("local_port"))
+            actual = unicos.get(clave)
+            if actual is None:
+                unicos[clave] = item
+            elif item.get("protocol") == "tcp" and actual.get("protocol") != "tcp":
+                unicos[clave] = item
+        muestras = []
+        for item in list(unicos.values())[:10]:
+            nombre = item.get("process_name") or "(sin nombre)"
+            muestras.append(f"{nombre}:{item.get('local_port')}")
+        return [Finding(
+            severity="warning",
+            collector_id="listening_ports",
+            message=(f"{len(unicos)} puerto(s) de procesos de terceros "
+                     "escuchan en todas las interfaces"),
+            details={"total": len(unicos),
+                     "listeners": len(expuestos),
+                     "muestra": muestras,
+                     "puertos": [item.get("local_port")
+                                 for item in unicos.values()]},
+            knowledge_id="puerto_expuesto",
+        )]
+
+    def _check_lan_visibility(self, observations: list[CollectorResult]) -> list[Finding]:
+        """Puerta de enlace sin respuesta o red local sin otros equipos visibles."""
+        alcanzabilidad = self._find_collector(observations, "lan_reachability")
+        data = self._primer_dict(self._get_data(alcanzabilidad)) if alcanzabilidad else None
+        if not data:
+            return []
+
+        if data.get("gateway_reachable") is False:
+            return [Finding(
+                severity="error",
+                collector_id="lan_reachability",
+                message=(f"La puerta de enlace {data.get('gateway_ip') or 'predeterminada'} "
+                         "no respondio"),
+                details={"gateway_ip": data.get("gateway_ip"),
+                         "gateway_status": data.get("gateway_status"),
+                         "checked_count": data.get("checked_count")},
+                knowledge_id="equipos_red_no_visibles",
+            )]
+
+        comprobados = data.get("checked_count")
+        alcanzables = data.get("reachable_count")
+        try:
+            comprobados_n = int(comprobados or 0)
+            alcanzables_n = int(alcanzables or 0)
+        except (TypeError, ValueError):
+            comprobados_n = alcanzables_n = 0
+
+        if comprobados_n > 0 and alcanzables_n == 0:
+            return [Finding(
+                severity="warning",
+                collector_id="lan_reachability",
+                message=(f"Ninguno de los {comprobados_n} equipo(s) conocido(s) "
+                         "respondio a ping (pueden bloquear ICMP)"),
+                details={"checked_count": comprobados_n,
+                         "reachable_count": 0},
+                knowledge_id="equipos_red_no_visibles",
+            )]
+
+        vecinos = self._find_collector(observations, "network_neighbors")
+        ndata = self._primer_dict(self._get_data(vecinos)) if vecinos else None
+        if ndata:
+            try:
+                otros = int(ndata.get("other_host_count") or 0)
+            except (TypeError, ValueError):
+                otros = 0
+            if otros == 0:
+                return [Finding(
+                    severity="warning",
+                    collector_id="network_neighbors",
+                    message="No se ven otros equipos en la red local (puede ser una red aislada)",
+                    details={"neighbor_count": ndata.get("neighbor_count"),
+                             "visible_count": ndata.get("visible_count")},
+                    knowledge_id="equipos_red_no_visibles",
+                )]
+        return []
+
+    def _check_suspicious_traffic(self, observations: list[CollectorResult]) -> list[Finding]:
+        """Configuracion que puede desviar el trafico, sin afirmar una intrusion."""
+        proxy = self._primer_dict(
+            self._get_data(self._find_collector(observations, "proxy_settings")))
+        hosts = self._primer_dict(
+            self._get_data(self._find_collector(observations, "hosts_entries")))
+        captura = self._primer_dict(
+            self._get_data(self._find_collector(observations, "capture_drivers")))
+        if not proxy and not hosts and not captura:
+            return []
+
+        anomalias = []
+        hosts_no_loopback = 0
+        if hosts:
+            try:
+                hosts_no_loopback = int(hosts.get("non_loopback_count") or 0)
+            except (TypeError, ValueError):
+                hosts_no_loopback = 0
+            if hosts_no_loopback:
+                anomalias.append(f"{hosts_no_loopback} entrada(s) activas en hosts "
+                                 "fuera de loopback")
+        manual_remoto = bool(proxy and proxy.get("manual_remote_proxy") is True)
+        if manual_remoto:
+            anomalias.append(f"proxy manual remoto: {proxy.get('user_proxy_server')}")
+        entorno = 0
+        if proxy:
+            try:
+                entorno = int(proxy.get("environment_proxy_count") or 0)
+            except (TypeError, ValueError):
+                entorno = 0
+            if entorno:
+                anomalias.append(f"{entorno} variable(s) de proxy en el entorno")
+        if not anomalias:
+            return []
+
+        en_ejecucion = 0
+        if captura:
+            try:
+                en_ejecucion = int(captura.get("running_count") or 0)
+            except (TypeError, ValueError):
+                en_ejecucion = 0
+        combinado = en_ejecucion > 0 and (hosts_no_loopback > 0 or manual_remoto)
+        return [Finding(
+            severity="error" if combinado else "warning",
+            collector_id="proxy_settings",
+            message="Configuracion que puede desviar el trafico: " + "; ".join(anomalias),
+            details={"hosts_non_loopback": hosts_no_loopback,
+                     "manual_remote_proxy": manual_remoto,
+                     "environment_proxy_count": entorno,
+                     "proxy_server": (proxy or {}).get("user_proxy_server", ""),
+                     "capture_drivers_running": en_ejecucion,
+                     "capture_present": bool(captura and captura.get("present"))},
+            knowledge_id="trafico_red_alterado",
+        )]
+
+    def _check_gateway_unreachable(self, observations: list[CollectorResult]) -> list[Finding]:
+        """Ruta predeterminada ausente o puerta de enlace sin respuesta."""
+        result = self._find_collector(observations, "gateway_routes")
+        if not result:
+            return []
+        data = self._primer_dict(self._get_data(result))
+        if not data:
+            return []
+        try:
+            total = int(data.get("gateway_count") or 0)
+        except (TypeError, ValueError):
+            total = 0
+        if total == 0:
+            return [Finding(
+                severity="warning",
+                collector_id="gateway_routes",
+                message="No hay una ruta predeterminada configurada",
+                details={"gateway_count": 0},
+                knowledge_id="gateway_no_responde",
+            )]
+        puerta = data.get("primary_gateway") or ""
+        if puerta and data.get("primary_reachable") is False:
+            return [Finding(
+                severity="error",
+                collector_id="gateway_routes",
+                message=f"La puerta de enlace {puerta} no respondio a ping",
+                details={"gateway": puerta,
+                         "reachable_count": data.get("reachable_count"),
+                         "gateway_count": total,
+                         "interface_index": data.get("primary_interface_index")},
+                knowledge_id="gateway_no_responde",
+            )]
+        return []
+
+    def _check_dns_instability(self, observations: list[CollectorResult]) -> list[Finding]:
+        """Resolucion DNS fallida o lenta con los servidores configurados."""
+        servidores = self._primer_dict(
+            self._get_data(self._find_collector(observations, "gateway_dns_servers")))
+        if servidores:
+            try:
+                unicos = int(servidores.get("unique_count") or 0)
+            except (TypeError, ValueError):
+                unicos = 0
+            if unicos == 0:
+                return [Finding(
+                    severity="warning",
+                    collector_id="gateway_dns_servers",
+                    message="No hay servidores DNS configurados",
+                    details={"interface_count": servidores.get("interface_count")},
+                    knowledge_id="dns_inestable",
+                )]
+
+        result = self._find_collector(observations, "dns_resolution")
+        if not result:
+            return []
+        data = self._primer_dict(self._get_data(result))
+        if not data:
+            return []
+        nombre = data.get("query_name") or "el nombre de prueba"
+        if data.get("success") is False:
+            motivo = ("tiempo de espera agotado" if data.get("timed_out")
+                      else (data.get("error") or "sin respuesta"))
+            return [Finding(
+                severity="error",
+                collector_id="dns_resolution",
+                message=f"La resolucion DNS fallo para {nombre} ({motivo})",
+                details={"query_name": nombre,
+                         "timed_out": bool(data.get("timed_out")),
+                         "elapsed_ms": data.get("elapsed_ms")},
+                knowledge_id="dns_inestable",
+            )]
+        try:
+            transcurrido = int(data.get("elapsed_ms") or 0)
+        except (TypeError, ValueError):
+            transcurrido = 0
+        if data.get("success") is True and transcurrido >= 1500:
+            return [Finding(
+                severity="warning",
+                collector_id="dns_resolution",
+                message=f"La resolucion DNS tardo {transcurrido} ms para {nombre}",
+                details={"query_name": nombre, "elapsed_ms": transcurrido},
+                knowledge_id="dns_inestable",
+            )]
+        return []
+
+    def _check_input_device(self, observations: list[CollectorResult],
+                            clave: str, clave_pnp: str, etiqueta: str,
+                            knowledge_id: str) -> list[Finding]:
+        """Dispositivo de entrada con error o ninguno detectado."""
+        result = self._find_collector(observations, "input_devices")
+        if not result:
+            return []
+        data = self._primer_dict(self._get_data(result))
+        if not data:
+            return []
+        vistos: set[str] = set()
+        problemas = []
+        for campo in (clave, clave_pnp):
+            for item in self._lista_dicts(data.get(campo)):
+                nombre = str(item.get("name") or etiqueta)
+                identificador = str(item.get("pnp_device_id") or nombre)
+                if identificador in vistos:
+                    continue
+                vistos.add(identificador)
+                try:
+                    codigo = int(item.get("config_manager_error_code") or 0)
+                except (TypeError, ValueError):
+                    codigo = 0
+                estado = str(item.get("status") or "").strip()
+                if codigo != 0 or (estado and estado.upper() not in ("OK", "UNKNOWN")):
+                    problemas.append({
+                        "name": nombre,
+                        "status": estado,
+                        "config_manager_error_code": codigo,
+                    })
+        if problemas:
+            primero = problemas[0]
+            detalle = f"estado: {primero['status'] or 'desconocido'}"
+            if primero["config_manager_error_code"]:
+                detalle += f", codigo: {primero['config_manager_error_code']}"
+            return [Finding(
+                severity="error",
+                collector_id="input_devices",
+                message=f"{etiqueta.capitalize()} con problemas: {primero['name']} ({detalle})",
+                details={"devices": problemas, "total": len(problemas)},
+                knowledge_id=knowledge_id,
+            )]
+        if not vistos:
+            return [Finding(
+                severity="warning",
+                collector_id="input_devices",
+                message=f"No se detectaron {etiqueta}",
+                details={"detected": 0},
+                knowledge_id=knowledge_id,
+            )]
+        return []
+
+    def _check_keyboard(self, observations: list[CollectorResult]) -> list[Finding]:
+        """Teclados detectados con error de configuracion."""
+        return self._check_input_device(
+            observations, "keyboards", "pnp_keyboards", "teclados",
+            "teclado_no_responde")
+
+    def _check_pointing_device(self, observations: list[CollectorResult]) -> list[Finding]:
+        """Dispositivos de puntero detectados con error de configuracion."""
+        return self._check_input_device(
+            observations, "pointing_devices", "pnp_pointing_devices",
+            "dispositivos de puntero", "mouse_no_responde")
 
 
 # Instancia global del motor de reglas

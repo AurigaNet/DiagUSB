@@ -1,0 +1,8 @@
+{
+    "version": "1.0.0",
+    "name": "perifericos",
+    "label": "Periféricos",
+    "description": "Teclados y dispositivos de puntero detectados, su estado y una prueba interactiva de entrada en el navegador",
+    "symptoms": ["teclado_no_responde", "mouse_no_responde"],
+    "collectors": {}
+}

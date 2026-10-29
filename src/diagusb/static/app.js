@@ -8,6 +8,21 @@
         let lastMetricasBase = null;
         let lastMetricasActual = null;
 
+        const pruebaPerifericos = {
+            activa: false,
+            prueba_ejecutada: false,
+            iniciada_en: '',
+            finalizada_en: '',
+            teclas: 0,
+            ultima_tecla: '',
+            ultimo_codigo: '',
+            movimientos: 0,
+            clics: 0,
+            botones: [],
+            rueda: 0
+        };
+        let perfUltimoMovimiento = 0;
+
         const DIAGUSB = (document.body && document.body.dataset) ? document.body.dataset : {};
 
         const DIAGUSB_CLIENT_ID = (() => {
@@ -119,6 +134,7 @@
             currentDiag = null;
             lastDiffs = null;
             lastComparacionForzada = false;
+            pruebaPerifericos.activa = false;
             document.getElementById('accionesSection').style.display = 'none';
             document.getElementById('btnWord').style.display = 'none';
             document.getElementById('btnPdf').style.display = 'none';
@@ -127,6 +143,10 @@
             document.getElementById('diffSection').style.display = 'none';
             document.getElementById('referenciaSection').style.display = 'none';
             document.getElementById('referenciaTabla').innerHTML = '';
+            const perif = document.getElementById('perifericosSection');
+            if (perif) perif.style.display = 'none';
+            const resultadoPerif = document.getElementById('perifericosResultado');
+            if (resultadoPerif) resultadoPerif.innerHTML = '';
         }
 
         function renderProblemas(findings) {
@@ -216,6 +236,13 @@
             document.getElementById('btnSnapCompara').style.display = '';
             document.getElementById('referenciaSection').style.display = 'block';
             renderReferencia(currentDiag && currentDiag.referencia);
+            const esPerifericos = !!(currentDiag && currentDiag.package === 'perifericos');
+            const seccionPerif = document.getElementById('perifericosSection');
+            if (seccionPerif) seccionPerif.style.display = esPerifericos ? 'block' : 'none';
+            if (esPerifericos) {
+                if (!currentDiag.prueba_perifericos) reiniciarEstadoPruebaPerif();
+                renderPruebaPerif();
+            }
             applyForm();
         }
 
@@ -268,6 +295,163 @@
             } catch (e) {
                 setStatus('error', 'Error al guardar el snapshot: ' + e.message);
             }
+        }
+
+        function publicarPruebaPerif() {
+            if (!currentDiag) return;
+            currentDiag.prueba_perifericos = {
+                prueba_ejecutada: pruebaPerifericos.prueba_ejecutada,
+                iniciada_en: pruebaPerifericos.iniciada_en,
+                finalizada_en: pruebaPerifericos.finalizada_en,
+                teclas: pruebaPerifericos.teclas,
+                ultima_tecla: pruebaPerifericos.ultima_tecla,
+                ultimo_codigo: pruebaPerifericos.ultimo_codigo,
+                movimientos: pruebaPerifericos.movimientos,
+                clics: pruebaPerifericos.clics,
+                botones: pruebaPerifericos.botones.slice(),
+                rueda: pruebaPerifericos.rueda
+            };
+        }
+
+        function reiniciarEstadoPruebaPerif() {
+            pruebaPerifericos.activa = false;
+            pruebaPerifericos.prueba_ejecutada = false;
+            pruebaPerifericos.iniciada_en = '';
+            pruebaPerifericos.finalizada_en = '';
+            pruebaPerifericos.teclas = 0;
+            pruebaPerifericos.ultima_tecla = '';
+            pruebaPerifericos.ultimo_codigo = '';
+            pruebaPerifericos.movimientos = 0;
+            pruebaPerifericos.clics = 0;
+            pruebaPerifericos.botones = [];
+            pruebaPerifericos.rueda = 0;
+            perfUltimoMovimiento = 0;
+            if (currentDiag) delete currentDiag.prueba_perifericos;
+        }
+
+        function renderPruebaPerif() {
+            const panel = document.getElementById('perifericosPanel');
+            const estado = document.getElementById('perifericosEstado');
+            const resultado = document.getElementById('perifericosResultado');
+            if (!panel || !estado || !resultado) return;
+            panel.classList.toggle('activa', pruebaPerifericos.activa);
+            if (pruebaPerifericos.activa) {
+                estado.textContent = 'Prueba en curso: use el teclado y el mouse dentro del recuadro. Escape la detiene.';
+            } else if (pruebaPerifericos.prueba_ejecutada) {
+                estado.textContent = 'Prueba detenida. Los eventos recibidos quedan en el informe.';
+            } else {
+                estado.textContent = 'Prueba no iniciada.';
+            }
+            if (!pruebaPerifericos.prueba_ejecutada) {
+                resultado.innerHTML = '';
+                return;
+            }
+            const nombres = {0: 'Izquierdo', 1: 'Medio', 2: 'Derecho'};
+            const botones = pruebaPerifericos.botones
+                .map(b => nombres[b] || ('Botón ' + b)).join(', ') || 'ninguno';
+            const inicio = (pruebaPerifericos.iniciada_en || '').slice(0, 19).replace('T', ' ');
+            const fin = (pruebaPerifericos.finalizada_en || '').slice(0, 19).replace('T', ' ');
+            let html = '<table class="diff-table"><tr><th>Prueba</th><th>Resultado</th></tr>';
+            html += '<tr><td>Teclas recibidas</td><td>' + pruebaPerifericos.teclas +
+                (pruebaPerifericos.ultima_tecla
+                    ? ' (última: ' + escHtml(pruebaPerifericos.ultima_tecla) +
+                      ', código ' + escHtml(pruebaPerifericos.ultimo_codigo || '-') + ')'
+                    : '') + '</td></tr>';
+            html += '<tr><td>Movimientos del puntero</td><td>' + pruebaPerifericos.movimientos + '</td></tr>';
+            html += '<tr><td>Clics</td><td>' + pruebaPerifericos.clics + ' (' + escHtml(botones) + ')</td></tr>';
+            html += '<tr><td>Rueda</td><td>' + pruebaPerifericos.rueda + '</td></tr>';
+            html += '<tr><td>Inicio / fin</td><td>' + escHtml(inicio || '-') + ' / ' + escHtml(fin || 'en curso') + '</td></tr>';
+            html += '</table>';
+            if (!pruebaPerifericos.teclas && !pruebaPerifericos.movimientos &&
+                !pruebaPerifericos.clics && !pruebaPerifericos.rueda) {
+                html += '<div class="diff-sin-cambios">No se recibieron eventos de teclado ni de puntero durante la prueba.</div>';
+            }
+            resultado.innerHTML = html;
+        }
+
+        function iniciarPruebaPerifericos() {
+            if (!currentDiag || currentDiag.package !== 'perifericos') {
+                alert('Ejecute primero el diagnóstico del módulo Periféricos.');
+                return;
+            }
+            reiniciarEstadoPruebaPerif();
+            pruebaPerifericos.activa = true;
+            pruebaPerifericos.prueba_ejecutada = true;
+            pruebaPerifericos.iniciada_en = new Date().toISOString();
+            const panel = document.getElementById('perifericosPanel');
+            if (panel) {
+                panel.textContent = 'Prueba activa: presione teclas, mueva el mouse, haga clic y use la rueda. Escape detiene la prueba.';
+                panel.focus();
+            }
+            publicarPruebaPerif();
+            renderPruebaPerif();
+        }
+
+        function detenerPruebaPerifericos() {
+            if (!pruebaPerifericos.prueba_ejecutada) return;
+            pruebaPerifericos.activa = false;
+            if (!pruebaPerifericos.finalizada_en) {
+                pruebaPerifericos.finalizada_en = new Date().toISOString();
+            }
+            const panel = document.getElementById('perifericosPanel');
+            if (panel) panel.textContent = 'Prueba detenida. Puede iniciarla de nuevo o usar el resultado en el informe.';
+            publicarPruebaPerif();
+            renderPruebaPerif();
+        }
+
+        function limpiarPruebaPerifericos() {
+            reiniciarEstadoPruebaPerif();
+            const panel = document.getElementById('perifericosPanel');
+            if (panel) panel.textContent = 'Pulse «Iniciar prueba» y luego use el teclado y el mouse dentro de este recuadro.';
+            renderPruebaPerif();
+        }
+
+        function conectarPruebaPerifericos() {
+            const panel = document.getElementById('perifericosPanel');
+            if (!panel) return;
+            panel.addEventListener('keydown', ev => {
+                if (!pruebaPerifericos.activa) return;
+                if (ev.key === 'Escape') {
+                    ev.preventDefault();
+                    detenerPruebaPerifericos();
+                    return;
+                }
+                ev.preventDefault();
+                pruebaPerifericos.teclas += 1;
+                pruebaPerifericos.ultima_tecla = String(ev.key || '').slice(0, 24);
+                pruebaPerifericos.ultimo_codigo = String(ev.code || '').slice(0, 32);
+                publicarPruebaPerif();
+                renderPruebaPerif();
+            });
+            panel.addEventListener('mousemove', () => {
+                if (!pruebaPerifericos.activa) return;
+                const ahora = Date.now();
+                if (ahora - perfUltimoMovimiento < 120) return;
+                perfUltimoMovimiento = ahora;
+                pruebaPerifericos.movimientos += 1;
+                publicarPruebaPerif();
+                renderPruebaPerif();
+            });
+            panel.addEventListener('mousedown', ev => {
+                if (!pruebaPerifericos.activa) return;
+                ev.preventDefault();
+                pruebaPerifericos.clics += 1;
+                if (!pruebaPerifericos.botones.includes(ev.button)) {
+                    pruebaPerifericos.botones.push(ev.button);
+                }
+                publicarPruebaPerif();
+                renderPruebaPerif();
+            });
+            panel.addEventListener('wheel', ev => {
+                if (!pruebaPerifericos.activa) return;
+                ev.preventDefault();
+                pruebaPerifericos.rueda += (ev.deltaY > 0 ? 1 : (ev.deltaY < 0 ? -1 : 0));
+                publicarPruebaPerif();
+                renderPruebaPerif();
+            }, {passive: false});
+            panel.addEventListener('contextmenu', ev => {
+                if (pruebaPerifericos.activa) ev.preventDefault();
+            });
         }
 
         function renderReferencia(ref) {
@@ -1767,6 +1951,7 @@
             inicializarAcerca();
             loadIdentidad();
             cargarReferencia();
+            conectarPruebaPerifericos();
             loadElevation();
             cargarCapacidades(false);
             loadRegistro();

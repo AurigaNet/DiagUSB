@@ -219,6 +219,39 @@
                             <span class="mod-label">Inventario General</span>
                         </button>
 
+                        <button class="mod-btn mod-gated mod-bateria" data-paquete="bateria" onclick="runDiagnostic('bateria')">
+                            <span class="mod-icon"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="16" height="10" rx="1.5"/><path d="M21 10v4"/><path d="M7 10v4M11 10v4"/></svg></span>
+                            <span class="mod-label">Batería</span>
+                            <span class="mod-motivo"></span>
+                        </button>
+
+                        <button class="mod-btn mod-puertos" onclick="runDiagnostic('puertos_locales')">
+                            <span class="mod-icon"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="9" cy="9" r="1"/><circle cx="15" cy="9" r="1"/><circle cx="9" cy="15" r="1"/><circle cx="15" cy="15" r="1"/></svg></span>
+                            <span class="mod-label">Puertos locales</span>
+                        </button>
+
+                        <button class="mod-btn mod-gated mod-escaneo" data-paquete="escaneo_red" onclick="runDiagnostic('escaneo_red')">
+                            <span class="mod-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/><path d="M12 3v3M21 12h-3"/></svg></span>
+                            <span class="mod-label">Escaneo de red</span>
+                            <span class="mod-motivo"></span>
+                        </button>
+
+                        <button class="mod-btn mod-gated mod-gateways" data-paquete="gateways_dns" onclick="runDiagnostic('gateways_dns')">
+                            <span class="mod-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/><path d="M16.5 16.5l3 3"/></svg></span>
+                            <span class="mod-label">Gateways y DNS</span>
+                            <span class="mod-motivo"></span>
+                        </button>
+
+                        <button class="mod-btn mod-captura" onclick="runDiagnostic('captura_sospechosa')">
+                            <span class="mod-icon"><svg viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></span>
+                            <span class="mod-label">Captura sospechosa</span>
+                        </button>
+
+                        <button class="mod-btn mod-perifericos" onclick="runDiagnostic('perifericos')">
+                            <span class="mod-icon"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="10" rx="1.5"/><path d="M6 9h1M9 9h1M12 9h1M15 9h1M18 9h1M8 12h8M7 16v3M17 16v3"/></svg></span>
+                            <span class="mod-label">Periféricos</span>
+                        </button>
+
                         <button class="mod-btn mod-kb" id="btnKb" onclick="toggleKb()">
                             <span class="mod-icon"><svg viewBox="0 0 24 24"><path d="M5 4a2 2 0 0 1 2-2h11v18H7a2 2 0 0 0-2 2z"/><path d="M5 20a2 2 0 0 1 2-2h11"/></svg></span>
                             <span class="mod-label">Base de Conocimiento</span>
@@ -265,6 +298,19 @@
                             <button class="btn-small" id="btnReferenciaComparar" onclick="compararReferencia()">Comparar con la referencia</button>
                         </div>
                         <div id="referenciaTabla" style="margin-top:10px;"></div>
+                    </div>
+
+                    <div class="acciones-section" id="perifericosSection" style="display:none;">
+                        <h3>Prueba interactiva de teclado y mouse</h3>
+                        <p class="acciones-hint">Comprueba que el sistema recibe las pulsaciones y el puntero a través del navegador. No reemplaza una prueba de hardware ni mide la calidad de los periféricos.</p>
+                        <div class="fila-herramientas" style="margin-top:10px;">
+                            <button class="btn-small btn-copy" id="btnPerifIniciar" onclick="iniciarPruebaPerifericos()">Iniciar prueba</button>
+                            <button class="btn-small" id="btnPerifDetener" onclick="detenerPruebaPerifericos()">Detener</button>
+                            <button class="btn-small" id="btnPerifLimpiar" onclick="limpiarPruebaPerifericos()">Limpiar</button>
+                        </div>
+                        <div id="perifericosPanel" class="prueba-entrada" tabindex="0">Pulse «Iniciar prueba» y luego use el teclado y el mouse dentro de este recuadro.</div>
+                        <div class="config-estado" id="perifericosEstado">Prueba no iniciada.</div>
+                        <div id="perifericosResultado"></div>
                     </div>
 
                     <div class="acciones-section" id="accionesSection" style="display:none;">

@@ -1,0 +1,8 @@
+{
+    "version": "1.0.0",
+    "name": "puertos_locales",
+    "label": "Puertos locales",
+    "description": "Puertos TCP y UDP a la escucha, con el proceso que los abre y si estan expuestos en todas las interfaces",
+    "symptoms": ["puerto_expuesto"],
+    "collectors": {}
+}

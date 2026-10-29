@@ -250,6 +250,12 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round
 .mod-eventos { --mod: #F6A71B; }
 .mod-contexto { --mod: #12A592; }
 .mod-inventario { --mod: #0E8FA3; }
+.mod-bateria { --mod: #22C55E; }
+.mod-puertos { --mod: #0EA5E9; }
+.mod-escaneo { --mod: #10B981; }
+.mod-gateways { --mod: #6366F1; }
+.mod-captura { --mod: #DC2626; }
+.mod-perifericos { --mod: #8B5E3C; }
 .mod-kb { --mod: #3B5BDB; }
 .mod-registro { --mod: #9B51E0; }
 
@@ -428,6 +434,22 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round
 .diff-table th, .diff-table td { border: 1px solid var(--borde); padding: 6px 8px; text-align: left; vertical-align: top; word-break: break-word; }
 .diff-table th { background: var(--panel-2); color: var(--acento); }
 .diff-sin-cambios { color: var(--verde); font-size: 13px; margin-top: 8px; }
+
+/* ---------------- Prueba interactiva de perifericos ---------------- */
+.prueba-entrada {
+    margin-top: 10px;
+    min-height: 84px;
+    padding: 18px;
+    border: 2px dashed var(--borde);
+    border-radius: var(--radio);
+    background: #060f1c;
+    color: var(--secundario);
+    font-size: 13px;
+    line-height: 1.5;
+    outline: none;
+}
+.prueba-entrada.activa { border-color: var(--acento); color: var(--texto); box-shadow: 0 0 0 2px rgba(34,184,240,.15); }
+.prueba-entrada:focus { border-color: var(--acento); }
 
 /* ---------------- Acciones del tecnico ---------------- */
 .acciones-section { margin-top: 16px; background: var(--panel-2); border: 1px solid var(--borde); border-radius: var(--radio); padding: 16px; }

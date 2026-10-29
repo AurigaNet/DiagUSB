@@ -1,0 +1,9 @@
+{
+    "version": "1.0.0",
+    "name": "gateways_dns",
+    "label": "Puertas de enlace y DNS",
+    "description": "Rutas predeterminadas, respuesta de cada puerta de enlace y resolucion DNS real con su tiempo",
+    "symptoms": ["gateway_no_responde", "dns_inestable"],
+    "requirements": ["network_link"],
+    "collectors": {}
+}

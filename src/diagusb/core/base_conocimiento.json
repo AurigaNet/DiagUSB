@@ -625,6 +625,162 @@
         "Si hay trabajos en cola, cancelarlos y volver a imprimir una pagina de prueba"
       ],
       "verificacion": "La comparacion contra la referencia ya no muestra diferencias en impresoras, puertos ni spooler, y la pagina de prueba se imprime."
+    },
+    {
+      "id": "puerto_expuesto",
+      "titulo": "Un proceso de terceros escucha en todas las interfaces",
+      "categoria": "Red",
+      "colectores": [
+        "listening_ports"
+      ],
+      "sintomas": [
+        "puerto_expuesto"
+      ],
+      "estado_esperado": "Solo los servicios que deben aceptar conexiones de la red deberian escuchar en 0.0.0.0 o ::. Un programa de escritorio que abre un puerto en todas las interfaces queda accesible desde la red local.",
+      "por_que_importa": "Un puerto abierto en todas las interfaces amplia la superficie de ataque del equipo. Saber que proceso lo abrio permite decidir si es necesario, limitarlo a loopback o cerrarlo.",
+      "soluciones": [
+        "Revisar en el detalle el proceso, su ruta y el puerto que abrio",
+        "Si el programa no necesita aceptar conexiones remotas, configurarlo para escuchar solo en 127.0.0.1",
+        "Si no reconoce el programa, cerrarlo y revisar su origen antes de volver a ejecutarlo",
+        "Bloquear el puerto en el firewall de Windows si debe seguir abierto solo en el equipo",
+        "Revisar que el programa este actualizado y sea de un fabricante conocido"
+      ],
+      "verificacion": "El detalle de puertos ya no muestra procesos de terceros escuchando en todas las interfaces, o quedan justificados y limitados por el firewall."
+    },
+    {
+      "id": "equipos_red_no_visibles",
+      "titulo": "No se ven otros equipos en la red local",
+      "categoria": "Red",
+      "colectores": [
+        "network_neighbors",
+        "lan_reachability"
+      ],
+      "sintomas": [
+        "equipos_red_no_visibles"
+      ],
+      "estado_esperado": "La puerta de enlace debe responder y la tabla de vecinos debe mostrar al menos un equipo ademas del gateway cuando la red tiene otros dispositivos.",
+      "por_que_importa": "Si el equipo no ve a nadie en la red, el problema puede estar en el switch, el cable, la VLAN, el aislamiento de clientes del punto de acceso o en el propio equipo. La tabla ARP y la respuesta del gateway separan esos casos.",
+      "soluciones": [
+        "Confirmar que el cable o el enlace inalambrico esta conectado y con velocidad real",
+        "Verificar que la puerta de enlace responde; si no responde, revisar el cable, el switch o el punto de acceso",
+        "Comparar la IP y la mascara del equipo con las de otro equipo que si ve la red",
+        "Revisar si el punto de acceso tiene aislamiento de clientes activado",
+        "Si la red es nueva, confirmar que los otros equipos estan encendidos y en la misma VLAN",
+        "Tener en cuenta que algunos equipos bloquean ICMP y no responden a ping aunque esten conectados"
+      ],
+      "verificacion": "La puerta de enlace responde y aparecen otros equipos en la tabla de vecinos de la red local."
+    },
+    {
+      "id": "trafico_red_alterado",
+      "titulo": "Configuracion que puede desviar el trafico del equipo",
+      "categoria": "Seguridad",
+      "colectores": [
+        "proxy_settings",
+        "hosts_entries",
+        "capture_drivers"
+      ],
+      "sintomas": [
+        "trafico_red_alterado"
+      ],
+      "estado_esperado": "El proxy debe ser el de la organizacion (o estar desactivado), el archivo hosts no deberia tener entradas activas fuera de loopback y la captura de paquetes debe ser una herramienta conocida y autorizada.",
+      "por_que_importa": "Un proxy manual no documentado, entradas en hosts que redirigen dominios o un controlador de captura activo pueden explicar redirecciones y trafico inesperado. La regla informa la combinacion objetiva; no afirma que haya una intrusion.",
+      "soluciones": [
+        "Revisar el proxy configurado en Configuracion de Internet y en las variables de entorno",
+        "Revisar el archivo hosts y quitar las entradas que no correspondan a la organizacion",
+        "Si no se autorizo un proxy, restablecer la configuracion automatica o dejar el proxy desactivado",
+        "Confirmar con el responsable de seguridad si hay una captura de paquetes en curso",
+        "Si no se reconoce el controlador de captura, detener el servicio y revisar el software instalado",
+        "Cambiar las credenciales que hayan pasado por un proxy no confiable"
+      ],
+      "verificacion": "El proxy y el archivo hosts coinciden con la configuracion esperada y no hay captura de paquetes activa sin autorizacion."
+    },
+    {
+      "id": "gateway_no_responde",
+      "titulo": "La puerta de enlace predeterminada no responde",
+      "categoria": "Red",
+      "colectores": [
+        "gateway_routes"
+      ],
+      "sintomas": [
+        "gateway_no_responde"
+      ],
+      "estado_esperado": "Debe existir una ruta predeterminada y su puerta de enlace debe responder a ping o, al menos, permitir el trafico de la red.",
+      "por_que_importa": "Sin puerta de enlace el equipo puede hablar con la red local pero no salir a otras redes ni a internet. Confirmarlo separa un problema de cable o switch de un problema de configuracion IP.",
+      "soluciones": [
+        "Revisar el cable, el puerto del switch y los ledes del adaptador",
+        "Confirmar la IP, la mascara y la puerta de enlace configuradas en el adaptador",
+        "Verificar que la puerta de enlace reportada coincide con la del router o switch de la red",
+        "Si la puerta de enlace es correcta pero no responde, probar otro puerto o reiniciar el equipo de red",
+        "Revisar si hay una VLAN o una red invitada que no permite llegar al gateway"
+      ],
+      "verificacion": "La ruta predeterminada existe y la puerta de enlace responde; el equipo puede alcanzar otras redes."
+    },
+    {
+      "id": "dns_inestable",
+      "titulo": "La resolucion DNS falla o tarda demasiado",
+      "categoria": "Red",
+      "colectores": [
+        "gateway_dns_servers",
+        "dns_resolution"
+      ],
+      "sintomas": [
+        "dns_inestable"
+      ],
+      "estado_esperado": "El equipo debe tener al menos un servidor DNS configurado y resolver un nombre de prueba en menos de un segundo en una red normal.",
+      "por_que_importa": "Un DNS que falla o tarda explica la sensacion de internet lento o caido aunque el enlace funcione. La prueba mide una resolucion real con los servidores configurados, sin inventar resultados.",
+      "soluciones": [
+        "Revisar los servidores DNS configurados en el adaptador o en el DHCP",
+        "Probar con un servidor DNS publico conocido solo como diagnostico temporal",
+        "Si el DNS es interno, confirmar que el equipo tiene acceso al controlador de dominio",
+        "Revisar la puerta de enlace y el cableado antes de cambiar el DNS",
+        "Vaciar la cache DNS y volver a probar la resolucion",
+        "Revisar si el firewall o el proxy estan bloqueando las consultas DNS"
+      ],
+      "verificacion": "El nombre de prueba se resuelve correctamente y en un tiempo normal con los servidores DNS configurados."
+    },
+    {
+      "id": "teclado_no_responde",
+      "titulo": "El teclado no responde o presenta errores",
+      "categoria": "Sistema",
+      "colectores": [
+        "input_devices"
+      ],
+      "sintomas": [
+        "teclado_no_responde"
+      ],
+      "estado_esperado": "Windows debe detectar al menos un teclado con estado OK y sin codigo de error de configuracion.",
+      "por_que_importa": "Un teclado ausente o con error de configuracion explica que no se puedan escribir claves, incluso antes de probar el hardware. La prueba interactiva del navegador confirma si el sistema recibe las pulsaciones.",
+      "soluciones": [
+        "Revisar la conexion del teclado (USB, receptor inalambrico o puerto PS/2)",
+        "Probar el teclado en otro equipo o en otro puerto USB",
+        "Revisar el Administrador de dispositivos y actualizar o reinstalar el controlador",
+        "Si es inalambrico, cambiar las pilas y volver a sincronizar el receptor",
+        "Probar con el teclado en pantalla para distinguir un fallo del teclado de un fallo del sistema",
+        "Ejecutar la prueba interactiva de la interfaz y confirmar si se reciben las teclas"
+      ],
+      "verificacion": "Windows detecta el teclado sin errores y la prueba interactiva registra las pulsaciones."
+    },
+    {
+      "id": "mouse_no_responde",
+      "titulo": "El mouse o puntero no responde o presenta errores",
+      "categoria": "Sistema",
+      "colectores": [
+        "input_devices"
+      ],
+      "sintomas": [
+        "mouse_no_responde"
+      ],
+      "estado_esperado": "Windows debe detectar al menos un dispositivo de puntero con estado OK y sin codigo de error de configuracion.",
+      "por_que_importa": "Un puntero ausente o con error de configuracion explica que el cursor no se mueva. La prueba interactiva confirma si el sistema recibe movimiento, botones y rueda.",
+      "soluciones": [
+        "Revisar la conexion del mouse (USB, receptor inalambrico o Bluetooth)",
+        "Probar el mouse en otro equipo o en otro puerto USB",
+        "Revisar el Administrador de dispositivos y actualizar o reinstalar el controlador",
+        "Si es inalambrico, cambiar las pilas y volver a sincronizar el receptor",
+        "Probar con las teclas de accesibilidad del puntero para distinguir un fallo del mouse de un fallo del sistema",
+        "Ejecutar la prueba interactiva de la interfaz y confirmar si se recibe movimiento y clics"
+      ],
+      "verificacion": "Windows detecta el puntero sin errores y la prueba interactiva registra movimiento, botones y rueda."
     }
   ]
 }

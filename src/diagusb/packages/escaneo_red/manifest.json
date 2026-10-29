@@ -1,0 +1,9 @@
+{
+    "version": "1.0.0",
+    "name": "escaneo_red",
+    "label": "Escaneo de red",
+    "description": "Equipos vistos por el adaptador activo (tabla ARP) y respuesta de la puerta de enlace y los vecinos conocidos",
+    "symptoms": ["equipos_red_no_visibles"],
+    "requirements": ["network_link"],
+    "collectors": {}
+}

@@ -2264,7 +2264,7 @@ def test_modulos_y_fetch_sin_cambios():
     import diagusb.web_server as ws
 
     html = ws._cargar_pagina()
-    assert html.count('class="mod-btn') == 17
+    assert html.count('class="mod-btn') == 23
     assert "runDiagnostic('inventario_general')" in html
     assert "runDiagnostic('conectividad')" in html
     assert 'http://' not in html and 'https://' not in html

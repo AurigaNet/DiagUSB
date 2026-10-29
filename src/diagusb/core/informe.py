@@ -289,6 +289,7 @@ class InformeData:
     observaciones: str = ""
     diferencias: list[dict] = field(default_factory=list)
     referencia: dict = field(default_factory=dict)
+    prueba_perifericos: dict = field(default_factory=dict)
     advertencias: list[str] = field(default_factory=list)
     metricas: dict = field(default_factory=dict)
     metricas_base: dict = field(default_factory=dict)
@@ -604,6 +605,8 @@ def informe_desde_diagnostico(diag: dict, acciones: list[dict] | None = None,
         diferencias=[d for d in (diferencias or []) if isinstance(d, dict)],
         referencia=(diag.get("referencia")
                     if isinstance(diag.get("referencia"), dict) else {}),
+        prueba_perifericos=(diag.get("prueba_perifericos")
+                            if isinstance(diag.get("prueba_perifericos"), dict) else {}),
         advertencias=advertencias,
         metricas=diag.get("metricas") if isinstance(diag.get("metricas"), dict) else {},
         metricas_base=metricas_base or {},
@@ -1196,6 +1199,7 @@ def _modelo_documento(e: InformeData) -> dict:
         "mejoras": e.mejoras,
         "diferencias": e.diferencias,
         "referencia": e.referencia,
+        "prueba_perifericos": e.prueba_perifericos,
         "recomendaciones": e.recomendaciones,
         "ficha_tecnica": _ficha_tecnica(e),
         "anexo": _anexo_tecnico(e, mapa),
@@ -1478,6 +1482,51 @@ def _html_referencia(doc: dict) -> str:
     return "".join(out)
 
 
+def _html_perifericos(doc: dict) -> str:
+    """Resultado de la prueba interactiva de teclado y mouse en el navegador."""
+    p = doc.get("prueba_perifericos") or {}
+    if not isinstance(p, dict) or not p.get("prueba_ejecutada"):
+        return ""
+    try:
+        teclas = int(p.get("teclas") or 0)
+        movimientos = int(p.get("movimientos") or 0)
+        clics = int(p.get("clics") or 0)
+        rueda = int(p.get("rueda") or 0)
+    except (TypeError, ValueError):
+        teclas = movimientos = clics = rueda = 0
+    nombres = {0: "Izquierdo", 1: "Medio", 2: "Derecho"}
+    botones = ", ".join(nombres.get(b, f"Botón {b}")
+                        for b in (p.get("botones") or [])) or "ninguno"
+    ultima = _g(p.get("ultima_tecla"))
+    codigo = _g(p.get("ultimo_codigo"))
+    inicio = _g(str(p.get("iniciada_en") or "")[:19])
+    fin = _g(str(p.get("finalizada_en") or "")[:19])
+    if teclas or movimientos or clics or rueda:
+        conclusion = ("El navegador recibio eventos de teclado y puntero durante la "
+                      "prueba. Esto confirma que Windows entrega la entrada al "
+                      "navegador; no reemplaza una prueba de hardware ni mide la "
+                      "calidad de los perifericos.")
+    else:
+        conclusion = ("No se recibieron eventos de teclado ni de puntero durante la "
+                      "prueba. Repetirla con el foco en el recuadro y, si sigue sin "
+                      "respuesta, probar el periferico en otro puerto o equipo.")
+    filas = [
+        ("Teclas recibidas", str(teclas)),
+        ("Ultima tecla", (ultima + (f" (codigo {codigo})" if codigo else "")) or "-"),
+        ("Movimientos del puntero", str(movimientos)),
+        ("Clics", f"{clics} ({botones})"),
+        ("Rueda", str(rueda)),
+        ("Inicio / fin", f"{inicio or '-'} / {fin or 'en curso'}"),
+    ]
+    out = [f"<p>{_esc(conclusion)}</p>",
+           "<table><tr><td class='th' style='width:30%'>Prueba</td>"
+           "<td class='th' style='width:70%'>Resultado</td></tr>"]
+    for etiqueta, valor in filas:
+        out.append(f"<tr><td>{_esc(etiqueta)}</td><td>{_esc(valor)}</td></tr>")
+    out.append("</table>")
+    return "".join(out)
+
+
 def _html_problemas(doc: dict, con_svg: bool) -> str:
     out = []
     for p in doc["problemas"]:
@@ -1706,6 +1755,10 @@ def informe_a_html(informe: InformeData, con_anexo: bool = False,
     if doc.get("referencia"):
         out.append(_sec("Referencia del equipo"))
         out.append(_html_referencia(doc))
+
+    if doc.get("prueba_perifericos"):
+        out.append(_sec("Prueba de periféricos"))
+        out.append(_html_perifericos(doc))
 
     out.append(_sec("Plan de acción"))
     out.append(_html_plan_accion(doc))
@@ -2488,6 +2541,37 @@ def informe_a_pdf(informe: InformeData) -> bytes:
         elif ref.get("disponible") and ref.get("mismo_equipo") != "distinto":
             doc.text_flow("Sin diferencias respecto de la referencia.",
                           size=9, font="F3", indent=8)
+        doc.spacer(4)
+
+    prueba = modelo.get("prueba_perifericos") or {}
+    if isinstance(prueba, dict) and prueba.get("prueba_ejecutada"):
+        _heading("Prueba de periféricos")
+        try:
+            teclas = int(prueba.get("teclas") or 0)
+            movimientos = int(prueba.get("movimientos") or 0)
+            clics = int(prueba.get("clics") or 0)
+            rueda = int(prueba.get("rueda") or 0)
+        except (TypeError, ValueError):
+            teclas = movimientos = clics = rueda = 0
+        nombres = {0: "Izquierdo", 1: "Medio", 2: "Derecho"}
+        botones = ", ".join(nombres.get(b, f"Botón {b}")
+                            for b in (prueba.get("botones") or [])) or "ninguno"
+        if teclas or movimientos or clics or rueda:
+            conclusion = ("El navegador recibio eventos de teclado y puntero. "
+                          "No reemplaza una prueba de hardware.")
+        else:
+            conclusion = ("No se recibieron eventos de teclado ni de puntero "
+                          "durante la prueba.")
+        doc.text_flow(conclusion, size=9, indent=8)
+        _pdf_tabla(doc, ["Prueba", "Resultado"], [
+            ["Teclas recibidas", str(teclas)],
+            ["Ultima tecla", str(prueba.get("ultima_tecla") or "-")],
+            ["Movimientos del puntero", str(movimientos)],
+            ["Clics", f"{clics} ({botones})"],
+            ["Rueda", str(rueda)],
+            ["Inicio / fin", f"{str(prueba.get('iniciada_en') or '-')[:19]} / "
+                             f"{str(prueba.get('finalizada_en') or 'en curso')[:19]}"],
+        ], [0.35, 0.65], size=8)
         doc.spacer(4)
 
     _heading("Plan de acción")

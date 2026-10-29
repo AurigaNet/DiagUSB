@@ -1,0 +1,8 @@
+{
+    "version": "1.0.0",
+    "name": "captura_sospechosa",
+    "label": "Captura sospechosa",
+    "description": "Configuracion que puede desviar el trafico (proxy, archivo hosts) y presencia de controladores de captura de paquetes",
+    "symptoms": ["trafico_red_alterado"],
+    "collectors": {}
+}

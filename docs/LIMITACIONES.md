@@ -7,8 +7,8 @@ Documento de limitaciones y estado actual del proyecto.
 ### Completado
 - Chasis del proyecto y documentacion legal (F0)
 - Sistema de paquetes con manifiestos JSON (F0)
-- 13 paquetes de colectores PowerShell validados en Windows 10 (impresion, redes, wifi, conectividad, disco, memoria, servicios, seguridad, windows_update, drivers, eventos, contexto, inventario_general); los paquetes `temperatura` (numero 14) y `bateria` (numero 15) quedan como **EXPERIMENTALES** (vease Funcionalidad)
-- Nucleo Python: executor, models, rules, comparator, reporter, registry, knowledge_base (KB embebida de 22 entradas + capa local editable)
+- 20 paquetes de colectores PowerShell; los 13 validados en Windows 10 son impresion, redes, wifi, conectividad, disco, memoria, servicios, seguridad, windows_update, drivers, eventos, contexto e inventario_general. Los paquetes `temperatura` (numero 14) y `bateria` (numero 15) quedan como **EXPERIMENTALES**. Los cinco paquetes de red y perifericos (numero 16 a 20: `puertos_locales`, `escaneo_red`, `captura_sospechosa`, `gateways_dns` y `perifericos`) se ejecutaron con sus colectores reales en el equipo de desarrollo, pero no se validaron en un segundo equipo ni en Windows 11 (vease Funcionalidad)
+- Nucleo Python: executor, models, rules, comparator, reporter, registry, knowledge_base (KB embebida de 35 entradas + capa local editable)
 - Informes Word (.doc) y PDF (.pdf) en español, con un resumen gráfico de métricas (puntaje, severidad, categorías, medidores y comparación antes/despues), hallazgos, soluciones, acciones del tecnico, mejoras sugeridas y diferencias antes/despues. Los graficos del .doc son imagenes PNG incrustadas (MHTML), no formas ni texto, por lo que se ven igual al abrir o mover el archivo
 - Interfaz web local (barra lateral y tema oscuro; diagnosticos rapidos, revision total, snapshot ANTES/DESPUES + comparacion, editor de KB, registro de analisis y panel de inicio con graficas de metricas)
 - Informe .doc con graficos PNG incrustados verificado en Word 16.0 (Windows 10): torta de severidad, dona de discos, barra de memoria y barras por estado se muestran como imagenes
@@ -16,7 +16,7 @@ Documento de limitaciones y estado actual del proyecto.
 - Kit portable con Python embebido (`DiagUSB-kit-<version>.zip`, armado con `scripts\armar_kit.ps1`), verificado con prueba de humo (`scripts\probar_kit.ps1`: integridad SHA-256, firma PSF del interprete, diagnostico real y PDF)
 - Ejecutable portable con PyInstaller (`dist\diagusb\diagusb.exe`) como variante opcional, verificado con diagnose y reportes
 - Registro persistente de analisis (`config/registro_analisis.json`): auto-guardado, consulta, borrado individual y borrado total
-- Suite de pruebas unitarias (278 pruebas; 277 pasan y 1 manual se omite por defecto)
+- Suite de pruebas unitarias (325 pruebas; 324 pasan y 1 manual se omite por defecto)
 
 ### Pendiente de validacion
 - Windows 11 (validado hasta ahora en Windows 10)
@@ -48,6 +48,11 @@ Documento de limitaciones y estado actual del proyecto.
 - El PDF usa fuentes estandar con codificacion WinAnsi (Latin-1). Los caracteres fuera de ese rango se reemplazan por `?`; los informes estan redactados en español para evitar el problema.
 - Los colectores de seguridad (eventos) y algunos inventarios requieren permisos de Administrador para datos completos (en modo estandar se ven parciales o como 'No evaluado (requiere administrador)')
 - La verificacion de conectividad ejecuta ping ICMP real y consulta DNS; el resultado depende del firewall y del segmento de red del equipo
+- `escaneo_red` no hace un barrido de subred: lee la tabla de vecinos (ARP/neighbor) del adaptador activo y hace ping acotado a la puerta de enlace y a un maximo de 8 equipos ya conocidos. Un equipo que bloquee ICMP puede estar conectado y no responder; el texto del hallazgo lo aclara y no se presenta como equipo ausente
+- `puertos_locales` marca como expuestos los procesos de terceros (fuera de `%SystemRoot%`) que escuchan en `0.0.0.0` o `::`; los servicios propios de Windows no se cuentan. Un mismo proceso puede aparecer dos veces (IPv4 e IPv6) para el mismo puerto
+- `captura_sospechosa` informa combinaciones objetivas (proxy manual remoto, entradas del archivo `hosts` fuera de loopback, variables de proxy, controladores Npcap/WinPcap activos) y nunca afirma que haya una intrusion: la decision queda en el tecnico
+- `perifericos` se apoya en el estado PnP que reporta Windows y en una prueba interactiva del navegador (teclas, movimiento, clics y rueda). Esa prueba confirma que Windows entrega la entrada al navegador, pero no mide la calidad ni el desgaste del teclado o del mouse
+- La prueba DNS de `gateways_dns` resuelve un unico nombre (`%USERDNSDOMAIN` si existe, si no `www.msftconnecttest.com`) y lo cronometra; una resolucion lenta puede deberse al servidor DNS, al enlace o al propio nombre de prueba
 - `Get-WindowsFeature` (roles de servidor) no existe en Windows 10: `windows_features` queda vacio en estaciones
 - Los "program groups" (Win32_ProgramGroup) no existen en Windows 10: se omitieron del inventario
 

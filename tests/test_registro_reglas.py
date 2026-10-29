@@ -27,6 +27,9 @@ ESPERADO_REGISTRO = [
     "apagado_inesperado", "apagado_inesperado",
     "disco_lento", "proceso_alto_cpu",
     "seguridad_comprometida", "servicio_no_inicia",
+    "puerto_expuesto", "equipos_red_no_visibles", "trafico_red_alterado",
+    "gateway_no_responde", "dns_inestable",
+    "teclado_no_responde", "mouse_no_responde",
 ]
 
 

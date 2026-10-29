@@ -8,6 +8,12 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ### Agregado
 
+- Cinco paquetes nuevos de solo lectura (la lista pasa de 15 a 20 paquetes): `puertos_locales` (puertos TCP/UDP a la escucha con proceso, ruta, empresa y si escuchan en todas las interfaces), `escaneo_red` (tabla de vecinos ARP y ping acotado a la puerta de enlace y a los equipos ya conocidos, sin barrido de subred), `captura_sospechosa` (proxy del usuario y del entorno, archivo `hosts` y controladores de captura Npcap/WinPcap), `gateways_dns` (rutas predeterminadas con ping a cada puerta de enlace, servidores DNS configurados y una resolución real cronometrada) y `perifericos` (teclados y dispositivos de puntero con su estado PnP).
+- Diez colectores nuevos en PowerShell, todos de solo lectura y con cabecera SPDX: `get_listening_ports`, `get_network_neighbors`, `get_lan_reachability`, `get_proxy_settings`, `get_hosts_entries`, `get_capture_drivers`, `get_gateway_routes`, `get_gateway_dns_servers`, `get_dns_resolution` y `get_input_devices`.
+- Siete reglas deterministas y sus entradas de conocimiento: `puerto_expuesto`, `equipos_red_no_visibles`, `trafico_red_alterado`, `gateway_no_responde`, `dns_inestable`, `teclado_no_responde` y `mouse_no_responde`; la base embebida pasa de 28 a 35 entradas. `trafico_red_alterado` informa la combinación objetiva (proxy manual remoto, entradas de `hosts` fuera de loopback, captura activa) y nunca afirma que haya una intrusión; `equipos_red_no_visibles` recuerda que algunos equipos bloquean ICMP.
+- Botones nuevos en la interfaz para los cinco paquetes y para `bateria` (que existía pero no tenía botón), con bloqueo por capacidades en los paquetes que necesitan enlace de red.
+- Prueba interactiva de teclado y mouse en el navegador (teclas, movimientos, clics, botones y rueda), con su resultado en la interfaz y su propia sección en los informes HTML, DOC y PDF; solo aparece en el informe cuando la prueba se ejecutó.
+- Pruebas unitarias `tests/test_paquetes_fase4.py` (manifiestos, colectores de solo lectura, reglas con datos simulados y sin datos, base de conocimiento, secciones del informe y cableado de la interfaz).
 - Referencia por equipo: captura del estado de los colectores cuando el equipo funciona bien, guardada en `config/referencias/<machine_id>.json` y comparada solo contra el mismo equipo (identidad estable). Las diferencias se muestran en la interfaz, en la sección de referencia del informe (HTML, DOC y PDF) y, para el paquete de impresión, se suman como hallazgos con la nueva entrada de conocimiento `referencia_impresion` (28 entradas en total).
 - Endpoints `/api/referencia` (GET para el estado, POST para guardar o comparar) y botones «Guardar referencia de este equipo» y «Comparar con la referencia» en la interfaz; guardar exige identidad estable y no se permite sin ella.
 - Identidad del equipo visible en el informe: fila «ID del equipo» en portada, datos del servicio y PDF, con «sin identificar» cuando no hay identidad.
@@ -29,7 +35,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 ### Corregido
 
 - Documentación: el registro de la versión 0.1.0 anunciaba un comando `report` que nunca existió en la CLI. Los comandos reales son `diagnose`, `snapshot`, `compare`, `list-packages` y `web`; los informes HTML/DOC/PDF los genera `diagnose`. Se conserva la entrada histórica y se deja esta corrección explícita.
-- Documentación: las cifras de pruebas y de paquetes quedaron unificadas con el código real (15 paquetes y 278 pruebas, de las cuales 277 pasan y 1 es manual y se omite por defecto).
+- Documentación: las cifras de pruebas y de paquetes quedaron unificadas con el código real (20 paquetes y 325 pruebas, de las cuales 324 pasan y 1 es manual y se omite por defecto).
 - Documentación: `docs/LIMITACIONES.md` decía que la conectividad no hacía ping real; el colector ejecuta ICMP y DNS reales desde hace varias versiones. Se corrigió la limitación.
 - Pruebas: `tests/run_tests.py` ahora descubre y ejecuta todos los `tests/test_*.py` con pytest, en lugar de importar una lista fija de seis suites.
 
