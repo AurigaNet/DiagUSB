@@ -160,7 +160,7 @@
             const titulo = document.getElementById('accionesTitulo');
             const lista = document.getElementById('problemasLista');
             const mejorasLista = document.getElementById('mejorasLista');
-            const colores = {critical: '#EF4B5B', error: '#F2761E', warning: '#F5A623', ok: '#2FBF71'};
+            const colores = {critical: '#C53030', error: '#C05621', warning: '#B7791F', ok: '#157F45'};
             const sevLabel = {critical: 'CRÍTICO', error: 'ERROR', warning: 'ADVERTENCIA', ok: 'OK'};
             const estados = (currentDiag && currentDiag.estados_accion) ||
                 ['Pendiente', 'Resuelto', 'Resuelto parcialmente', 'No reproducido', 'Requiere repuestos', 'Derivado / escalar'];
@@ -1476,7 +1476,7 @@
         // ---------------------------------------------------------------
         // Graficas (SVG propio, sin librerias externas)
         // ---------------------------------------------------------------
-        const COLOR_ETIQUETA = {Bueno: '#2FBF71', 'Atención': '#F5A623', 'Crítico': '#EF4B5B', 'Datos parciales': '#F5A623', 'Sin datos': '#9FB3CB'};
+        const COLOR_ETIQUETA = {Bueno: '#157F45', 'Atención': '#B7791F', 'Crítico': '#C53030', 'Datos parciales': '#B7791F', 'Sin datos': '#5D7088'};
 
         function renderMetricas(m) {
             if (!m) return;
@@ -1497,7 +1497,7 @@
                 cuerpo.innerHTML = '<p class="sin-datos">Sin datos. No se ejecutaron módulos.</p>';
                 return;
             }
-            const color = COLOR_ETIQUETA[m.etiqueta] || '#9FB3CB';
+            const color = COLOR_ETIQUETA[m.etiqueta] || '#5D7088';
             const r = 78, cx = 100, cy = 100;
             const frac = Math.max(0, Math.min(1, m.puntaje / 100));
             const ang = Math.PI * (1 - frac);
@@ -1513,7 +1513,7 @@
             cuerpo.innerHTML =
                 '<div class="gauge-figura">' +
                   '<svg width="200" height="112" viewBox="0 0 200 112">' +
-                    '<path d="' + bg + '" stroke="#1C3250" stroke-width="16" fill="none" stroke-linecap="round"/>' +
+                    '<path d="' + bg + '" stroke="#E3EAF2" stroke-width="16" fill="none" stroke-linecap="round"/>' +
                     '<path d="' + val + '" stroke="' + color + '" stroke-width="16" fill="none" stroke-linecap="round"/>' +
                   '</svg>' +
                   '<div class="gauge-valor" style="color:' + color + '">' + m.puntaje + '<small>/100</small></div>' +
@@ -1530,7 +1530,7 @@
             const C = 2 * Math.PI * r;
             const suma = segmentos.reduce((a, s) => a + s.valor, 0);
             let offset = 0;
-            let partes = '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="#1C3250" stroke-width="' + grosor + '"/>';
+            let partes = '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="#E3EAF2" stroke-width="' + grosor + '"/>';
             if (suma > 0) {
                 segmentos.forEach(s => {
                     const len = (s.valor / suma) * C;
@@ -1541,9 +1541,9 @@
                 });
             }
             return '<svg width="140" height="140" viewBox="0 0 140 140">' + partes +
-                '<text x="' + cx + '" y="' + (cy + 2) + '" text-anchor="middle" fill="#E6EEF8" font-size="26" font-weight="700" stroke="none">' +
+                '<text x="' + cx + '" y="' + (cy + 2) + '" text-anchor="middle" fill="#172A44" font-size="26" font-weight="700" stroke="none">' +
                 totalCentro + '</text>' +
-                '<text x="' + cx + '" y="' + (cy + 20) + '" text-anchor="middle" fill="#9FB3CB" font-size="10" stroke="none">hallazgos</text>' +
+                '<text x="' + cx + '" y="' + (cy + 20) + '" text-anchor="middle" fill="#5D7088" font-size="10" stroke="none">hallazgos</text>' +
                 '</svg>';
         }
 
@@ -1552,9 +1552,9 @@
             const s = (m && m.severidad) || {critical: 0, error: 0, warning: 0};
             const total = (s.critical || 0) + (s.error || 0) + (s.warning || 0);
             const segmentos = [
-                {valor: s.critical || 0, color: '#EF4B5B'},
-                {valor: s.error || 0, color: '#F2761E'},
-                {valor: s.warning || 0, color: '#F5A623'}
+                {valor: s.critical || 0, color: '#C53030'},
+                {valor: s.error || 0, color: '#C05621'},
+                {valor: s.warning || 0, color: '#B7791F'}
             ];
             const leyenda =
                 '<div class="item"><span class="punto sev-critical"></span>Crítico<span class="n">' + (s.critical || 0) + '</span></div>' +
@@ -1629,6 +1629,33 @@
             return e.paquete_label || e.paquete || 'Análisis';
         }
 
+        function renderUltimoAnalisis(lista) {
+            const el = document.getElementById('ultimoAnalisis');
+            const nota = document.getElementById('ultimoNota');
+            if (!el) return;
+            if (!lista || !lista.length) {
+                el.innerHTML = '<p class="sin-datos">Ejecute un diagnóstico para ver aquí su resumen, con el mismo formato de resultados que la vista de diagnósticos.</p>';
+                if (nota) nota.textContent = 'Sin análisis registrados';
+                return;
+            }
+            const e = lista[0];
+            const c = e.conteos || {};
+            const fecha = (e.fecha || '').replace('T', ' ').slice(0, 19);
+            const problemas = c.findings || 0;
+            const clase = problemas === 0 ? 'success' : ((c.error || 0) > 0 ? 'error' : 'warning');
+            if (nota) nota.textContent = 'Registrado el ' + fecha;
+            el.innerHTML = '<div class="diag-card ' + clase + '">' +
+                '<div class="diag-header"><span class="diag-title">' +
+                escHtml(e.paquete_label || e.paquete || 'Análisis') + '</span>' +
+                '<span class="diag-badge ' + (clase === 'success' ? 'ok' : clase) + '">' +
+                (problemas === 0 ? 'Sin problemas' : problemas + ' problema(s)') + '</span></div>' +
+                '<div class="diag-stats"><span>Colectores OK: ' + (c.ok || 0) + '</span>' +
+                '<span>Con error: ' + (c.error || 0) + '</span>' +
+                '<span>Sin datos: ' + (c.empty || 0) + '</span>' +
+                '<span>Puntaje: ' + (e.puntaje == null ? '—' : e.puntaje + '/100') + '</span></div>' +
+                '<button class="btn-small btn-copy" onclick="irARegistro()">Ver en el historial</button></div>';
+        }
+
         function renderActividad(lista) {
             const el = document.getElementById('actividadCuerpo');
             if (!el) return;
@@ -1639,7 +1666,7 @@
             let html = '';
             lista.slice(0, 6).forEach(e => {
                 const fecha = (e.fecha || '').replace('T', ' ').slice(0, 16);
-                const col = (e.puntaje == null) ? '#9FB3CB' : (e.puntaje >= 85 ? '#2FBF71' : (e.puntaje >= 60 ? '#F5A623' : '#EF4B5B'));
+                const col = (e.puntaje == null) ? '#5D7088' : (e.puntaje >= 85 ? '#157F45' : (e.puntaje >= 60 ? '#B7791F' : '#C53030'));
                 html += '<div class="act-item">' +
                     '<span class="act-paq">' + escHtml(alcanceDeEntrada(e)) + '</span>' +
                     '<span class="act-puntaje" style="color:' + col + '">' + (e.puntaje == null ? '—' : e.puntaje) + '</span>' +
@@ -1726,7 +1753,7 @@
                 html += '<h4>' + escHtml(e.titulo || e.id) + '</h4>';
                 html += '<div class="kb-body">';
                 if (e.estado_esperado) html += '<div><b>Cómo debe estar:</b> ' + escHtml(e.estado_esperado) + '</div>';
-                if (e.por_que_importa) html += '<div class="kb-muted" style="color:#9FB3CB; margin-top:4px;"><b>Por qué importa:</b> ' + escHtml(e.por_que_importa) + '</div>';
+                if (e.por_que_importa) html += '<div class="kb-muted" style="color:#5D7088; margin-top:4px;"><b>Por qué importa:</b> ' + escHtml(e.por_que_importa) + '</div>';
                 if (e.soluciones && e.soluciones.length) {
                     html += '<div style="margin-top:6px;"><b>Solución:</b><ol>';
                     e.soluciones.forEach(s => { html += '<li>' + escHtml(s) + '</li>'; });
@@ -1912,9 +1939,9 @@
                         h += '<div class="acciones-hint">Sin problemas detectados en ese análisis.</div>';
                     }
                     findings.forEach(f => {
-                        const color = f.severity === 'critical' ? '#EF4B5B' :
-                                     (f.severity === 'error' ? '#F2761E' :
-                                     (f.severity === 'warning' ? '#F5A623' : '#2FBF71'));
+                        const color = f.severity === 'critical' ? '#C53030' :
+                                     (f.severity === 'error' ? '#C05621' :
+                                     (f.severity === 'warning' ? '#B7791F' : '#157F45'));
                         h += '<div style="margin-bottom:6px; border-left:3px solid ' + color + '; padding-left:8px;">';
                         h += '<b style="color:' + color + '; text-transform:uppercase; font-size:11px;">' +
                             escHtml(f.severity || '') + '</b> ';
@@ -1960,6 +1987,7 @@
                 }
                 renderTendencia(regEntradas);
                 renderActividad(regEntradas);
+                renderUltimoAnalisis(regEntradas);
                 filterRegistro();
             } catch (e) {
                 const el = document.getElementById('regLista');

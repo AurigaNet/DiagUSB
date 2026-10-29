@@ -10,14 +10,14 @@ Documento de limitaciones y estado actual del proyecto.
 - 20 paquetes de colectores PowerShell; los 13 validados en Windows 10 son impresion, redes, wifi, conectividad, disco, memoria, servicios, seguridad, windows_update, drivers, eventos, contexto e inventario_general. Los paquetes `temperatura` (numero 14) y `bateria` (numero 15) quedan como **EXPERIMENTALES**. Los cinco paquetes de red y perifericos (numero 16 a 20: `puertos_locales`, `escaneo_red`, `captura_sospechosa`, `gateways_dns` y `perifericos`) se ejecutaron con sus colectores reales en el equipo de desarrollo, pero no se validaron en un segundo equipo ni en Windows 11 (vease Funcionalidad)
 - Nucleo Python: executor, models, rules, comparator, reporter, registry, knowledge_base (KB embebida de 35 entradas + capa local editable)
 - Informes Word (.doc) y PDF (.pdf) en español, con un resumen gráfico de métricas (puntaje, severidad, categorías, medidores y comparación antes/despues), hallazgos, soluciones, acciones del tecnico, mejoras sugeridas y diferencias antes/despues. Los graficos del .doc son imagenes PNG incrustadas (MHTML), no formas ni texto, por lo que se ven igual al abrir o mover el archivo
-- Interfaz web local (barra lateral y tema oscuro; diagnosticos rapidos, revision total, snapshot ANTES/DESPUES + comparacion, editor de KB, registro de analisis y panel de inicio con graficas de metricas)
+- Interfaz web local (barra lateral azul marino y tarjetas blancas; diagnosticos rapidos, revision total, snapshot ANTES/DESPUES + comparacion, editor de KB, registro de analisis, entrega opcional y panel de inicio con graficas de metricas)
 - Informe .doc con graficos PNG incrustados verificado en Word 16.0 (Windows 10): torta de severidad, dona de discos, barra de memoria y barras por estado se muestran como imagenes
 - Arranque sin UAC: la elevacion a Administrador es a pedido (boton "Dar permisos de administrador" en la interfaz web, o flag `--elevar`); por defecto corre en modo estandar
 - Kit portable con Python embebido (`DiagUSB-kit-<version>.zip`, armado con `scripts\armar_kit.ps1`), verificado con prueba de humo (`scripts\probar_kit.ps1`: integridad SHA-256, firma PSF del interprete, diagnostico real y PDF)
 - Ejecutable portable con PyInstaller (`dist\diagusb\diagusb.exe`) como variante opcional, verificado con diagnose y reportes
 - Registro persistente de analisis (`config/registro_analisis.json`): auto-guardado, consulta, borrado individual y borrado total
 - Entrega opcional del informe (`core/entrega.py`): correo SMTP y copia en carpeta local como ZIP (PDF, HTML y JSON), apagada por defecto y con consentimiento explicito en cada envio; contrasena del correo en memoria o cifrada con DPAPI de Windows, nunca en texto plano
-- Suite de pruebas unitarias (342 pruebas; 341 pasan y 1 manual se omite por defecto)
+- Suite de pruebas unitarias (347 pruebas; 346 pasan y 1 manual se omite por defecto)
 
 ### Pendiente de validacion
 - Windows 11 (validado hasta ahora en Windows 10)

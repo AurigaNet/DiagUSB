@@ -33,6 +33,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 - Paquete de diagnóstico `bateria` (EXPERIMENTAL, no verificado en hardware real): aparece solo en equipos con batería. Lee carga, estado y ciclos, y calcula el desgaste comparando la carga plena con la capacidad de diseño del reporte de batería (`powercfg /batteryreport`; el XML temporal se borra siempre). Regla `bateria_agotada`: aviso bajo el 60 % de la capacidad de diseño y crítico bajo el 40 %. En equipos sin batería el paquete queda oculto.
 - Detección previa de capacidades extendida: además de impresoras, red y CPU, consulta si el equipo tiene batería (por el requisito `battery`).
 
+### Cambiado
+
+- Rediseño visual de la interfaz: barra lateral azul marino con navegación clara, fondo gris suave, tarjetas y paneles blancos con borde y sombra discretos, tipografía y estados de color con contraste sobre blanco. Los formularios, la base de conocimiento, el registro y la configuración usan el mismo lenguaje visual.
+- Panel de resultados unificado: la vista de Diagnósticos, el Historial y el nuevo panel «Último análisis» de Inicio comparten la misma tarjeta de resultado (título, insignia de estado, conteos y puntaje), en lugar de estilos distintos por vista.
+- Gráficos del inicio adaptados a fondo claro: el texto del puntaje y de la dona de severidad pasan a color oscuro y las pistas de los anillos a gris claro, para que se lean sobre las tarjetas blancas.
+- Pruebas unitarias `tests/test_ui_tema.py` sobre la paleta, las tarjetas blancas, los resultados compartidos y los colores de los gráficos.
+
 ### Seguridad
 
 - El colector de temperatura solo consulta `127.0.0.1` (loopback), no envía datos del equipo a ningún servidor externo y funciona sin permisos de Administrador de DiagUSB (LHM debe correr elevado aparte).
@@ -40,7 +47,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 ### Corregido
 
 - Documentación: el registro de la versión 0.1.0 anunciaba un comando `report` que nunca existió en la CLI. Los comandos reales son `diagnose`, `snapshot`, `compare`, `list-packages` y `web`; los informes HTML/DOC/PDF los genera `diagnose`. Se conserva la entrada histórica y se deja esta corrección explícita.
-- Documentación: las cifras de pruebas y de paquetes quedaron unificadas con el código real (20 paquetes y 342 pruebas, de las cuales 341 pasan y 1 es manual y se omite por defecto).
+- Documentación: las cifras de pruebas y de paquetes quedaron unificadas con el código real (20 paquetes y 347 pruebas, de las cuales 346 pasan y 1 es manual y se omite por defecto).
 - Documentación: `docs/LIMITACIONES.md` decía que la conectividad no hacía ping real; el colector ejecuta ICMP y DNS reales desde hace varias versiones. Se corrigió la limitación.
 - Pruebas: `tests/run_tests.py` ahora descubre y ejecuta todos los `tests/test_*.py` con pytest, en lugar de importar una lista fija de seis suites.
 
