@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: GPL-2.0
+# PawnIO - Kernel driver and modules
+# Copyright (C) 2025 namazso (https://github.com/namazso)
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# The full text of the GNU General Public License version 2 is included
+# at https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt and in the
+# repository https://github.com/namazso/PawnIO.
+#
+# Source code: https://github.com/namazso/PawnIO (branch master, tag v2.2.0)
+# Modules: https://github.com/namazso/PawnIO.Modules
+# Official installer: https://github.com/namazso/PawnIO.Setup/releases/tag/v2.2.0
+#
+# This binary (PawnIO_setup.exe, version 2.2.0, SHA-256 verified) is
+# distributed as part of DiagUSB as an independent aggregated work.
+# It is not linked with DiagUSB code; it is only installed with the
+# explicit consent of the technician to access CPU sensors.

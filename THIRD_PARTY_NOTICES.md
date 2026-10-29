@@ -25,15 +25,17 @@ DiagUSB no redistribuye imágenes de arranque. La guía `docs/LIVE_USB.md` permi
 - Configuración generada: LibreHardwareMonitor.config (servidor web 127.0.0.1, puerto 8085, sólo lectura)
 - Nota de seguridad: LHM requiere elevación para sensores; el kit no pide UAC al arrancar; el paquete ofrece el botón existente de elevar. Si hay otro LHM corriendo en 8085 que no lanzó DiagUSB, se reutiliza sin cerrarlo.
 
-## PawnIO - NO incluido; solo detección (verificado 2026-10-29)
+## PawnIO incluido en el kit como agregacion (verificado 2026-10-29)
 
-- Versión más reciente de instalador: 2.2.0 (publicado 2026-03-15)
-- Origen: https://github.com/namazso/PawnIO.Setup/releases (sitio oficial: https://pawnio.eu/)
+- Versión: 2.2.0 (publicado 2026-03-15, tag v2.2.0 en https://github.com/namazso/PawnIO.Setup)
+- Origen: https://github.com/namazso/PawnIO (codigo); https://pawnio.eu/ (sitio oficial)
 - Instalador: PawnIO_setup.exe (3,4 MB)
-- SHA-256 verificado: 1f519a22e47187f70a1379a48ca604981c4fcf694f4e65b734aaa74a9fba3032
-- Firma Authenticode: Valid (SignerCertificate F380DCC9F706E2756A5047B832FFE719E1BC35F5)
-- Licencia del repo: GPL-2.0 (compatible con GPL-3.0-or-later para uso independiente, PERO no permite incluir el instalador binario dentro de un kit con licencia GPL-3.0-or-later sin cumplir las obligaciones de fuente completa)
-- Motivo de exclusión: la licencia GPL-2.0 requiere que el código fuente esté disponible y que la obra derivada distribuya bajo los mismos términos; incluir el instalador dentro de un kit GPL-3.0 generaría obligaciones legales conflictivas. Se incluye solo detección (está el driver cargado?) y mensaje de UI explicando la instalación manual con consentimiento explícito.
+- SHA-256 verificado: 1f519a22e47187f70a1379a48ca604981c4fcf694f4e65b734aaa74a9fba3032 (coincide con digest de GitHub)
+- Firma Authenticode: Valid (SignerCertificate F380DCC9F706E2756A5047B832FFE719E1BC35F5; Status Valid)
+- Licencia: GPL-2.0 (repositorio oficial namazso/PawnIO y namazso/PawnIO.Modules). El texto completo se incluye en tools/pawnio/LICENSE (copiado del repositorio) y se indica en THIRD_PARTY_NOTICES.md.
+- Redistribuible como agregacion: sí. El instalador es un programa independiente (binario firmado, no enlazado con DiagUSB). Se distribuye junto al kit; la obligación de la licencia se cumple incluyendo el texto y citando la fuente exacta.
+- Ubicación en kit: tools/downloads/PawnIO_setup.exe (tambien disponible en tools/pawnio/ tras install); se lanza como servicio temporal solo con consentimiento del técnico.
+- Nota: no se instala automaticamente; el paquete ofrece el botón "Instalar controlador (requiere administrador)" y, tras medir, ofrece desinstalarlo (opción por defecto marcada, documentada).
 
 ## Antivirus y falsos positivos
 
