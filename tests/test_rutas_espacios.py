@@ -7,9 +7,10 @@ from diagusb.core import publicacion
 
 def test_kit_funciona_desde_ruta_con_espacios():
     with tempfile.TemporaryDirectory() as tmp:
-        # Copiar un archivo del proyecto a una ruta con espacios
-        ruta_espacio = tmp + " /directorio con espacios/"
+        # Copiar un archivo del proyecto a una ruta con espacios. El nombre de
+        # la carpeta no puede terminar en espacio: Windows lo rechaza.
         import os
+        ruta_espacio = os.path.join(tmp, "directorio con espacios") + os.sep
         os.makedirs(ruta_espacio, exist_ok=True)
         # Copiar el script armar_kit.ps1 como referencia
         shutil.copy2("scripts/armar_kit.ps1", ruta_espacio + "armar_kit.ps1")

@@ -143,24 +143,50 @@ $result = New-DiagUsbCollectorResult -CollectorId 'capacidades' -TimeoutSeconds 
         Where-Object { $_.ProcessName -like '*LibreHardwareMonitor*' })
     $cpuQueryOk = $false
     $cpuTemperature = $null
+    $cpuVia = $null
     $cpuError = $null
+    $cpuErrorDll = $null
+
+    # Fuente principal: la DLL del kit, que no necesita el servidor web de LHM.
     try {
-        $cpuTemperature = Get-DiagUsbLhmCpuTemperature -TimeoutSec 2
-        $cpuQueryOk = $true
-        if ($null -eq $cpuTemperature) {
-            $cpuError = 'LibreHardwareMonitor responde, pero no expone temperatura del CPU. Verifique PawnIO y ejecute LHM como administrador.'
+        $cpuTemperature = Get-DiagUsbLhmCpuTemperatureFromLib
+        if ($null -ne $cpuTemperature) {
+            $cpuQueryOk = $true
+            $cpuVia = 'LibreHardwareMonitorLib.dll'
         }
     }
     catch {
-        $cpuError = $_.Exception.Message
+        $cpuErrorDll = $_.Exception.Message
     }
+
+    # Respaldo: un LibreHardwareMonitor ya abierto con servidor web en 8085.
+    if ($null -eq $cpuTemperature) {
+        try {
+            $cpuTemperature = Get-DiagUsbLhmCpuTemperature -TimeoutSec 2
+            if ($null -ne $cpuTemperature) {
+                $cpuQueryOk = $true
+                $cpuVia = 'http://127.0.0.1:8085'
+            }
+            else {
+                $cpuError = 'LibreHardwareMonitor responde, pero no expone temperatura del CPU.'
+            }
+        }
+        catch {
+            $cpuError = $_.Exception.Message
+        }
+    }
+
     if (-not $cpuQueryOk) {
+        $motivos = @()
+        if ($cpuErrorDll) { $motivos += "DLL: $cpuErrorDll" }
+        if ($cpuError) { $motivos += "HTTP 8085: $cpuError" }
         if ($lhmProcess.Count -gt 0) {
-            $cpuError = 'LibreHardwareMonitor esta abierto, pero el servidor web no responde. Active Options > Remote Web Server > Run.'
+            $motivos += 'LibreHardwareMonitor esta abierto, pero el servidor web no responde. Active Options > Remote Web Server > Run.'
         }
-        else {
-            $cpuError = 'LibreHardwareMonitor no esta activo. Abralo y active Options > Remote Web Server > Run (puerto 8085).'
+        if ($motivos.Count -eq 0) {
+            $motivos += 'No se pudo leer la temperatura del CPU. Ejecute DiagUSB como administrador y verifique PawnIO.'
         }
+        $cpuError = ($motivos -join ' | ')
     }
 
     [ordered]@{
@@ -201,6 +227,7 @@ $result = New-DiagUsbCollectorResult -CollectorId 'capacidades' -TimeoutSeconds 
         cpu_temperature = [ordered]@{
             query_ok = $cpuQueryOk
             available = [bool]($cpuQueryOk -and $null -ne $cpuTemperature)
+            via = $cpuVia
             url = $lhmUrl
             error = $cpuError
             process_running = [bool]($lhmProcess.Count -gt 0)

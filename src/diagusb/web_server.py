@@ -919,7 +919,8 @@ def _borrar_datos_locales() -> dict:
     return conteos
 
 
-def _registrar_full_scan(diagnostics: list[dict]) -> dict | None:
+def _registrar_full_scan(diagnostics: list[dict],
+                         identidad: dict | None = None) -> dict | None:
     """Guarda una revision total (todos los paquetes) como una sola entrada."""
     validos = [d for d in diagnostics
                if isinstance(d, dict) and not d.get("error")]
@@ -945,6 +946,7 @@ def _registrar_full_scan(diagnostics: list[dict]) -> dict | None:
             calcular_metricas({"package": "full-scan", "findings": findings,
                                "results": diag_results}).get("severidad") or {}),
         "results": diag_results,
+        "identidad": identidad or {},
         "timestamp": datetime.now().isoformat(),
     }
     return registrar_analisis(diag, "full-scan")
@@ -1277,19 +1279,20 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             finally:
                 _progreso_fin()
 
+            identidad = identidad_sesion.para_diag(run_powershell)
             result = {
                 "diagnostics": diagnostics,
                 "skipped": omitidos,
                 "capacidades": caps,
                 "paquetes_analizados": len(packages),
                 "paquetes_omitidos": len(omitidos),
-                "identidad": identidad_sesion.para_diag(run_powershell),
+                "identidad": identidad,
                 "timestamp": datetime.now().isoformat(),
             }
             result["metricas"] = _metricas_de_full_scan(diagnostics)
             result["recommendations"] = recomendaciones_de(
                 result["metricas"].get("severidad") or {})
-            entrada = _registrar_full_scan(diagnostics)
+            entrada = _registrar_full_scan(diagnostics, identidad)
             if entrada:
                 result["registro_id"] = entrada["id"]
             self._json_response(result)

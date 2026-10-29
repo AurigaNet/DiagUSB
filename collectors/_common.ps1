@@ -352,6 +352,180 @@ function Get-DiagUsbLhmCpuTemperature {
     }
 }
 
+function Find-DiagUsbLhmLib {
+    $directorio = $PSScriptRoot
+    while ($directorio) {
+        $candidato = Join-Path $directorio 'tools\lhm\LibreHardwareMonitorLib.dll'
+        if (Test-Path -LiteralPath $candidato) {
+            return $candidato
+        }
+        $padre = Split-Path -Path $directorio -Parent
+        if ($padre -eq $directorio) { break }
+        $directorio = $padre
+    }
+    return $null
+}
+
+function Get-DiagUsbLhmHardwareFromLib {
+    param([int]$TimeoutSec = 8)
+
+    $dll = Find-DiagUsbLhmLib
+    if (-not $dll) {
+        throw 'DIAGUSB_NOT_AVAILABLE: no se encontro tools\lhm\LibreHardwareMonitorLib.dll'
+    }
+
+    try {
+        [System.Reflection.Assembly]::LoadFrom($dll) | Out-Null
+    }
+    catch {
+        throw "DIAGUSB_NOT_AVAILABLE: no se pudo cargar LibreHardwareMonitorLib.dll: $($_.Exception.Message)"
+    }
+
+    $computer = New-Object LibreHardwareMonitor.Hardware.Computer
+    $computer.IsCpuEnabled = $true
+    $computer.IsGpuEnabled = $true
+    $computer.IsMemoryEnabled = $true
+    $computer.IsMotherboardEnabled = $true
+    $computer.IsControllerEnabled = $true
+    $computer.IsStorageEnabled = $true
+    $computer.IsNetworkEnabled = $true
+
+    try {
+        $computer.Open()
+    }
+    catch {
+        throw "DIAGUSB_NOT_AVAILABLE: LibreHardwareMonitor no pudo abrir el hardware: $($_.Exception.Message)"
+    }
+
+    $sensores = @()
+    try {
+        $nodos = @()
+        foreach ($hardware in $computer.Hardware) {
+            try { $hardware.Update() } catch { }
+            $nodos += $hardware
+            foreach ($sub in @($hardware.SubHardware)) {
+                try { $sub.Update() } catch { }
+                $nodos += $sub
+            }
+        }
+
+        foreach ($hardware in $nodos) {
+            $tipo = [string]$hardware.HardwareType
+            foreach ($sensor in @($hardware.Sensors)) {
+                $tipoSensor = [string]$sensor.SensorType
+                if ($tipoSensor -ne 'Temperature' -and $tipoSensor -ne 'Fan') { continue }
+                $valor = $sensor.Value
+                if ($null -eq $valor) { continue }
+                $sensores += [pscustomobject]@{
+                    hardware = [string]$hardware.Name
+                    hardware_type = $tipo
+                    name = [string]$sensor.Name
+                    sensor_type = $tipoSensor
+                    value = [double]$valor
+                }
+            }
+        }
+    }
+    finally {
+        try { $computer.Close() } catch { }
+    }
+
+    if ($sensores.Count -eq 0) {
+        throw 'DIAGUSB_NOT_AVAILABLE: LibreHardwareMonitor no expuso sensores. Ejecute DiagUSB como administrador y verifique PawnIO.'
+    }
+
+    return $sensores
+}
+
+function Get-DiagUsbLhmCpuTemperatureFromLib {
+    $sensores = @(Get-DiagUsbLhmHardwareFromLib)
+    $cpu = @($sensores | Where-Object {
+        $_.sensor_type -eq 'Temperature' -and
+        $_.hardware_type -eq 'Cpu' -and
+        $_.name -notmatch '(?i)distance|tjmax|throttl|limit'
+    })
+    if ($cpu.Count -eq 0) { return $null }
+
+    $items = @()
+    foreach ($sensor in $cpu) {
+        $kind = 'other'
+        if ($sensor.name -match '(?i)package|tctl|tdie') { $kind = 'package' }
+        elseif ($sensor.name -match '(?i)\bcore\b') { $kind = 'core' }
+        $items += [ordered]@{
+            name = $sensor.name
+            temperature_c = [math]::Round($sensor.value, 1)
+            kind = $kind
+        }
+    }
+
+    $nombres = @($cpu | ForEach-Object { $_.hardware } | Select-Object -Unique)
+    $package = @($items | Where-Object { $_.kind -eq 'package' } |
+        ForEach-Object { [double]$_.temperature_c })
+    $cores = @($items | Where-Object { $_.kind -eq 'core' } |
+        ForEach-Object { [double]$_.temperature_c })
+    $todos = @($items | ForEach-Object { [double]$_.temperature_c })
+
+    $packageTemp = $null
+    if ($package.Count -gt 0) { $packageTemp = ($package | Measure-Object -Maximum).Maximum }
+    $maxCore = $null
+    $avgCore = $null
+    if ($cores.Count -gt 0) {
+        $maxCore = ($cores | Measure-Object -Maximum).Maximum
+        $avgCore = [math]::Round(($cores | Measure-Object -Average).Average, 1)
+    }
+
+    return [pscustomobject][ordered]@{
+        source = 'librehardwaremonitor'
+        via = 'LibreHardwareMonitorLib.dll'
+        cpu_name = ($nombres -join ' + ')
+        package_temp_c = $packageTemp
+        max_core_temp_c = $maxCore
+        average_core_temp_c = $avgCore
+        max_temp_c = ($todos | Measure-Object -Maximum).Maximum
+        sensor_count = $items.Count
+        sensors = $items
+    }
+}
+
+function ConvertFrom-DiagUsbFanSensors {
+    param([object[]]$Sensores = @())
+
+    $fans = @()
+    foreach ($sensor in @($Sensores)) {
+        if ($null -eq $sensor) { continue }
+        if ([string]$sensor.sensor_type -ne 'Fan') { continue }
+        try { $rpm = [double]$sensor.value }
+        catch { continue }
+        # Descartar lecturas fisicamente imposibles (p. ej. GPU Fan 749306).
+        if ($rpm -lt 0 -or $rpm -gt 20000) { continue }
+        $fans += [ordered]@{
+            hardware = [string]$sensor.hardware
+            name = [string]$sensor.name
+            rpm = [int][math]::Round($rpm, 0)
+        }
+    }
+
+    $rpms = @($fans | ForEach-Object { [int]$_.rpm })
+    $maxRpm = 0
+    if ($rpms.Count -gt 0) {
+        $maxRpm = [int](($rpms | Measure-Object -Maximum).Maximum)
+    }
+
+    return [pscustomobject][ordered]@{
+        source = 'librehardwaremonitor'
+        via = 'LibreHardwareMonitorLib.dll'
+        fan_rpms = @($rpms)
+        max_fan_rpm = $maxRpm
+        sensor_count = $fans.Count
+        sensors = $fans
+    }
+}
+
+function Get-DiagUsbLhmFanSpeedsFromLib {
+    $sensores = @(Get-DiagUsbLhmHardwareFromLib)
+    return ConvertFrom-DiagUsbFanSensors -Sensores $sensores
+}
+
 function Get-DiagUsbServiceRecord {
     param(
         [Parameter(Mandatory = $true)]

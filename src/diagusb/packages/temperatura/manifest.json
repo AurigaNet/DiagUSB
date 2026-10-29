@@ -4,6 +4,6 @@
     "label": "Temperatura del CPU",
     "description": "Lectura real de temperatura de CPU con LibreHardwareMonitor (solo lectura). No simula datos.",
     "symptoms": ["cpu_caliente", "temperatura_alta"],
-    "requirements": ["lhm", "pawnio_opcional"],
+    "requirements": ["cpu_temperature"],
     "collectors": ["get_cpu_temperature"]
 }

@@ -4,8 +4,8 @@
 
 Lee get_hardware.ps1 (paquete inventario_general) una sola vez, verifica su
 integridad y devuelve un resumen SIN seriales ni MAC crudos: nombre, id, id
-corto, nivel, calidad y aviso. Si la lectura falla lo dice (nivel "ninguno"):
-nunca devuelve un id vacio en silencio.
+corto, nivel, calidad y aviso. Si la lectura falla lo dice (nivel "ninguno",
+sin ID): no inventa una identidad a partir del nombre del equipo.
 """
 
 from __future__ import annotations
@@ -13,7 +13,6 @@ from __future__ import annotations
 import os
 import threading
 import time
-import hashlib
 from pathlib import Path
 
 from . import identidad, integridad
@@ -32,11 +31,14 @@ def _nombre_local() -> str:
 
 def _fallo(motivo: str) -> dict:
     return {
-        "id": hashlib.sha256((os.environ.get("COMPUTERNAME", "") + "#diagusb#fallo").encode()).hexdigest()[:16],
-        "id_corto": hashlib.sha256((os.environ.get("COMPUTERNAME", "") + "#diagusb#fallo").encode()).hexdigest()[:8], "nivel": "ninguno", "calidad": "nula",
+        "id": "",
+        "id_corto": "",
+        "nivel": "ninguno",
+        "calidad": "nula",
         "aviso": ("No se pudo leer el hardware del equipo (" + motivo
                   + "): este an\u00e1lisis queda sin ID."),
-        "computer_name": _nombre_local(), "error": True,
+        "computer_name": _nombre_local(),
+        "error": True,
     }
 
 
@@ -61,11 +63,6 @@ def _calcular(runner) -> dict:
             comun = integridad.localizar_common(_SCRIPT)
             if comun is not None:
                 ok, _motivo = integridad.verificar(comun)
-        # Si no hay archivo common pero el script existe y funciona (evidencia real),
-        # ejecutar directamente para obtener ID real del hardware.
-        if not ok and Path(_SCRIPT).exists():
-            ok = True
-            _motivo = "common ausente; se ejecuta directamente (evidencia: colector funciona)"
         if not ok:
             return _fallo("integridad del colector")
         raw = runner(str(_SCRIPT), timeout=60)

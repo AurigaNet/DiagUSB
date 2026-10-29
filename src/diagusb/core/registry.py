@@ -120,15 +120,39 @@ def discover_packages() -> list[PackageManifest]:
             if collectors_data == {}:
                 collectors_dir = item / "collectors"
                 collectors = _auto_discover_collectors(collectors_dir)
-            else:
-                # Usar datos explícitos del manifest
+            elif isinstance(collectors_data, list):
+                # Aceptar tanto objetos {"id","label","script"} como nombres de
+                # archivo ("get_cpu_temperature" o "get_cpu_temperature.ps1").
+                descubiertos = _auto_discover_collectors(item / "collectors")
+                por_script = {c.script: c for c in descubiertos}
                 collectors = []
                 for col_data in collectors_data:
-                    collectors.append(CollectorManifest(
-                        id=col_data.get("id", ""),
-                        label=col_data.get("label", ""),
-                        script=col_data.get("script", "")
-                    ))
+                    if isinstance(col_data, str):
+                        nombre = col_data.strip()
+                        if not nombre:
+                            continue
+                        script = (nombre if nombre.lower().endswith(".ps1")
+                                  else nombre + ".ps1")
+                        base = por_script.get(script)
+                        if base is not None:
+                            collectors.append(base)
+                            continue
+                        id_limpio = script[:-4]
+                        if id_limpio.startswith("get_"):
+                            id_limpio = id_limpio[4:]
+                        collectors.append(CollectorManifest(
+                            id=id_limpio,
+                            label=_generate_label(id_limpio),
+                            script=script
+                        ))
+                    elif isinstance(col_data, dict):
+                        collectors.append(CollectorManifest(
+                            id=col_data.get("id", ""),
+                            label=col_data.get("label", ""),
+                            script=col_data.get("script", "")
+                        ))
+            else:
+                collectors = []
 
             requisitos = data.get("requirements", [])
             if isinstance(requisitos, str):

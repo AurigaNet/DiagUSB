@@ -44,7 +44,7 @@ if errorlevel 1 (
 )
 
 echo Ejecutando PyInstaller...
-python -m PyInstaller build\diagusb.spec --noconfirm
+python -m PyInstaller build\ejecutar_diagusb.spec --noconfirm --clean --distpath .
 if errorlevel 1 (
     echo ERROR: la construccion fallo.
     exit /b 1
@@ -53,7 +53,6 @@ if errorlevel 1 (
 echo.
 echo ============================================================
 echo  Construccion exitosa
-echo  CLI:     dist\diagusb\diagusb.exe
-echo  Servidor: dist\diagusb\diagusb.exe web   (o python -m diagusb.web_server)
+echo  Ejecutable: Ejecutar DiagUSB.exe (raiz del proyecto)
 echo ============================================================
 exit /b 0

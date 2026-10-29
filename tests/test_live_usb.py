@@ -53,9 +53,11 @@ def test_manifiesto_real_tiene_datos_oficiales_completos():
     datos = live_usb.cargar_manifiesto(MANIFIESTO)
     por_nombre = {t["name"]: t for t in datos["tools"]}
     assert set(por_nombre) == {
-        "SystemRescue", "memtest86+", "Ventoy", "WinPE", "Sysinternals", "Npcap"
+        "SystemRescue", "memtest86+", "Ventoy", "WinPE", "Sysinternals",
+        "Npcap", "LibreHardwareMonitor", "PawnIO"
     }
-    for nombre in ("SystemRescue", "memtest86+"):
+    for nombre in ("SystemRescue", "memtest86+", "LibreHardwareMonitor",
+                   "PawnIO"):
         t = por_nombre[nombre]
         assert t["estado"] == "verificado"
         assert t["url"].startswith("https://")
@@ -75,8 +77,8 @@ def test_manifiesto_real_tiene_datos_oficiales_completos():
 def test_estado_resume_verificadas_y_excluidas():
     estado = live_usb.estado_live_usb(MANIFIESTO)
     assert estado["todo_verificado"] is True
-    assert estado["verificadas"] == 2
-    assert estado["listas"] == 2
+    assert estado["verificadas"] == 4
+    assert estado["listas"] == 4
     assert estado["excluidas"] == 4
     assert estado["pendientes"] == 0
     assert any(h["nombre"] == "Ventoy" and h["motivo"] for h in estado["herramientas"])
@@ -181,9 +183,10 @@ def test_api_live_usb(monkeypatch):
             assert respuesta.status == 200
             datos = json.loads(respuesta.read().decode("utf-8"))
         assert datos["todo_verificado"] is True
-        assert datos["verificadas"] == 2
+        assert datos["verificadas"] == 4
         assert {h["nombre"] for h in datos["herramientas"]} >= {
-            "SystemRescue", "memtest86+", "Ventoy"
+            "SystemRescue", "memtest86+", "Ventoy",
+            "LibreHardwareMonitor", "PawnIO"
         }
     finally:
         httpd.shutdown()

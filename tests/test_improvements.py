@@ -877,13 +877,18 @@ def test_registro_poda_y_full_scan():
             dict(_diag_fake(2), package="wifi", package_label="WiFi"),
             {"error": "Paquete 'x' no encontrado"},
         ]
-        entrada = ws._registrar_full_scan(diags)
+        ident = {"id": "dgu-0123456789abcdef", "id_corto": "DGU-0123-4567",
+                 "nivel": "fuerte", "calidad": "alta",
+                 "computer_name": "PC-PRUEBA"}
+        entrada = ws._registrar_full_scan(diags, ident)
         assert entrada["tipo"] == "full-scan"
         assert entrada["paquete"] == "full-scan"
         assert len(entrada["findings"]) == 2
         assert entrada["findings"][0]["package_label"] == "Disco"
         assert entrada["conteos"]["collectors"] == 4
         assert entrada["conteos"]["ok"] == 2
+        assert entrada["identidad"]["id"] == ident["id"]
+        assert entrada["identidad"]["id_corto"] == ident["id_corto"]
         assert ws._registrar_full_scan([{"error": "x"}]) is None
     finally:
         ws.REGISTRO_PATH = old
@@ -2083,7 +2088,7 @@ def test_colector_temperatura_cpu_lhm():
     texto_ps = (Path(__file__).parent.parent / "src" / "diagusb" / "packages"
                 / "temperatura" / "collectors" / "get_cpu_temperature.ps1").read_text(
                     encoding="utf-8")
-    for clave in ("source = 'librehardwaremonitor'", "url = $data.url",
+    for clave in ("source = 'librehardwaremonitor'", "via = $data.via",
                   "available = $true", "sampled_at_utc",
                   "cpu_name = $data.cpu_name", "package_temp_c",
                   "max_core_temp_c", "average_core_temp_c", "max_temp_c",
