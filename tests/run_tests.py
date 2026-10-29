@@ -1,98 +1,78 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Daniel Ricardo Novoa
-"""Script de ejecucion de pruebas para DiagUSB."""
+"""Ejecuta TODAS las pruebas de DiagUSB con pytest.
+
+Uso:
+    python tests/run_tests.py
+    python tests/run_tests.py -k reglas
+    python tests/run_tests.py --manual
+
+El script descubre todos los archivos ``test_*.py`` de ``tests/`` y delega en
+pytest, de modo que no exista una lista fija de suites que pueda quedar
+desactualizada. Devuelve el mismo codigo de salida que pytest.
+"""
+
+from __future__ import annotations
 
 import sys
 from pathlib import Path
 
-# Agregar src y tests al path
-tests_dir = Path(__file__).parent
-src_path = tests_dir.parent / "src"
-sys.path.insert(0, str(src_path))
-sys.path.insert(0, str(tests_dir))
-
-from test_models import run_tests as run_models
-from test_rules import run_tests as run_rules
-from test_registry import run_tests as run_registry
-from test_knowledge import run_tests as run_knowledge
-from test_improvements import run_tests as run_improvements
-from test_metricas import run_tests as run_metricas
+SPDX = "SPDX-License-Identifier: GPL-3.0-or-later"
 
 
-def main():
-    """Ejecuta todas las suites de pruebas."""
-    print("\n" + "=" * 60)
+def _preparar_entorno() -> Path:
+    """Agrega ``src`` al path para que ``import diagusb`` funcione sin instalar."""
+    tests_dir = Path(__file__).resolve().parent
+    raiz = tests_dir.parent
+    src = raiz / "src"
+    for ruta in (str(src), str(raiz)):
+        if ruta not in sys.path:
+            sys.path.insert(0, ruta)
+    return raiz
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Punto de entrada: ejecuta pytest sobre todos los test_*.py."""
+    raiz = _preparar_entorno()
+    argumentos = list(sys.argv[1:] if argv is None else argv)
+
+    try:
+        import pytest
+    except ImportError:
+        print("ERROR: falta pytest. Instale las dependencias de desarrollo con:")
+        print("  python -m pip install -r requirements-dev.txt")
+        return 2
+
+    if "--manual" in argumentos:
+        argumentos.remove("--manual")
+        import os
+
+        os.environ["DIAGUSB_PRUEBAS_MANUALES"] = "1"
+
+    destinos = sorted(str(p) for p in (raiz / "tests").glob("test_*.py"))
+    if not destinos:
+        print("ERROR: no se encontraron archivos tests/test_*.py")
+        return 2
+
+    print("=" * 60)
     print("SUITE DE PRUEBAS - DiagUSB")
-    print("=" * 60 + "\n")
-
-    results = []
-
-    print("\n" + "-" * 40)
-    print("MODULOS")
-    print("-" * 40 + "\n")
-
-    try:
-        result1 = run_models()
-        results.append(("Modelos", result1))
-    except Exception as e:
-        print(f"  [ERROR] Fallo en suite de modelos: {e}")
-        results.append(("Modelos", False))
-
-    try:
-        result2 = run_rules()
-        results.append(("Reglas", result2))
-    except Exception as e:
-        print(f"  [ERROR] Fallo en suite de reglas: {e}")
-        results.append(("Reglas", False))
-
-    try:
-        result3 = run_registry()
-        results.append(("Registro", result3))
-    except Exception as e:
-        print(f"  [ERROR] Fallo en suite de registro: {e}")
-        results.append(("Registro", False))
-
-    try:
-        result4 = run_knowledge()
-        results.append(("Base de conocimiento", result4))
-    except Exception as e:
-        print(f"  [ERROR] Fallo en suite de base de conocimiento: {e}")
-        results.append(("Base de conocimiento", False))
-
-    try:
-        result5 = run_improvements()
-        results.append(("Mejoras", result5))
-    except Exception as e:
-        print(f"  [ERROR] Fallo en suite de mejoras: {e}")
-        results.append(("Mejoras", False))
-
-    try:
-        result6 = run_metricas()
-        results.append(("Métricas", result6))
-    except Exception as e:
-        print(f"  [ERROR] Fallo en suite de métricas: {e}")
-        results.append(("Métricas", False))
-
-    print("\n" + "=" * 60)
-    print("RESUMEN FINAL")
+    print(f"Archivos: {len(destinos)}")
     print("=" * 60)
 
-    all_passed = True
-    for name, passed in results:
-        status = "PASO" if passed else "FALLO"
-        print(f"  {name}: {status}")
-        if not passed:
-            all_passed = False
-
-    print("=" * 60)
-
-    if all_passed:
-        print("\nTodas las pruebas fueron exitosas.")
-        return 0
-    else:
-        print("\nAlgunas pruebas fallaron. Revise los detalles arriba.")
-        return 1
+    return int(
+        pytest.main(
+            [
+                "-q",
+                "--rootdir",
+                str(raiz),
+                "-c",
+                str(raiz / "pytest.ini"),
+                *destinos,
+                *argumentos,
+            ]
+        )
+    )
 
 
 if __name__ == "__main__":

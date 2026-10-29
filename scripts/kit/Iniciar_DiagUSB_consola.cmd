@@ -1,3 +1,4 @@
+@REM SPDX-License-Identifier: GPL-3.0-or-later
 @echo off
 chcp 65001 >nul
 setlocal EnableExtensions

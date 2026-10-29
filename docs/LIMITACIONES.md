@@ -16,7 +16,7 @@ Documento de limitaciones y estado actual del proyecto.
 - Kit portable con Python embebido (`DiagUSB-kit-<version>.zip`, armado con `scripts\armar_kit.ps1`), verificado con prueba de humo (`scripts\probar_kit.ps1`: integridad SHA-256, firma PSF del interprete, diagnostico real y PDF)
 - Ejecutable portable con PyInstaller (`dist\diagusb\diagusb.exe`) como variante opcional, verificado con diagnose y reportes
 - Registro persistente de analisis (`config/registro_analisis.json`): auto-guardado, consulta, borrado individual y borrado total
-- Suite de pruebas unitarias (206 pruebas)
+- Suite de pruebas unitarias (278 pruebas; 277 pasan y 1 manual se omite por defecto)
 
 ### Pendiente de validacion
 - Windows 11 (validado hasta ahora en Windows 10)
@@ -47,7 +47,7 @@ Documento de limitaciones y estado actual del proyecto.
 - El informe `.doc` usa MHTML con imagenes PNG y VML. Se verifico en Word 16.0. **LibreOffice 26.2.6 NO importa este MHTML**: al abrir el `.doc` (o el mismo archivo renombrado a `.mht`) muestra el texto del MIME/base64 en lugar del documento. Para equipos sin Word, use el PDF, que es autocontenido y se abre en cualquier visor.
 - El PDF usa fuentes estandar con codificacion WinAnsi (Latin-1). Los caracteres fuera de ese rango se reemplazan por `?`; los informes estan redactados en español para evitar el problema.
 - Los colectores de seguridad (eventos) y algunos inventarios requieren permisos de Administrador para datos completos (en modo estandar se ven parciales o como 'No evaluado (requiere administrador)')
-- La verificacion de conectividad de red esta limitada (no hace ping real en el colector)
+- La verificacion de conectividad ejecuta ping ICMP real y consulta DNS; el resultado depende del firewall y del segmento de red del equipo
 - `Get-WindowsFeature` (roles de servidor) no existe en Windows 10: `windows_features` queda vacio en estaciones
 - Los "program groups" (Win32_ProgramGroup) no existen en Windows 10: se omitieron del inventario
 

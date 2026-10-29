@@ -24,3 +24,11 @@
 - Todos devuelven JSON con `schema_version`, `collector_id`, `query.status`, `context`, `data` y `errors`.
 - Para eventos se captura XML estructurado (`EventData`) y metadatos numéricos; no se parsea el mensaje localizado del evento.
 - La clasificación inicial de estado se resuelve en el propio colector: `ok` si hay datos, `empty` si la consulta devuelve cero elementos y `not_available`/`denied`/`timeout`/`error` si la ejecución lo reporta de forma explícita.
+
+## 2026-10-28 - Manifiesto de hashes como artefacto de build
+
+- `manifiesto_hashes.json` no se versiona: es un artefacto generado por `scripts/generar_manifiesto.py` a partir de los `.ps1` reales.
+- El build del kit (`scripts/armar_kit.ps1`) lo genera siempre despues de copiar los colectores y lo deja en la raiz del kit, que es donde `core/integridad.py` lo busca.
+- En desarrollo, si el manifiesto no existe, el motor avisa una vez y ejecuta los colectores (modo desarrollo). En el kit armado el manifiesto es obligatorio: el build falla si no se genero.
+- Si un colector listado en el manifiesto fue alterado, `integridad.verificar()` devuelve `False` con el mensaje `Integridad: el colector fue modificado` y el motor no lo ejecuta (falla cerrado). Queda cubierto por `tests/test_improvements.py`.
+- Motivo: versionar el manifiesto obliga a regenerarlo en cada cambio de colector y produce hashes obsoletos; generarlo en build garantiza que el kit verifique exactamente los archivos que distribuye.

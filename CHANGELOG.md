@@ -18,6 +18,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 - El colector de temperatura solo consulta `127.0.0.1` (loopback), no envía datos del equipo a ningún servidor externo y funciona sin permisos de Administrador de DiagUSB (LHM debe correr elevado aparte).
 
+### Corregido
+
+- Documentación: el registro de la versión 0.1.0 anunciaba un comando `report` que nunca existió en la CLI. Los comandos reales son `diagnose`, `snapshot`, `compare`, `list-packages` y `web`; los informes HTML/DOC/PDF los genera `diagnose`. Se conserva la entrada histórica y se deja esta corrección explícita.
+- Documentación: las cifras de pruebas y de paquetes quedaron unificadas con el código real (15 paquetes y 278 pruebas, de las cuales 277 pasan y 1 es manual y se omite por defecto).
+- Documentación: `docs/LIMITACIONES.md` decía que la conectividad no hacía ping real; el colector ejecuta ICMP y DNS reales desde hace varias versiones. Se corrigió la limitación.
+- Pruebas: `tests/run_tests.py` ahora descubre y ejecuta todos los `tests/test_*.py` con pytest, en lugar de importar una lista fija de seis suites.
+
 ## [0.1.0] - 2026-10-20
 
 Primera versión portable para Windows 10.
@@ -28,7 +35,7 @@ Primera versión portable para Windows 10.
 - Interfaz web local con diagnóstico rápido, revisión total, puntaje orientativo, acciones del técnico y comparación de snapshots ANTES/DESPUÉS.
 - Informes Word (`.doc`) y PDF en español, con métricas, hallazgos, soluciones de la base de conocimiento y diferencias entre snapshots.
 - Base de conocimiento local editable y registro persistente de análisis con búsqueda, borrado individual y borrado total.
-- CLI interactiva, comandos `diagnose`, `report`, `web`, `list-packages` y `--version`.
+- CLI interactiva, comandos `diagnose`, `report`, `web`, `list-packages` y `--version`. *(Corregido: el comando `report` nunca existió; ver la sección «Sin publicar».)*
 - Kit portable con Python embebido y verificación SHA-256, más ejecutable opcional con PyInstaller.
 - Elevación a Administrador a pedido, sin UAC al arrancar.
 - Borrado de datos locales desde la interfaz, con confirmación y conteos.

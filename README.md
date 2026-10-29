@@ -71,7 +71,7 @@ python -m diagusb list-packages
 ## Pruebas y build
 
 ```
-python tests\run_tests.py                        # suite completa (206 pruebas, sin dependencias externas)
+python tests\run_tests.py                        # suite completa (278 pruebas; 1 manual omitida por defecto)
 scripts\armar_kit.cmd -Salida dist\kit           # arma el kit (Python embebido + fuente) y lo comprime
 scripts\probar_kit.ps1 -Kit dist\kit\DiagUSB     # prueba de humo del kit
 scripts\build_exe.cmd                            # reconstruye dist\diagusb\diagusb.exe (variante opcional)

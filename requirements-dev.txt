@@ -1,0 +1,3 @@
+# Dependencias de desarrollo de DiagUSB (no se distribuyen en el kit).
+# El producto usa solo la biblioteca estandar de Python y cmdlets de Windows.
+pytest>=8,<10

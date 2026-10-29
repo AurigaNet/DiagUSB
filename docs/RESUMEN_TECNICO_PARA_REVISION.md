@@ -67,7 +67,7 @@ Capas:
 
 ## 4. Flujo completo de un diagnóstico (desde la UI)
 
-1. El técnico hace clic en un botón (p. ej. "Disco") → JS llama `GET /api/diagnose?package=disco` (o `/api/full-scan` para los 12 paquetes en paralelo, 4 hilos).
+1. El técnico hace clic en un botón (p. ej. "Disco") → JS llama `GET /api/diagnose?package=disco` (o `/api/full-scan` para los 15 paquetes en paralelo, 4 hilos).
 2. `run_diagnostic()` descubre el paquete (`manifest.json`), ejecuta cada `*.ps1` ordenado alfabéticamente vía `subprocess.run` (PowerShell `-NoProfile -ExecutionPolicy Bypass`, timeout 30 s, stdout UTF-8).
 3. Cada colector devuelve un objeto JSON con: `collector_id`, `query` (status: `ok` / `empty` / `error` / `timeout` / `denied` / `not_available` + duración), `context` (nombre de equipo, si corre elevado, SO, etc.), `data` (payload variable: dict o lista), `errors`, `notes`.
 4. El motor cuenta OK/errores/vacíos, convierte los resultados en observaciones y ejecuta **todas las reglas del paquete** (`diagnose_symptoms`), no solo la del síntoma elegido: así un diagnóstico de "disco_lleno" también detecta si hay drivers viejos solo si la regla aplica a ese paquete.
@@ -81,7 +81,7 @@ Capas:
 
 ### 5.1 Paquetes y manifiestos (`src/diagusb/packages/`)
 
-12 paquetes, cada uno una carpeta con `manifest.json` (nombre, label, descripción, lista de `symptoms`, version) y `collectors/*.ps1`:
+15 paquetes, cada uno una carpeta con `manifest.json` (nombre, label, descripción, lista de `symptoms`, version) y `collectors/*.ps1`:
 
 | Paquete | Áreas | # colectores (ejemplos) |
 |---|---|---|
@@ -163,7 +163,7 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 - **Endurecimiento (Ronda 2)**: la clase del handler hereda de `http.server.BaseHTTPRequestHandler` (se eliminó la herencia de `SimpleHTTPRequestHandler`, junto con su listado de directorios y su soporte de `HEAD`); las rutas GET desconocidas devuelven 404; se validan las cabeceras `Host` y `Origin` (ajenas → 403); `POST` exige `Content-Type: application/json` (→ 415) y un `Content-Length` válido con cuerpo ≤ 10 MB (→ 400/413); no se envían cabeceras CORS.
 - **Token de sesión**: al arrancar se genera `secrets.token_urlsafe(32)`. La UI se abre en `/?t=<token>`, que responde 302 y fija la cookie `diagusb_token` con `HttpOnly; SameSite=Strict; Path=/`. Todo `/api/*` exige el token (401 sin él) y `/` sin token devuelve 403. La consola imprime la URL con token y el log de cada request lo **redacta** (`t=[oculto]`).
 - **Una sola página HTML embebida** en el propio módulo (`HTML_TEMPLATE`, ~1400 líneas: CSS + HTML + JS vanilla). El JS habla con `/api/*` vía `fetch`. No hay framework ni build de frontend (coherente con la restricción de solo stdlib).
-- UI: banner de estado/elevación, banner de integridad de colectores y banner de respaldo de rutas, grilla de botones (12 paquetes + Revisión Total + KB + Registro), tarjetas de resultados con JSON expandible por colector, sección de acciones del técnico (con persistencia en `localStorage` para no perder el formulario al recargar), snapshot/comparación, editor y buscador de KB, y el registro de análisis.
+- UI: banner de estado/elevación, banner de integridad de colectores y banner de respaldo de rutas, grilla de botones (15 paquetes + Revisión Total + KB + Registro), tarjetas de resultados con JSON expandible por colector, sección de acciones del técnico (con persistencia en `localStorage` para no perder el formulario al recargar), snapshot/comparación, editor y buscador de KB, y el registro de análisis.
 - La consola del servidor imprime cada request redactando el token (`[DiagUSB] GET /api/...`).
 
 ### 5.10 Elevación a Administrador a pedido (`core/elevation.py`)
@@ -186,7 +186,7 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 
 - **Principal — kit con Python embebido**: `scripts/armar_kit.ps1` descarga el zip oficial `python-3.13.15-embed-amd64.zip` de python.org, verifica su SHA-256 contra una constante fija, lo descomprime en `python\`, y arma la carpeta `DiagUSB\` con: `python\` (intérprete embebido, con todos sus binarios PE verificados por firma — Python Software Foundation, y Microsoft para `vcruntime*`), `src\diagusb\` (código, sin `__pycache__`), `src\collectors\_common.ps1`, `manifiesto_hashes.json`, `LICENSE`, `LEEME.txt`, los lanzadores `Iniciar_DiagUSB.cmd`/`Iniciar_DiagUSB_consola.cmd` (copiados byte a byte desde `scripts\kit\` con CRLF normalizado, para no corromper tildes en PowerShell 5.1), `python313._pth` (`python313.zip`, `.`, `..\src`, sin `import site`) y `SHA256SUMS.txt` (hashes de todos los archivos). Luego lo comprime en `DiagUSB-kit-<version>.zip`.
 - El kit no requiere instalar Python en el destino: usa el intérprete de `python\`. `scripts\probar_kit.ps1` es la prueba de humo reutilizable por CI (integridad, firma, versión, `list-packages`, un `diagnose` real sin UAC y la validación estructural del PDF).
-- **Opcional — ejecutable PyInstaller**: `onedir` desde `build/diagusb.spec` con entry point `build/entry_console.py`; `datas` embebidos (12 paquetes, `collectors/_common.ps1`, KB) → `dist/diagusb/_internal/...`; en runtime se resuelven con `Path(__file__)` o el bucle de búsqueda hacia arriba de los colectores. Verificado en Windows real: `diagusb.exe` (CLI con banner), `diagusb.exe web`, diagnósticos `[OK]` e informes Word/PDF.
+- **Opcional — ejecutable PyInstaller**: `onedir` desde `build/diagusb.spec` con entry point `build/entry_console.py`; `datas` embebidos (15 paquetes, `collectors/_common.ps1`, KB) → `dist/diagusb/_internal/...`; en runtime se resuelven con `Path(__file__)` o el bucle de búsqueda hacia arriba de los colectores. Verificado en Windows real: `diagusb.exe` (CLI con banner), `diagusb.exe web`, diagnósticos `[OK]` e informes Word/PDF.
 
 ## 6. Formatos de datos principales
 
@@ -234,7 +234,7 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 |---|---|---|
 | GET | `/` | Página de la UI (HTML embebido) |
 | GET | `/api/diagnose?package=X` | Diagnóstico de un paquete (auto-guarda en registro; devuelve `registro_id`) |
-| GET | `/api/full-scan` | Los 12 paquetes en paralelo (auto-guarda; devuelve `registro_id`) |
+| GET | `/api/full-scan` | Los 15 paquetes en paralelo (auto-guarda; devuelve `registro_id`) |
 | GET | `/api/elevation` | `{"is_elevated": bool}` |
 | GET | `/api/knowledge` | KB completa (embebida + local) |
 | POST | `/api/knowledge` | Guardar o eliminar entrada de la KB (`accion: guardar\|eliminar`) |
@@ -263,10 +263,10 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 
 ## 9. Estrategia de pruebas
 
-- **Sin frameworks**: `python tests\run_tests.py` ejecuta suites escritas a mano (modelos, reglas, registry, KB, informes, elevación, registro) con un runner propio que imprime `[OK]`/`[FALLO]`.
-- **130 pruebas** actualmente, todas pasando. Cubren, entre otros: creación de modelos; reglas con fixtures (spooler caído, WiFi débil, BSOD, drivers); descubrimiento de paquetes; KB (guardar/editar/eliminar en archivo temporal, embebida intacta); informes (PDF bytes, HTML, sección de diferencias, `_resumen_datos`, código de verificación); elevación (comandos, rechazo UAC simulado, hijo que sirve puerto); registro persistente (guardado, poda, full-scan, y **endpoints HTTP reales** con servidor en hilo sobre puerto efímero); endurecimiento web de Ronda 2 (bind local, token de sesión, `Host`/`Origin`, `Content-Type`, límite de cuerpo, rutas 404); escritura atómica y preservación de JSON corrupto; identidad del equipo en la comparación (mismo equipo / distinto / forzado); integridad de colectores (hash correcto, archivo alterado, manifiesto ausente); resolución de rutas portables (congelado vs desarrollo vs respaldo `%LOCALAPPDATA%`); y la Ronda 11 (arranque sin UAC, `POST /api/elevar` con y sin token, colector `denied` en reglas y línea de alcance en los informes).
+- **Con pytest**: `python tests\run_tests.py` descubre todos los `test_*.py` y ejecuta pytest (también `python -m pytest -q`); las suites (modelos, reglas, registry, KB, informes, elevación, registro) se ejecutan directamente con pytest.
+- **278 pruebas** (277 pasan y 1 manual se omite por defecto). Cubren, entre otros: creación de modelos; reglas con fixtures (spooler caído, WiFi débil, BSOD, drivers); descubrimiento de paquetes; KB (guardar/editar/eliminar en archivo temporal, embebida intacta); informes (PDF bytes, HTML, sección de diferencias, `_resumen_datos`, código de verificación); elevación (comandos, rechazo UAC simulado, hijo que sirve puerto); registro persistente (guardado, poda, full-scan, y **endpoints HTTP reales** con servidor en hilo sobre puerto efímero); endurecimiento web de Ronda 2 (bind local, token de sesión, `Host`/`Origin`, `Content-Type`, límite de cuerpo, rutas 404); escritura atómica y preservación de JSON corrupto; identidad del equipo en la comparación (mismo equipo / distinto / forzado); integridad de colectores (hash correcto, archivo alterado, manifiesto ausente); resolución de rutas portables (congelado vs desarrollo vs respaldo `%LOCALAPPDATA%`); y la Ronda 11 (arranque sin UAC, `POST /api/elevar` con y sin token, colector `denied` en reglas y línea de alcance en los informes).
 - Los colectores se validan contra Windows real (no hay mocks de PowerShell en la suite); las pruebas unitarias simulan `run_powershell` solo donde se prueba el conteo de estados.
-- Verificación manual periódica: full-scan completo (12 paquetes, 0 errores), `node --check` del JS embebido, smoke test del exe reconstruido.
+- Verificación manual periódica: full-scan completo sobre un equipo de prueba, `node --check` del JS embebido, smoke test del exe reconstruido.
 
 ## 10. Limitaciones conocidas
 
@@ -298,4 +298,4 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 
 ---
 
-*Documento generado para revisión externa. El sistema vive en el repositorio descrito; los componentes mencionados están implementados y cubiertos por la suite (130 pruebas), con las limitaciones declaradas en la §10 — entre ellas, la ausencia de validación en Windows 11 y bajo antivirus/EDR. Tener cobertura de pruebas no equivale a validación en todos los entornos de producción.*
+*Documento generado para revisión externa. El sistema vive en el repositorio descrito; los componentes mencionados están implementados y cubiertos por la suite (278 pruebas), con las limitaciones declaradas en la §10 — entre ellas, la ausencia de validación en Windows 11 y bajo antivirus/EDR. Tener cobertura de pruebas no equivale a validación en todos los entornos de producción.*
