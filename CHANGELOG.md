@@ -8,6 +8,11 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ### Agregado
 
+- Entrega opcional del informe, apagada por defecto: envío por correo con SMTP propio (STARTTLS, SSL/TLS o sin cifrado solo para un servidor en este equipo) y copia en una carpeta local como ZIP con el informe en PDF, HTML y JSON. Nada sale del equipo sin marcar la casilla de consentimiento y pulsar el botón; DiagUSB no tiene servidor central ni sube datos por su cuenta.
+- La contraseña del correo nunca se guarda en texto plano: se usa en memoria o se cifra con DPAPI de Windows en `config/correo_secreto.bin` (ámbito del usuario actual). La configuración vive en `config/entrega.json` y la bitácora local de entregas en `config/entregas.json` (máximo 50 entradas, sin contraseñas ni contenido de los informes).
+- Endpoints `/api/entrega` (GET) y `/api/entrega/{config,probar,secreto,enviar,copia}` (POST), panel «Entrega del informe» en Configuración y tarjeta «Entrega» en Resultados, con consentimiento explícito por entrega.
+- `informe_a_json` en `core/informe.py`: informe autocontenido en JSON para adjuntar o archivar, con el mismo contenido que el HTML y sin datos crudos de los colectores.
+- Pruebas unitarias `tests/test_entrega.py` (configuración, validaciones, SMTP falso, consenso, copia ZIP, DPAPI y API HTTP).
 - Cinco paquetes nuevos de solo lectura (la lista pasa de 15 a 20 paquetes): `puertos_locales` (puertos TCP/UDP a la escucha con proceso, ruta, empresa y si escuchan en todas las interfaces), `escaneo_red` (tabla de vecinos ARP y ping acotado a la puerta de enlace y a los equipos ya conocidos, sin barrido de subred), `captura_sospechosa` (proxy del usuario y del entorno, archivo `hosts` y controladores de captura Npcap/WinPcap), `gateways_dns` (rutas predeterminadas con ping a cada puerta de enlace, servidores DNS configurados y una resolución real cronometrada) y `perifericos` (teclados y dispositivos de puntero con su estado PnP).
 - Diez colectores nuevos en PowerShell, todos de solo lectura y con cabecera SPDX: `get_listening_ports`, `get_network_neighbors`, `get_lan_reachability`, `get_proxy_settings`, `get_hosts_entries`, `get_capture_drivers`, `get_gateway_routes`, `get_gateway_dns_servers`, `get_dns_resolution` y `get_input_devices`.
 - Siete reglas deterministas y sus entradas de conocimiento: `puerto_expuesto`, `equipos_red_no_visibles`, `trafico_red_alterado`, `gateway_no_responde`, `dns_inestable`, `teclado_no_responde` y `mouse_no_responde`; la base embebida pasa de 28 a 35 entradas. `trafico_red_alterado` informa la combinación objetiva (proxy manual remoto, entradas de `hosts` fuera de loopback, captura activa) y nunca afirma que haya una intrusión; `equipos_red_no_visibles` recuerda que algunos equipos bloquean ICMP.
@@ -35,7 +40,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 ### Corregido
 
 - Documentación: el registro de la versión 0.1.0 anunciaba un comando `report` que nunca existió en la CLI. Los comandos reales son `diagnose`, `snapshot`, `compare`, `list-packages` y `web`; los informes HTML/DOC/PDF los genera `diagnose`. Se conserva la entrada histórica y se deja esta corrección explícita.
-- Documentación: las cifras de pruebas y de paquetes quedaron unificadas con el código real (20 paquetes y 325 pruebas, de las cuales 324 pasan y 1 es manual y se omite por defecto).
+- Documentación: las cifras de pruebas y de paquetes quedaron unificadas con el código real (20 paquetes y 342 pruebas, de las cuales 341 pasan y 1 es manual y se omite por defecto).
 - Documentación: `docs/LIMITACIONES.md` decía que la conectividad no hacía ping real; el colector ejecuta ICMP y DNS reales desde hace varias versiones. Se corrigió la limitación.
 - Pruebas: `tests/run_tests.py` ahora descubre y ejecuta todos los `tests/test_*.py` con pytest, en lugar de importar una lista fija de seis suites.
 

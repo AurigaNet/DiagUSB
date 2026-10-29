@@ -1865,6 +1865,61 @@ def html_de_doc(datos: bytes) -> bytes:
     return cuerpo
 
 
+def informe_a_json(informe: InformeData) -> str:
+    """Informe completo en JSON (autocontenido) para adjuntar o archivar.
+
+    Devuelve texto UTF-8 con el mismo contenido que el informe HTML salvo los
+    datos crudos de los colectores: no incluye secretos ni rutas locales.
+    """
+    modelo = _modelo_documento(informe)
+    documento = {
+        "schema_version": 1,
+        "generador": "DiagUSB",
+        "generado_en": informe.generado_en,
+        "tipo": modelo.get("tipo"),
+        "sintoma": modelo.get("sintoma"),
+        "codigo_verificacion": modelo.get("codigo"),
+        "equipo": modelo.get("equipo") or {},
+        "tecnico": modelo.get("tecnico") or "",
+        "cliente": modelo.get("cliente") or "",
+        "observaciones": modelo.get("observaciones") or "",
+        "metricas": modelo.get("metricas") or {},
+        "indicadores": modelo.get("indicadores") or {},
+        "resumen_ejecutivo": modelo.get("resumen_ejecutivo") or "",
+        "categorias": modelo.get("categorias") or [],
+        "problemas": [
+            {
+                "indice": p.indice,
+                "severidad": p.severidad,
+                "colector": p.colector,
+                "titulo": p.titulo,
+                "estado": p.estado,
+                "solucion_elegida": p.solucion_elegida,
+                "solucion": p.solucion,
+                "knowledge_id": p.knowledge_id,
+                "soluciones": list(p.soluciones),
+                "estado_esperado": p.estado_esperado,
+                "por_que": p.por_que,
+                "verificacion": p.verificacion,
+            }
+            for p in informe.problemas
+        ],
+        "mejoras": [
+            {"id": m.id, "titulo": m.titulo, "detalle": m.detalle,
+             "aplicada": bool(m.aplicada), "comentario": m.comentario}
+            for m in informe.mejoras
+        ],
+        "recomendaciones": list(modelo.get("recomendaciones") or []),
+        "diferencias": modelo.get("diferencias") or [],
+        "referencia": modelo.get("referencia") or {},
+        "prueba_perifericos": modelo.get("prueba_perifericos") or {},
+        "ficha_tecnica": modelo.get("ficha_tecnica") or [],
+        "advertencias": modelo.get("advertencias") or [],
+        "alcance": modelo.get("alcance") or "",
+    }
+    return json.dumps(documento, ensure_ascii=False, indent=2, default=str) + "\n"
+
+
 def informe_a_doc(informe: InformeData, resultados_completos: list | None = None,
                   con_anexo: bool = False) -> bytes:
     """Genera un .doc MHTML (HTML de Word con los graficos PNG embebidos).

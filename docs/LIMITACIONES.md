@@ -16,7 +16,8 @@ Documento de limitaciones y estado actual del proyecto.
 - Kit portable con Python embebido (`DiagUSB-kit-<version>.zip`, armado con `scripts\armar_kit.ps1`), verificado con prueba de humo (`scripts\probar_kit.ps1`: integridad SHA-256, firma PSF del interprete, diagnostico real y PDF)
 - Ejecutable portable con PyInstaller (`dist\diagusb\diagusb.exe`) como variante opcional, verificado con diagnose y reportes
 - Registro persistente de analisis (`config/registro_analisis.json`): auto-guardado, consulta, borrado individual y borrado total
-- Suite de pruebas unitarias (325 pruebas; 324 pasan y 1 manual se omite por defecto)
+- Entrega opcional del informe (`core/entrega.py`): correo SMTP y copia en carpeta local como ZIP (PDF, HTML y JSON), apagada por defecto y con consentimiento explicito en cada envio; contrasena del correo en memoria o cifrada con DPAPI de Windows, nunca en texto plano
+- Suite de pruebas unitarias (342 pruebas; 341 pasan y 1 manual se omite por defecto)
 
 ### Pendiente de validacion
 - Windows 11 (validado hasta ahora en Windows 10)
@@ -53,6 +54,11 @@ Documento de limitaciones y estado actual del proyecto.
 - `captura_sospechosa` informa combinaciones objetivas (proxy manual remoto, entradas del archivo `hosts` fuera de loopback, variables de proxy, controladores Npcap/WinPcap activos) y nunca afirma que haya una intrusion: la decision queda en el tecnico
 - `perifericos` se apoya en el estado PnP que reporta Windows y en una prueba interactiva del navegador (teclas, movimiento, clics y rueda). Esa prueba confirma que Windows entrega la entrada al navegador, pero no mide la calidad ni el desgaste del teclado o del mouse
 - La prueba DNS de `gateways_dns` resuelve un unico nombre (`%USERDNSDOMAIN` si existe, si no `www.msftconnecttest.com`) y lo cronometra; una resolucion lenta puede deberse al servidor DNS, al enlace o al propio nombre de prueba
+- La entrega por correo usa el servidor SMTP que configure el tecnico: DiagUSB no incluye servidor, credenciales ni servicio de correo. Muchos proveedores exigen contrasena de aplicacion o bloquean el envio desde redes ajenas; el error del servidor se muestra tal cual y queda en la bitacora local
+- La opcion «sin cifrado» solo se acepta para un servidor SMTP en el propio equipo (`127.0.0.1`, `localhost` o `::1`). Con un servidor remoto la configuracion se rechaza para no enviar credenciales en claro
+- El cifrado de la contrasena usa DPAPI de Windows y queda ligado al usuario y al equipo actuales: al copiar el kit a otro equipo hay que volver a escribirla. En sistemas sin DPAPI la contrasena solo se usa en memoria durante el envio
+- La copia en carpeta no es una nube propia: escribe un ZIP en la carpeta que el tecnico elija (por ejemplo, una carpeta que ya sincronice con su nube personal). DiagUSB no sube nada ni conserva copias fuera de esa carpeta
+- La bitacora de entregas (`config/entregas.json`) guarda fecha, tipo, destinatarios o carpeta, adjuntos y resultado; no guarda contrasenas ni el contenido de los informes, y se limita a 50 entradas
 - `Get-WindowsFeature` (roles de servidor) no existe en Windows 10: `windows_features` queda vacio en estaciones
 - Los "program groups" (Win32_ProgramGroup) no existen en Windows 10: se omitieron del inventario
 

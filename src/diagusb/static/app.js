@@ -143,6 +143,12 @@
             document.getElementById('diffSection').style.display = 'none';
             document.getElementById('referenciaSection').style.display = 'none';
             document.getElementById('referenciaTabla').innerHTML = '';
+            const entregaSec = document.getElementById('entregaSection');
+            if (entregaSec) entregaSec.style.display = 'none';
+            const entregaRes = document.getElementById('entregaResultado');
+            if (entregaRes) entregaRes.textContent = 'Sin entregas en esta sesión.';
+            const consent = document.getElementById('entregaConsentimiento');
+            if (consent) consent.checked = false;
             const perif = document.getElementById('perifericosSection');
             if (perif) perif.style.display = 'none';
             const resultadoPerif = document.getElementById('perifericosResultado');
@@ -236,6 +242,8 @@
             document.getElementById('btnSnapCompara').style.display = '';
             document.getElementById('referenciaSection').style.display = 'block';
             renderReferencia(currentDiag && currentDiag.referencia);
+            const seccionEntrega = document.getElementById('entregaSection');
+            if (seccionEntrega) seccionEntrega.style.display = 'block';
             const esPerifericos = !!(currentDiag && currentDiag.package === 'perifericos');
             const seccionPerif = document.getElementById('perifericosSection');
             if (seccionPerif) seccionPerif.style.display = esPerifericos ? 'block' : 'none';
@@ -452,6 +460,259 @@
             panel.addEventListener('contextmenu', ev => {
                 if (pruebaPerifericos.activa) ev.preventDefault();
             });
+        }
+
+        // ---------------- Entrega opcional del informe ----------------
+        let entregaEstado = null;
+
+        function ponerValor(id, valor) {
+            const el = document.getElementById(id);
+            if (el) el.value = valor == null ? '' : valor;
+        }
+
+        function leerValor(id) {
+            const el = document.getElementById(id);
+            return el ? el.value : '';
+        }
+
+        function marcar(id, activo) {
+            const el = document.getElementById(id);
+            if (el) el.checked = !!activo;
+        }
+
+        function leerMarcado(id) {
+            const el = document.getElementById(id);
+            return !!(el && el.checked);
+        }
+
+        function renderHistorialEntregas(entregas) {
+            const cont = document.getElementById('entregaHistorial');
+            if (!cont) return;
+            if (!entregas || !entregas.length) {
+                cont.innerHTML = '<p class="acciones-hint">Todavía no se envió ningún informe ni se guardó ninguna copia.</p>';
+                return;
+            }
+            let html = '<h4 style="margin-top:14px;">Últimas entregas</h4><table class="diff-table"><tr><th>Fecha</th><th>Tipo</th><th>Destino</th><th>Resultado</th></tr>';
+            entregas.slice(0, 8).forEach(e => {
+                const destino = (e.destinatarios && e.destinatarios.length)
+                    ? e.destinatarios.join(', ')
+                    : (e.destino || '');
+                html += '<tr><td>' + escHtml((e.fecha || '').replace('T', ' ')) + '</td>';
+                html += '<td>' + escHtml(e.tipo || '') + '</td>';
+                html += '<td>' + escHtml(destino) + '</td>';
+                html += '<td>' + (e.ok ? 'Enviado' : 'Falló: ' + escHtml(e.detalle || '')) + '</td></tr>';
+            });
+            html += '</table>';
+            cont.innerHTML = html;
+        }
+
+        function actualizarEstadoEntrega() {
+            if (!entregaEstado) return;
+            const cfg = entregaEstado.config || {};
+            const correo = cfg.correo || {};
+            const copia = cfg.copia || {};
+            let texto = correo.habilitado
+                ? ('Correo habilitado: ' + (correo.servidor || 'sin servidor') + ':' + (correo.puerto || '') +
+                   ' (' + (correo.seguridad || '') + ') · ' + ((correo.destinatarios || []).length) + ' destinatario(s).')
+                : 'Correo deshabilitado.';
+            if (correo.usuario) {
+                texto += entregaEstado.secreto_guardado
+                    ? ' Contraseña guardada cifrada con Windows.'
+                    : ' Contraseña no guardada: se pedirá en cada envío.';
+            }
+            texto += copia.habilitada
+                ? ' Copia habilitada en: ' + (copia.destino || '(sin carpeta)') + '.'
+                : ' Copia deshabilitada.';
+            if (!entregaEstado.dpapi_disponible) {
+                texto += ' Este sistema no ofrece DPAPI: la contraseña solo se usa en memoria.';
+            }
+            setTexto('entregaEstadoCorreo', texto);
+            renderHistorialEntregas(entregaEstado.entregas || []);
+        }
+
+        async function cargarEntrega() {
+            try {
+                const r = await fetch('/api/entrega');
+                const data = await r.json();
+                if (data.error) throw new Error(data.error);
+                entregaEstado = data;
+                const correo = (data.config && data.config.correo) || {};
+                const copia = (data.config && data.config.copia) || {};
+                marcar('entregaCorreoHabilitado', correo.habilitado);
+                ponerValor('entregaServidor', correo.servidor);
+                ponerValor('entregaPuerto', correo.puerto || 587);
+                ponerValor('entregaSeguridad', correo.seguridad || 'starttls');
+                ponerValor('entregaUsuario', correo.usuario);
+                ponerValor('entregaRemitente', correo.remitente);
+                ponerValor('entregaDestinatarios', (correo.destinatarios || []).join('; '));
+                ponerValor('entregaAsunto', correo.asunto || 'Informe DiagUSB');
+                marcar('entregaCopiaHabilitada', copia.habilitada);
+                ponerValor('entregaCopiaDestino', copia.destino);
+                const clave = document.getElementById('entregaClave');
+                if (clave) clave.value = '';
+                actualizarEstadoEntrega();
+            } catch (e) {
+                setTexto('entregaEstadoCorreo', 'No se pudo leer la configuración de entrega: ' + e.message);
+            }
+        }
+
+        function configEntregaDesdeFormulario() {
+            return {
+                correo: {
+                    habilitado: leerMarcado('entregaCorreoHabilitado'),
+                    servidor: leerValor('entregaServidor').trim(),
+                    puerto: Number(leerValor('entregaPuerto')) || 587,
+                    seguridad: leerValor('entregaSeguridad') || 'starttls',
+                    usuario: leerValor('entregaUsuario').trim(),
+                    remitente: leerValor('entregaRemitente').trim(),
+                    destinatarios: leerValor('entregaDestinatarios'),
+                    asunto: leerValor('entregaAsunto').trim() || 'Informe DiagUSB'
+                },
+                copia: {
+                    habilitada: leerMarcado('entregaCopiaHabilitada'),
+                    destino: leerValor('entregaCopiaDestino').trim()
+                }
+            };
+        }
+
+        async function guardarEntregaConfig() {
+            setTexto('entregaEstadoCorreo', 'Guardando configuración…');
+            try {
+                const r = await fetch('/api/entrega/config', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(configEntregaDesdeFormulario())
+                });
+                const data = await r.json();
+                if (data.error) throw new Error(data.error);
+                entregaEstado = data.estado || entregaEstado;
+                actualizarEstadoEntrega();
+                const detalle = (document.getElementById('entregaEstadoCorreo') || {}).textContent || '';
+                setTexto('entregaEstadoCorreo', 'Configuración guardada. ' + detalle);
+            } catch (e) {
+                setTexto('entregaEstadoCorreo', 'No se guardó: ' + e.message);
+            }
+        }
+
+        async function guardarSecretoEntrega() {
+            const clave = leerValor('entregaClave');
+            if (!clave) return false;
+            const r = await fetch('/api/entrega/secreto', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({clave: clave})
+            });
+            const data = await r.json();
+            if (data.error) throw new Error(data.error);
+            const campo = document.getElementById('entregaClave');
+            if (campo) campo.value = '';
+            return true;
+        }
+
+        async function probarEntrega() {
+            setTexto('entregaEstadoCorreo', 'Probando la conexión con el servidor…');
+            try {
+                // Guarda primero lo que el técnico escribió en el formulario.
+                await guardarEntregaConfig();
+                if (leerMarcado('entregaRecordar') && leerValor('entregaClave')) {
+                    await guardarSecretoEntrega();
+                }
+                const r = await fetch('/api/entrega/probar', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({clave: leerValor('entregaClave')})
+                });
+                const data = await r.json();
+                if (data.error) throw new Error(data.error);
+                setTexto('entregaEstadoCorreo', 'Conexión correcta con ' + data.servidor +
+                    ':' + data.puerto + (data.autenticado ? ' (sesión iniciada).' : ' (sin autenticación).'));
+                await cargarEntrega();
+            } catch (e) {
+                setTexto('entregaEstadoCorreo', 'Falló la prueba: ' + e.message);
+            }
+        }
+
+        async function olvidarClaveEntrega() {
+            try {
+                const r = await fetch('/api/entrega/secreto', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({olvidar: true})
+                });
+                const data = await r.json();
+                if (data.error) throw new Error(data.error);
+                await cargarEntrega();
+            } catch (e) {
+                setTexto('entregaEstadoCorreo', 'No se pudo olvidar la contraseña: ' + e.message);
+            }
+        }
+
+        async function enviarEntrega(ruta, cuerpo) {
+            const r = await fetch(ruta, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(cuerpo)
+            });
+            const data = await r.json();
+            if (data.error) throw new Error(data.error);
+            return data;
+        }
+
+        async function prepararCuerpoEntrega() {
+            if (!currentDiag) {
+                alert('Ejecute primero un diagnóstico.');
+                return null;
+            }
+            if (!leerMarcado('entregaConsentimiento')) {
+                alert('Marque la casilla de consentimiento para entregar el informe.');
+                return null;
+            }
+            const cuerpo = collectPayload();
+            cuerpo.consentimiento = true;
+            cuerpo.formatos = ['pdf', 'html', 'json'];
+            if (leerMarcado('entregaRecordar') && leerValor('entregaClave')) {
+                await guardarSecretoEntrega();
+            }
+            cuerpo.clave = leerValor('entregaClave');
+            return cuerpo;
+        }
+
+        async function enviarInformeEntrega() {
+            setTexto('entregaResultado', 'Generando y enviando el informe…');
+            try {
+                const cuerpo = await prepararCuerpoEntrega();
+                if (!cuerpo) { setTexto('entregaResultado', 'Envío cancelado.'); return; }
+                const data = await enviarEntrega('/api/entrega/enviar', cuerpo);
+                setTexto('entregaResultado', 'Informe enviado a ' +
+                    (data.destinatarios || []).join(', ') + ' (' + data.adjuntos.length + ' adjuntos, ' +
+                    Math.round((data.bytes || 0) / 1024) + ' KB).');
+                const campo = document.getElementById('entregaClave');
+                if (campo) campo.value = '';
+                await cargarEntrega();
+            } catch (e) {
+                setTexto('entregaResultado', 'No se envió: ' + e.message);
+            }
+        }
+
+        async function guardarCopiaEntrega() {
+            setTexto('entregaResultado', 'Generando la copia…');
+            try {
+                const cuerpo = await prepararCuerpoEntrega();
+                if (!cuerpo) { setTexto('entregaResultado', 'Copia cancelada.'); return; }
+                cuerpo.destino = leerValor('entregaCopiaDestino').trim();
+                const data = await enviarEntrega('/api/entrega/copia', cuerpo);
+                setTexto('entregaResultado', 'Copia guardada: ' + data.archivo);
+                await cargarEntrega();
+            } catch (e) {
+                setTexto('entregaResultado', 'No se guardó la copia: ' + e.message);
+            }
+        }
+
+        function irAConfigEntrega() {
+            mostrarVista('configuracion');
+            const panel = document.getElementById('entregaEstadoCorreo');
+            if (panel && panel.scrollIntoView) panel.scrollIntoView({behavior: 'smooth', block: 'center'});
+            cargarEntrega();
         }
 
         function renderReferencia(ref) {
@@ -1951,6 +2212,7 @@
             inicializarAcerca();
             loadIdentidad();
             cargarReferencia();
+            cargarEntrega();
             conectarPruebaPerifericos();
             loadElevation();
             cargarCapacidades(false);

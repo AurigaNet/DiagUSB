@@ -36,6 +36,7 @@ from diagusb.core import rutas
 from diagusb.core import identidad
 from diagusb.core import identidad_sesion
 from diagusb.core import referencia
+from diagusb.core import entrega
 from diagusb.core.procesos import opciones_sin_ventana
 from diagusb.core.rules import diagnose_symptoms
 from diagusb.core.metricas import (calcular_metricas, recomendaciones_de,
@@ -1204,6 +1205,10 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             ident = identidad_sesion.para_diag(run_powershell)
             self._json_response(referencia.estado(ident))
 
+        elif parsed.path == "/api/entrega":
+            # Configuracion de correo/copia (sin contrasenas)
+            self._json_response(entrega.estado())
+
         elif parsed.path == "/api/knowledge":
             # Base de conocimiento local (estado esperado + soluciones)
             result = {
@@ -1315,6 +1320,16 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             self._post_compare()
         elif parsed.path == "/api/referencia":
             self._post_referencia()
+        elif parsed.path == "/api/entrega/config":
+            self._post_entrega_config()
+        elif parsed.path == "/api/entrega/probar":
+            self._post_entrega_probar()
+        elif parsed.path == "/api/entrega/secreto":
+            self._post_entrega_secreto()
+        elif parsed.path == "/api/entrega/enviar":
+            self._post_entrega_enviar()
+        elif parsed.path == "/api/entrega/copia":
+            self._post_entrega_copia()
         elif parsed.path == "/api/knowledge":
             self._post_knowledge()
         elif parsed.path == "/api/elevar":
@@ -1648,6 +1663,94 @@ class DiagUSBHandler(http.server.BaseHTTPRequestHandler):
             self.server.shutdown()
         except Exception:
             pass
+
+    # ------------------------------------------------------------------
+    # Entrega opcional del informe (correo y copia en carpeta)
+    # ------------------------------------------------------------------
+
+    def _adjuntos_entrega(self, payload: dict) -> list:
+        """Genera los adjuntos del informe a partir del payload de la sesion."""
+        diag = dict(payload.get("diagnostico") or {})
+        if not diag.get("package"):
+            raise entrega.EntregaError("Falta el diagnostico")
+        diag["metricas"] = _metricas_de_reporte(diag)
+        formatos = payload.get("formatos") or ("pdf", "html", "json")
+        if not isinstance(formatos, (list, tuple)):
+            raise entrega.EntregaError("Los formatos deben ser una lista.")
+        return entrega.generar_adjuntos(
+            diag,
+            acciones=payload.get("acciones"),
+            mejoras=payload.get("mejoras"),
+            tecnico=payload.get("tecnico", ""),
+            cliente=payload.get("cliente", ""),
+            observaciones=payload.get("observaciones", ""),
+            diferencias=payload.get("diferencias"),
+            formatos=[str(f).lower() for f in formatos],
+        )
+
+    def _post_entrega_config(self):
+        try:
+            self._json_response({"ok": True,
+                                 "config": entrega.guardar_config(self._read_payload()),
+                                 "estado": entrega.estado()})
+        except entrega.EntregaError as e:
+            self._json_response({"error": str(e)}, 400)
+        except Exception as e:
+            self._json_response({"error": f"Error interno: {e}"}, 500)
+
+    def _post_entrega_probar(self):
+        try:
+            payload = self._read_payload()
+            resultado = entrega.probar_conexion(clave=payload.get("clave"))
+            self._json_response(resultado)
+        except entrega.EntregaError as e:
+            self._json_response({"error": str(e)}, 400)
+        except Exception as e:
+            self._json_response({"error": f"Error interno: {e}"}, 500)
+
+    def _post_entrega_secreto(self):
+        try:
+            payload = self._read_payload()
+            if payload.get("olvidar"):
+                self._json_response(entrega.olvidar_secreto())
+                return
+            resultado = entrega.guardar_secreto(payload.get("clave") or "")
+            self._json_response(resultado)
+        except entrega.EntregaError as e:
+            self._json_response({"error": str(e)}, 400)
+        except Exception as e:
+            self._json_response({"error": f"Error interno: {e}"}, 500)
+
+    def _post_entrega_enviar(self):
+        try:
+            payload = self._read_payload()
+            adjuntos = self._adjuntos_entrega(payload)
+            resultado = entrega.enviar_correo(
+                adjuntos,
+                consentimiento=payload.get("consentimiento") is True,
+                clave=payload.get("clave"),
+                cliente=payload.get("cliente", ""),
+            )
+            self._json_response(resultado)
+        except entrega.EntregaError as e:
+            self._json_response({"error": str(e)}, 400)
+        except Exception as e:
+            self._json_response({"error": f"Error interno: {e}"}, 500)
+
+    def _post_entrega_copia(self):
+        try:
+            payload = self._read_payload()
+            adjuntos = self._adjuntos_entrega(payload)
+            resultado = entrega.guardar_copia(
+                adjuntos,
+                consentimiento=payload.get("consentimiento") is True,
+                destino=payload.get("destino"),
+            )
+            self._json_response(resultado)
+        except entrega.EntregaError as e:
+            self._json_response({"error": str(e)}, 400)
+        except Exception as e:
+            self._json_response({"error": f"Error interno: {e}"}, 500)
 
     def _post_report(self):
         params = parse_qs(urlparse(self.path).query)

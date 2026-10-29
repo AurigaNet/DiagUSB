@@ -165,8 +165,16 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 - **Endpoints**: `GET /api/registro` (lista resumen, más reciente primero), `GET /api/registro?id=` (detalle), `DELETE /api/registro?id=` (borrado individual), `DELETE /api/registro` (vaciar todo).
 - **UI**: botón "🗂️ Registro de análisis" (junto a los de diagnóstico, con contador), buscador, expandir detalle (hallazgos con color por severidad + recomendaciones + colectores), botón Eliminar por entrada y "Vaciar registro" (ambos con confirmación).
 
-### 5.9 Servidor web e interfaz (`web_server.py`)
+### 5.9 Entrega opcional del informe (`core/entrega.py`)
 
+- Apagada por defecto: `config/entrega.json` guarda el servidor SMTP (host, puerto, STARTTLS/SSL/sin cifrado), usuario, remitente, destinatarios y la carpeta de copia. La configuraci?n se valida en el servidor: sin cifrado solo se acepta un servidor en loopback; la contrase?a nunca se acepta en el JSON de configuraci?n.
+- Contrase?a: se usa en memoria durante el env?o o se cifra con DPAPI de Windows (`CryptProtectData`) en `config/correo_secreto.bin`, ligada al usuario y equipo actuales. `leer_secreto`/`guardar_secreto`/`olvidar_secreto` no exponen el valor en las respuestas.
+- Env?o: `smtplib` de la biblioteca est?ndar (`SMTP` + STARTTLS o `SMTP_SSL`), mensaje `EmailMessage` con el informe adjunto y consentimiento expl?cito obligatorio (`consentimiento=True`) en cada env?o. `probar_conexion` valida servidor y acceso sin enviar nada.
+- Copia: `guardar_copia` escribe un ZIP con PDF, HTML y JSON en la carpeta que elige el t?cnico; tampoco sube nada a Internet. La bit?cora `config/entregas.json` guarda hasta 50 entradas (fecha, tipo, destino, adjuntos y resultado) sin contrase?as ni contenido.
+- Informe JSON: `informe_a_json` produce un documento autocontenido (mismas secciones que el HTML, sin datos crudos de colectores) para adjuntar o archivar.
+- **Endpoints**: `GET /api/entrega` (estado), `POST /api/entrega/config`, `POST /api/entrega/probar`, `POST /api/entrega/secreto`, `POST /api/entrega/enviar` y `POST /api/entrega/copia`.
+
+### 5.10 Servidor web e interfaz (`web_server.py`)
 - `http.server` + `ThreadingMixIn` (stdlib), puerto 8080, escuchando **solo en loopback** (`BIND_HOST = "127.0.0.1"`): no es alcanzable desde la red local.
 - **Endurecimiento (Ronda 2)**: la clase del handler hereda de `http.server.BaseHTTPRequestHandler` (se eliminó la herencia de `SimpleHTTPRequestHandler`, junto con su listado de directorios y su soporte de `HEAD`); las rutas GET desconocidas devuelven 404; se validan las cabeceras `Host` y `Origin` (ajenas → 403); `POST` exige `Content-Type: application/json` (→ 415) y un `Content-Length` válido con cuerpo ≤ 10 MB (→ 400/413); no se envían cabeceras CORS.
 - **Token de sesión**: al arrancar se genera `secrets.token_urlsafe(32)`. La UI se abre en `/?t=<token>`, que responde 302 y fija la cookie `diagusb_token` con `HttpOnly; SameSite=Strict; Path=/`. Todo `/api/*` exige el token (401 sin él) y `/` sin token devuelve 403. La consola imprime la URL con token y el log de cada request lo **redacta** (`t=[oculto]`).
@@ -174,7 +182,7 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 - UI: banner de estado/elevación, banner de integridad de colectores y banner de respaldo de rutas, grilla de botones (20 paquetes + Revisión Total + KB + Registro), tarjetas de resultados con JSON expandible por colector, sección de acciones del técnico (con persistencia en `localStorage` para no perder el formulario al recargar), snapshot/comparación, editor y buscador de KB, y el registro de análisis.
 - La consola del servidor imprime cada request redactando el token (`[DiagUSB] GET /api/...`).
 
-### 5.10 Elevación a Administrador a pedido (`core/elevation.py`)
+### 5.11 Elevación a Administrador a pedido (`core/elevation.py`)
 
 - Algunos datos (eventos de seguridad, inventario completo de software) requieren Administrator; ver la matriz medida en `docs/MATRIZ_PERMISOS.md`. **DiagUSB arranca sin pedir permisos** (modo estándar, sin UAC): no se auto-eleva.
 - La elevación es **opt-in**: en el CLI con el flag global `--elevar`; en la interfaz web con el botón "Dar permisos de administrador", que llama a `POST /api/elevar` (mismas protecciones que el resto de los POST: token, `Host`/`Origin`, `Content-Type`). El servidor se relanza con **`ShellExecuteExW("runas")`** (el diálogo UAC nativo de Windows) en un puerto libre nuevo; el proceso original se cierra cuando el hijo ya escucha. `--no-elevate` se sigue aceptando por compatibilidad, pero no tiene efecto (la elevación ya no es automática).
@@ -183,14 +191,14 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 - Detalle operativo: los procesos elevados no se pueden matar desde un proceso no elevado; para reinicios desde scripts de mantenimiento se usa el propio mecanismo de elevar un script auxiliar.
 - El relanzable incluye `-B` (`python -B -m diagusb ...`) y `__main__.py` fija `sys.dont_write_bytecode = True`: así ni el proceso principal ni el hijo elevado dejan `__pycache__` en el kit (importante en un pendrive). `-B` no se propaga del padre al hijo, por eso va explícito en `comando_relanzable`.
 
-### 5.11 CLI (`__main__.py`)
+### 5.12 CLI (`__main__.py`)
 
 - Sin argumentos → menú interactivo (lista paquetes/síntomas, ejecuta diagnóstico, genera informes).
 - Subcomandos: `diagnose --package X --symptom Y --output-dir DIR`, `snapshot [-p paquete] -o archivo`, `compare antes.json despues.json`, `list-packages`, `web [--port]`.
 - Flags globales: `--yes` (no preguntar), `--open` (abrir navegador), `--elevar` (pedir permisos de Administrador; opt-in) y `--no-elevate` (compatibilidad, sin efecto).
 - El CLI **no** eleva automáticamente: arranca en modo estándar y solo pide permisos si se pasa `--elevar`.
 
-### 5.12 Distribución: kit con Python embebido (`scripts/armar_kit.ps1`) y ejecutable opcional (`build/`)
+### 5.13 Distribución: kit con Python embebido (`scripts/armar_kit.ps1`) y ejecutable opcional (`build/`)
 
 - **Principal — kit con Python embebido**: `scripts/armar_kit.ps1` descarga el zip oficial `python-3.13.15-embed-amd64.zip` de python.org, verifica su SHA-256 contra una constante fija, lo descomprime en `python\`, y arma la carpeta `DiagUSB\` con: `python\` (intérprete embebido, con todos sus binarios PE verificados por firma — Python Software Foundation, y Microsoft para `vcruntime*`), `src\diagusb\` (código, sin `__pycache__`), `src\collectors\_common.ps1`, `manifiesto_hashes.json`, `LICENSE`, `LEEME.txt`, los lanzadores `Iniciar_DiagUSB.cmd`/`Iniciar_DiagUSB_consola.cmd` (copiados byte a byte desde `scripts\kit\` con CRLF normalizado, para no corromper tildes en PowerShell 5.1), `python313._pth` (`python313.zip`, `.`, `..\src`, sin `import site`) y `SHA256SUMS.txt` (hashes de todos los archivos). Luego lo comprime en `DiagUSB-kit-<version>.zip`.
 - El kit no requiere instalar Python en el destino: usa el intérprete de `python\`. `scripts\probar_kit.ps1` es la prueba de humo reutilizable por CI (integridad, firma, versión, `list-packages`, un `diagnose` real sin UAC y la validación estructural del PDF).
@@ -253,6 +261,12 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 | POST | `/api/snapshot` | Guardar snapshot ANTES (recibe `results`) |
 | POST | `/api/compare` | Comparar actuales contra el snapshot guardado |
 | POST | `/api/report?format=doc\|pdf` | Generar informe Word/PDF con acciones del técnico |
+| GET | `/api/entrega` | Estado de correo/copia, secreto guardado y últimas entregas |
+| POST | `/api/entrega/config` | Guardar configuración de correo/copia (sin contraseña) |
+| POST | `/api/entrega/probar` | Probar servidor SMTP y acceso sin enviar nada |
+| POST | `/api/entrega/secreto` | Guardar cifrada (DPAPI) u olvidar la contraseña del correo |
+| POST | `/api/entrega/enviar` | Enviar el informe por SMTP (exige `consentimiento: true`) |
+| POST | `/api/entrega/copia` | Guardar un ZIP del informe en una carpeta (exige `consentimiento: true`) |
 
 > Salvo la apertura inicial `GET /?t=<token>` (que fija la cookie), **todas** las rutas `/api/*` exigen el token de sesión y responden 401 sin él; `GET /` sin token responde 403. `GET /api/elevation` devuelve además `respaldo` (si se están usando rutas en `%LOCALAPPDATA%`) y `ruta_base`.
 
@@ -272,7 +286,7 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 ## 9. Estrategia de pruebas
 
 - **Con pytest**: `python tests\run_tests.py` descubre todos los `test_*.py` y ejecuta pytest (también `python -m pytest -q`); las suites (modelos, reglas, registry, KB, informes, elevación, registro) se ejecutan directamente con pytest.
-- **325 pruebas** (324 pasan y 1 manual se omite por defecto). Cubren, entre otros: creación de modelos; reglas con fixtures (spooler caído, WiFi débil, BSOD, drivers); descubrimiento de paquetes; KB (guardar/editar/eliminar en archivo temporal, embebida intacta); informes (PDF bytes, HTML, sección de diferencias, `_resumen_datos`, código de verificación); elevación (comandos, rechazo UAC simulado, hijo que sirve puerto); registro persistente (guardado, poda, full-scan, y **endpoints HTTP reales** con servidor en hilo sobre puerto efímero); endurecimiento web de Ronda 2 (bind local, token de sesión, `Host`/`Origin`, `Content-Type`, límite de cuerpo, rutas 404); escritura atómica y preservación de JSON corrupto; identidad del equipo en la comparación (mismo equipo / distinto / forzado); integridad de colectores (hash correcto, archivo alterado, manifiesto ausente); resolución de rutas portables (congelado vs desarrollo vs respaldo `%LOCALAPPDATA%`); y la Ronda 11 (arranque sin UAC, `POST /api/elevar` con y sin token, colector `denied` en reglas y línea de alcance en los informes).
+- **342 pruebas** (341 pasan y 1 manual se omite por defecto). Cubren, entre otros: creación de modelos; reglas con fixtures (spooler caído, WiFi débil, BSOD, drivers); descubrimiento de paquetes; KB (guardar/editar/eliminar en archivo temporal, embebida intacta); informes (PDF bytes, HTML, sección de diferencias, `_resumen_datos`, código de verificación); elevación (comandos, rechazo UAC simulado, hijo que sirve puerto); registro persistente (guardado, poda, full-scan, y **endpoints HTTP reales** con servidor en hilo sobre puerto efímero); endurecimiento web de Ronda 2 (bind local, token de sesión, `Host`/`Origin`, `Content-Type`, límite de cuerpo, rutas 404); escritura atómica y preservación de JSON corrupto; identidad del equipo en la comparación (mismo equipo / distinto / forzado); integridad de colectores (hash correcto, archivo alterado, manifiesto ausente); resolución de rutas portables (congelado vs desarrollo vs respaldo `%LOCALAPPDATA%`); y la Ronda 11 (arranque sin UAC, `POST /api/elevar` con y sin token, colector `denied` en reglas y línea de alcance en los informes).
 - Los colectores se validan contra Windows real (no hay mocks de PowerShell en la suite); las pruebas unitarias simulan `run_powershell` solo donde se prueba el conteo de estados.
 - Verificación manual periódica: full-scan completo sobre un equipo de prueba, `node --check` del JS embebido, smoke test del exe reconstruido.
 
@@ -306,4 +320,4 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 
 ---
 
-*Documento generado para revisión externa. El sistema vive en el repositorio descrito; los componentes mencionados están implementados y cubiertos por la suite (325 pruebas), con las limitaciones declaradas en la §10 — entre ellas, la ausencia de validación en Windows 11 y bajo antivirus/EDR. Tener cobertura de pruebas no equivale a validación en todos los entornos de producción.*
+*Documento generado para revisión externa. El sistema vive en el repositorio descrito; los componentes mencionados están implementados y cubiertos por la suite (342 pruebas), con las limitaciones declaradas en la §10 — entre ellas, la ausencia de validación en Windows 11 y bajo antivirus/EDR. Tener cobertura de pruebas no equivale a validación en todos los entornos de producción.*

@@ -332,6 +332,18 @@
                         <p class="acciones-hint">Complete el estado y la acción implementada para cada problema; quedarán registradas en el informe Word/PDF.</p>
                     </div>
 
+                    <div class="acciones-section" id="entregaSection" style="display:none;">
+                        <h3>Entrega del informe (opcional)</h3>
+                        <p class="acciones-hint">El informe se genera en este equipo. Enviarlo por correo o guardar una copia solo ocurre si marca la casilla y pulsa el botón; sin eso no sale nada.</p>
+                        <label class="opcion"><input type="checkbox" id="entregaConsentimiento"> Autorizo la entrega de este informe con los datos que muestra</label>
+                        <div class="fila-herramientas" style="margin-top:10px;">
+                            <button class="btn-small btn-copy" id="btnEntregarCorreo" onclick="enviarInformeEntrega()">Enviar por correo</button>
+                            <button class="btn-small" id="btnEntregarCopia" onclick="guardarCopiaEntrega()">Guardar copia en carpeta</button>
+                            <button class="btn-small" onclick="irAConfigEntrega()">Configurar entrega</button>
+                        </div>
+                        <div class="config-estado" id="entregaResultado">Sin entregas en esta sesión.</div>
+                    </div>
+
                     <div class="acciones-section" id="kbSection" style="display:none;">
                         <h3>Base de conocimiento local</h3>
                         <p class="acciones-hint">Cómo debe estar cada componente para que funcione bien, cómo lograrlo y cómo comprobarlo. Busque por síntoma, componente o palabra clave.</p>
@@ -407,6 +419,69 @@
                     <div class="config-fila"><span>Informes</span><b id="datosInformes">—</b></div>
                     <button class="btn-small btn-clear" onclick="borrarDatosLocales()">Borrar datos locales</button>
                     <p class="acciones-hint" id="datosEstado"></p>
+                </div>
+                <div class="panel" style="margin-top:16px;">
+                    <div class="panel-head">
+                        <h2 class="panel-title">Entrega del informe (opcional)</h2>
+                        <span class="panel-nota">Apagada por defecto</span>
+                    </div>
+                    <p class="acciones-hint">Correo por SMTP y copia en una carpeta local (por ejemplo, una carpeta que el técnico ya sincroniza con su propia nube). DiagUSB no tiene servidor central ni sube nada por su cuenta. La contraseña del correo nunca se guarda en texto plano: se usa en memoria o se cifra con DPAPI de Windows para el usuario actual.</p>
+
+                    <label class="opcion"><input type="checkbox" id="entregaCorreoHabilitado"> Habilitar envío por correo</label>
+                    <div class="acciones-campos">
+                        <label>Servidor SMTP
+                            <input id="entregaServidor" type="text" placeholder="smtp.ejemplo.com">
+                        </label>
+                        <label>Puerto
+                            <input id="entregaPuerto" type="number" min="1" max="65535" placeholder="587">
+                        </label>
+                        <label>Seguridad
+                            <select id="entregaSeguridad">
+                                <option value="starttls">STARTTLS (587)</option>
+                                <option value="ssl">SSL/TLS (465)</option>
+                                <option value="ninguna">Sin cifrado (solo equipo local)</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div class="acciones-campos">
+                        <label>Usuario SMTP
+                            <input id="entregaUsuario" type="text" placeholder="tecnico@ejemplo.com" autocomplete="off">
+                        </label>
+                        <label>Remitente
+                            <input id="entregaRemitente" type="text" placeholder="tecnico@ejemplo.com" autocomplete="off">
+                        </label>
+                    </div>
+                    <label class="obs-label">
+                        Destinatarios (separados por coma o punto y coma)
+                        <textarea id="entregaDestinatarios" rows="2" placeholder="cliente@ejemplo.com; jefe@ejemplo.com"></textarea>
+                    </label>
+                    <label class="obs-label">
+                        Asunto
+                        <input id="entregaAsunto" type="text" placeholder="Informe DiagUSB">
+                    </label>
+                    <div class="acciones-campos">
+                        <label>Contraseña SMTP (no se muestra ni se guarda en texto plano)
+                            <input id="entregaClave" type="password" autocomplete="new-password">
+                        </label>
+                        <label class="opcion" style="align-self:flex-end;">
+                            <input type="checkbox" id="entregaRecordar"> Guardar cifrada con Windows
+                        </label>
+                    </div>
+                    <div class="fila-herramientas">
+                        <button class="btn-small btn-copy" onclick="guardarEntregaConfig()">Guardar configuración</button>
+                        <button class="btn-small" onclick="probarEntrega()">Probar conexión</button>
+                        <button class="btn-small btn-clear" onclick="olvidarClaveEntrega()">Olvidar contraseña guardada</button>
+                    </div>
+                    <div class="config-estado" id="entregaEstadoCorreo">Correo deshabilitado.</div>
+
+                    <label class="opcion" style="margin-top:14px;"><input type="checkbox" id="entregaCopiaHabilitada"> Habilitar copia en carpeta</label>
+                    <label class="obs-label">
+                        Carpeta de destino
+                        <input id="entregaCopiaDestino" type="text" placeholder="C:\Users\...\OneDrive\Informes">
+                    </label>
+                    <p class="acciones-hint">La copia es un ZIP con el informe en PDF, HTML y JSON. No se sube a ninguna nube: queda en la carpeta que usted elija.</p>
+
+                    <div id="entregaHistorial"></div>
                 </div>
                 <div class="panel" style="margin-top:16px;">
                     <div class="panel-head">
