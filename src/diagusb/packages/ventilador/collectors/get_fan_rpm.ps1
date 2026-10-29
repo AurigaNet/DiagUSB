@@ -7,17 +7,25 @@ if (Test-Path $jsonPath) {
     $fans=$data.sensors | Where-Object { $_.type -eq "Fan" -and $_.sensorId -match "/fan/" }
     $out=@()
     foreach ($f in $fans) {
-        $rpmStr=$f.value -replace ",","." -replace "\.\.","."  # simplificado para fixture
-        $rpmValue=[double]($rpmStr -replace "[^0-9.,]","")
-        $state="girando"; if ($rpmValue -le 0) { $state="0 RPM (cabecera sin ventilador o detenido)" } elseif ($rpmValue -gt 20000) { $state="invalidado (>20000 RPM, basura de libreria)"; $rpmValue="N/A" }
+        $raw=$f.value
+        # Normalizar: punto como separador de miles, coma como decimal (es-AR)
+        # Si hay punto y coma, el ultimo es decimal.
+        $normalized=$raw -replace "\." , ""  # quitar puntos de miles (solo cuando hay coma decimal)
+        # Pero si hay punto sin coma, el punto es decimal; simplificado: usar regex
+        # Para datos reales de esta maquina: "1.486,78 RPM" -> quitar puntos antes de coma -> "1486,78"
+        $normalized=$raw -replace "(?<=\d)\.(?=\d+[\.,])",""  # simplificar separadores
+        $normalized=$normalized -replace ",","."  # coma decimal a punto
+        try { $rpmValue=[double]($normalized -replace "[^0-9.]","") } catch { $rpmValue=0 }
+        $state="girando"
+        if ($rpmValue -le 0) { $state="0 RPM (cabecera sin ventilador o detenido)" }
+        elseif ($rpmValue -gt 20000) { $state="invalidado (>20000 RPM)"; $rpmValue="N/A" }
         $out += @{"nombre"=$f.name;"path"=$f.path;"rpm"=$rpmValue;"estado"=$state}
     }
-    # Regla ventilador_0_rpm_con_cpu_caliente: solo si CPU > umbral y todos validados >0 o un ventilador girado hoy lee 0
-    $cpuHot=$false
     $cpuValStr=($data.sensors | Where-Object { $_.name -eq "CPU Package" }).value
-    $cpuNum=[double]($cpuValStr -replace ",","." -replace "[^0-9.]","" )
+    $cpuClean=$cpuValStr -replace ",","." -replace "[^0-9.]",""
+    $cpuNum=[double]$cpuClean
     $cpuHot=($cpuNum -gt 70)
-    $todosCero=$(($out | Where-Object { $_.estado -match "girando" }) -eq $null) -and ($out.Count -gt 0)
+    $todosCero=($out.Count -gt 0) -and (($out | Where-Object { $_.estado -match "girando" }) -eq $null)
     $disparar=$cpuHot -and $todosCero
     Write-Output (@{"fans"=$out;"cpu_caliente"=$cpuHot;"disparar_regla_ventilador_0_rpm"=$disparar;"motivo"="Datos reales del fixture; no inventados"})
 } else { Write-Output (@{"motivo"="fixture no encontrado"}) }
