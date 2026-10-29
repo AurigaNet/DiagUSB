@@ -175,6 +175,25 @@ try {
             Falla ("falta {0}" -f $nombre)
         }
     }
+
+    # --- 8) Live USB y verificacion estricta del kit ---
+    Write-Host '8) Live USB y verificacion estricta'
+    foreach ($nombre in @('LIVE_USB.md', 'tools\tools.manifest.json')) {
+        $ruta = Join-Path $Kit $nombre
+        if (Test-Path -LiteralPath $ruta -PathType Leaf) {
+            Ok $nombre
+        }
+        else {
+            Falla ("falta {0}" -f $nombre)
+        }
+    }
+    $code = Invocar -Argumentos @('-I', '-B', '-m', 'diagusb', 'live-usb') -Log (Join-Path $tmp 'live-usb.log')
+    if ($code -ne 0) { Falla ("live-usb salio con codigo {0}" -f $code) }
+    else { Ok 'live-usb OK' }
+
+    $code = Invocar -Argumentos @('-I', '-B', '-m', 'diagusb', 'verificar-kit', $Kit, '--estricto') -Log (Join-Path $tmp 'verificar-kit.log')
+    if ($code -ne 0) { Falla ("verificar-kit salio con codigo {0}" -f $code) }
+    else { Ok 'verificar-kit --estricto OK' }
 }
 finally {
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue

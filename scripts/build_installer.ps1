@@ -47,6 +47,13 @@ if ($textoVersion -notmatch '__version__\s*=\s*"([^"]+)"') {
     throw "No se pudo leer __version__ de $VersionPy"
 }
 $Version = $Matches[1]
+$partesVersion = ($Version -split '-')[0] -split '\.'
+$VersionNumerica = if ($partesVersion.Count -eq 3) {
+    ($partesVersion -join '.') + '.0'
+}
+else {
+    $partesVersion -join '.'
+}
 
 Escribir-Paso "Verificando dependencias de build"
 & $Python -c "import PyInstaller, PIL" 2>$null
@@ -95,7 +102,7 @@ $textoIss = [System.IO.File]::ReadAllText($Iss, [System.Text.Encoding]::UTF8)
 
 Push-Location $Repo
 try {
-    & $Iscc "/DMiAppVersion=$Version" 'installer\DiagUSB.iss'
+    & $Iscc "/DMiAppVersion=$Version" "/DMiAppVersionNumerica=$VersionNumerica" 'installer\DiagUSB.iss'
     if ($LASTEXITCODE -ne 0) { throw "Fallo Inno Setup." }
 }
 finally {

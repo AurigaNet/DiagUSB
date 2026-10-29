@@ -56,11 +56,50 @@ jobs:
         shell: pwsh
         run: scripts\probar_kit.ps1 -Kit dist\kit\DiagUSB
 
+      - name: Verificar el kit y generar los artefactos de publicacion
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          $texto = Get-Content src\diagusb\_version.py -Raw
+          if ($texto -notmatch '__version__\s*=\s*"([^"]+)"') {
+            throw 'No se pudo leer __version__ de src/diagusb/_version.py'
+          }
+          $version = $Matches[1]
+          $zip = (Get-ChildItem dist\kit -Filter 'DiagUSB-kit-*.zip' -File | Select-Object -First 1).FullName
+          if (-not $zip) { throw 'No se genero el ZIP del kit.' }
+
+          $env:PYTHONPATH = 'src'
+          python -X utf8 -m diagusb verificar-kit $zip --estricto
+          if ($LASTEXITCODE -ne 0) { throw 'El kit no paso la verificacion estricta.' }
+
+          $tag = if ($env:TAG) { $env:TAG } else { "v$version" }
+          $fecha = Get-Date -Format 'yyyy-MM-dd'
+          python -X utf8 -m diagusb notas-release --version $version --tag $tag `
+            --artefacto $zip --salida "NOTAS-$version.md" `
+            --json-salida release.json --fecha $fecha
+          if ($LASTEXITCODE -ne 0) { throw 'No se generaron las notas de publicacion.' }
+
+          $lineas = @()
+          foreach ($archivo in @($zip, "NOTAS-$version.md", 'release.json')) {
+            if (-not (Test-Path -LiteralPath $archivo -PathType Leaf)) {
+              throw "Falta el artefacto $archivo"
+            }
+            $hash = (Get-FileHash -LiteralPath $archivo -Algorithm SHA256).Hash.ToLowerInvariant()
+            $lineas += ("{0}  {1}" -f $hash, (Split-Path -Leaf $archivo))
+          }
+          $lineas | Set-Content -Encoding ascii SHA256SUMS.txt
+          Get-Content SHA256SUMS.txt
+
       - name: Subir el artefacto del kit
         uses: actions/upload-artifact@v4
         with:
           name: diagusb-kit
-          path: dist\kit\DiagUSB-kit-*.zip
+          path: |
+            dist\kit\DiagUSB-kit-*.zip
+            NOTAS-*.md
+            SHA256SUMS.txt
+            release.json
 
   release:
     needs: build
@@ -75,36 +114,37 @@ jobs:
         with:
           name: diagusb-kit
 
-      - name: Calcular el SHA-256 y publicar el release
+      - name: Verificar los artefactos y publicar el release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: |
-          $zip = (Get-ChildItem -Filter 'DiagUSB-kit-*.zip' | Select-Object -First 1).FullName
-          if (-not $zip) { throw 'No se encontro el zip del kit.' }
-          $zipName = [System.IO.Path]::GetFileName($zip)
-          $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
-          "$hash  $zipName" | Set-Content -Encoding ascii SHA256SUMS.txt
-          Get-Content SHA256SUMS.txt
-          $notas = @"
-          Kit portable de DiagUSB (Python embebido + codigo fuente).
+          if (-not (Test-Path -LiteralPath 'SHA256SUMS.txt' -PathType Leaf)) {
+            throw 'Falta SHA256SUMS.txt en el artefacto descargado.'
+          }
+          foreach ($linea in (Get-Content -LiteralPath 'SHA256SUMS.txt')) {
+            if ([string]::IsNullOrWhiteSpace($linea)) { continue }
+            $partes = $linea -split '\s+', 2
+            if ($partes.Count -ne 2) { throw "Linea invalida en SHA256SUMS.txt: $linea" }
+            $nombre = $partes[1]
+            if (-not (Test-Path -LiteralPath $nombre -PathType Leaf)) {
+              throw "Falta el archivo $nombre"
+            }
+            $hash = (Get-FileHash -LiteralPath $nombre -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($hash -ne $partes[0].ToLowerInvariant()) {
+              throw "El SHA-256 de $nombre no coincide con SHA256SUMS.txt"
+            }
+            Write-Host "OK $nombre"
+          }
 
-          Archivos publicados:
-          - $zipName
-          - SHA256SUMS.txt
+          $zip = (Get-ChildItem -Filter 'DiagUSB-kit-*.zip' -File | Select-Object -First 1).FullName
+          $notas = (Get-ChildItem -Filter 'NOTAS-*.md' -File | Select-Object -First 1).FullName
+          if (-not $zip -or -not $notas) { throw 'Faltan el ZIP o las notas de publicacion.' }
 
-          Verificacion en PowerShell:
-          1. Descargue ambos archivos en la misma carpeta.
-          2. Ejecute: Get-FileHash -Algorithm SHA256 .\$zipName
-          3. Compare el hash obtenido con la linea de SHA256SUMS.txt.
-
-          El ZIP no tiene firma Authenticode; su integridad se verifica con SHA-256. El interprete python\python.exe si esta firmado por Python Software Foundation.
-
-          El kit incluye LICENSE, LEGAL.md, THIRD_PARTY_NOTICES.md y CHANGELOG.md.
-          Windows 10 validado; Windows 11 aun no probado.
-          "@
-          $opciones = @('release', 'create', $env:TAG, $zip, 'SHA256SUMS.txt', '--title', $env:TAG, '--notes', $notas)
+          $opciones = @('release', 'create', $env:TAG, $zip, $notas,
+            'SHA256SUMS.txt', 'release.json',
+            '--title', $env:TAG, '--notes-file', $notas)
           if ($env:TAG -match '-rc') { $opciones += '--prerelease' }
           gh @opciones

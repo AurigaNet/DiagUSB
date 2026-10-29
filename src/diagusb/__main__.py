@@ -7,6 +7,7 @@ import sys
 sys.dont_write_bytecode = True
 
 import argparse
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -511,6 +512,50 @@ def cmd_live_usb(args) -> int:
         return 1
 
 
+def cmd_verificar_kit(args) -> int:
+    """Verifica un kit en carpeta o ZIP contra su SHA256SUMS.txt."""
+    from .core import publicacion
+
+    try:
+        resultado = publicacion.verificar_kit(args.ruta, estricto=args.estricto)
+    except (OSError, ValueError) as exc:
+        print(f"Error: {exc}")
+        return 1
+    if args.json:
+        print(json.dumps(resultado, ensure_ascii=False, indent=2))
+    else:
+        print(publicacion.formatear_verificacion(resultado))
+    return 0 if resultado["ok"] else 1
+
+
+def cmd_notas_release(args) -> int:
+    """Genera las notas de publicacion desde el CHANGELOG y los artefactos."""
+    from .core import publicacion
+
+    raiz = Path(__file__).resolve().parents[2]
+    changelog = Path(args.changelog) if args.changelog else raiz / "CHANGELOG.md"
+    try:
+        texto_changelog = changelog.read_text(encoding="utf-8")
+        generado = publicacion.generar_notas(
+            args.version, args.tag, args.artefacto, texto_changelog,
+            fecha=args.fecha,
+        )
+        destino = Path(args.salida)
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        destino.write_text(generado["texto"], encoding="utf-8")
+        if args.json_salida:
+            publicacion.escribir_metadatos(generado["metadatos"], args.json_salida)
+    except (OSError, ValueError) as exc:
+        print(f"Error: {exc}")
+        return 1
+    print(f"Notas escritas: {destino}")
+    if args.json_salida:
+        print(f"Metadatos escritos: {args.json_salida}")
+    for artefacto in generado["metadatos"]["artefactos"]:
+        print(f"  {artefacto['sha256']}  {artefacto['nombre']}")
+    return 0
+
+
 def construir_parser() -> argparse.ArgumentParser:
     """Construye el parser de argumentos de la linea de comandos."""
     parser = argparse.ArgumentParser(
@@ -526,6 +571,8 @@ Ejemplos:
   python -m diagusb web                       # Interfaz web en http://localhost:8080
   python -m diagusb live-usb                  # Estado de las imagenes del live USB
   python -m diagusb live-usb --verificar tools\\downloads
+  python -m diagusb verificar-kit DiagUSB-kit-0.1.0.zip --estricto
+  python -m diagusb notas-release --version 0.1.0 --tag v0.1.0 --artefacto kit.zip --salida NOTAS.md
         """
     )
 
@@ -576,6 +623,34 @@ Ejemplos:
         "--verificar", metavar="CARPETA",
         help="Verificar el SHA-256 de las imagenes descargadas en CARPETA")
 
+    # Comando verificar-kit
+    kit_parser = subparsers.add_parser(
+        "verificar-kit", help="Verificar un kit armado contra su SHA256SUMS.txt")
+    kit_parser.add_argument("ruta", metavar="RUTA",
+                            help="Carpeta del kit o archivo DiagUSB-kit-<version>.zip")
+    kit_parser.add_argument(
+        "--estricto", action="store_true",
+        help="Fallar tambien si hay archivos que no figuran en SHA256SUMS.txt")
+    kit_parser.add_argument("--json", action="store_true",
+                            help="Imprimir el resultado en JSON")
+
+    # Comando notas-release
+    notas_parser = subparsers.add_parser(
+        "notas-release", help="Generar notas de publicacion desde el CHANGELOG")
+    notas_parser.add_argument("--version", required=True, help="Version declarada")
+    notas_parser.add_argument("--tag", required=True, help="Tag, por ejemplo v0.1.0")
+    notas_parser.add_argument(
+        "--artefacto", action="append", required=True, metavar="ARCHIVO",
+        help="Artefacto a publicar; repetir por cada archivo")
+    notas_parser.add_argument("--salida", required=True, metavar="ARCHIVO",
+                              help="Archivo Markdown de notas")
+    notas_parser.add_argument("--json-salida", metavar="ARCHIVO",
+                              help="Archivo JSON con version, tag y hashes")
+    notas_parser.add_argument("--changelog", metavar="ARCHIVO",
+                              help="CHANGELOG a usar (por defecto, el del repositorio)")
+    notas_parser.add_argument("--fecha", metavar="AAAA-MM-DD",
+                              help="Fecha de publicacion (por defecto, hoy)")
+
     return parser
 
 
@@ -591,7 +666,9 @@ def main():
     except (AttributeError, ValueError):
         pass
 
-    show_banner()
+    # Los comandos de publicacion emiten texto o JSON para automatizacion
+    if args.command not in ("verificar-kit", "notas-release"):
+        show_banner()
 
     # Elevar a Administrador solo si se pidio explicitamente con --elevar
     if args.elevar and args.command in (None, "diagnose", "snapshot"):
@@ -630,6 +707,10 @@ def main():
                    comando=comando_relanzable("diagusb"))
     elif args.command == "live-usb":
         sys.exit(cmd_live_usb(args))
+    elif args.command == "verificar-kit":
+        sys.exit(cmd_verificar_kit(args))
+    elif args.command == "notas-release":
+        sys.exit(cmd_notas_release(args))
 
 
 if __name__ == "__main__":

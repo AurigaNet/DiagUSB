@@ -68,6 +68,23 @@ jobs:
         shell: cmd
         run: scripts\build_exe.cmd
 
+      - name: Verificar el ejecutable y los datos del live USB
+        shell: pwsh
+        run: |
+          $exe = 'dist\diagusb\diagusb.exe'
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
+            throw "No se genero $exe"
+          }
+          & $exe --version
+          if ($LASTEXITCODE -ne 0) { throw 'diagusb.exe --version fallo.' }
+          foreach ($rel in @('_internal\manifiesto_hashes.json', '_internal\tools\tools.manifest.json', '_internal\LIVE_USB.md')) {
+            $ruta = Join-Path 'dist\diagusb' $rel
+            if (-not (Test-Path -LiteralPath $ruta -PathType Leaf)) {
+              throw "Falta $rel en el ejecutable."
+            }
+            Write-Host "OK $rel"
+          }
+
       - name: Comprimir el ejecutable sin firmar
         shell: pwsh
         run: tar -a -c -f diagusb-unsigned.zip -C dist diagusb

@@ -13,11 +13,12 @@ Documento de limitaciones y estado actual del proyecto.
 - Interfaz web local (barra lateral azul marino y tarjetas blancas; diagnosticos rapidos, revision total, snapshot ANTES/DESPUES + comparacion, editor de KB, registro de analisis, entrega opcional y panel de inicio con graficas de metricas)
 - Informe .doc con graficos PNG incrustados verificado en Word 16.0 (Windows 10): torta de severidad, dona de discos, barra de memoria y barras por estado se muestran como imagenes
 - Arranque sin UAC: la elevacion a Administrador es a pedido (boton "Dar permisos de administrador" en la interfaz web, o flag `--elevar`); por defecto corre en modo estandar
-- Kit portable con Python embebido (`DiagUSB-kit-<version>.zip`, armado con `scripts\armar_kit.ps1`), verificado con prueba de humo (`scripts\probar_kit.ps1`: integridad SHA-256, firma PSF del interprete, diagnostico real y PDF)
+- Kit portable con Python embebido (`DiagUSB-kit-<version>.zip`, armado con `scripts\armar_kit.ps1`), verificado con prueba de humo (`scripts\probar_kit.ps1`: integridad SHA-256, firma PSF del interprete, diagnostico real, PDF, live USB y `verificar-kit --estricto`)
+- Publicacion local reproducible (`scripts\publicar_release.ps1`): suite, kit, verificacion estricta del ZIP, prueba de humo, notas desde el CHANGELOG, `release.json` y `SHA256SUMS.txt`; no firma ni sube nada
 - Ejecutable portable con PyInstaller (`dist\diagusb\diagusb.exe`) como variante opcional, verificado con diagnose y reportes
 - Registro persistente de analisis (`config/registro_analisis.json`): auto-guardado, consulta, borrado individual y borrado total
 - Entrega opcional del informe (`core/entrega.py`): correo SMTP y copia en carpeta local como ZIP (PDF, HTML y JSON), apagada por defecto y con consentimiento explicito en cada envio; contrasena del correo en memoria o cifrada con DPAPI de Windows, nunca en texto plano
-- Suite de pruebas unitarias (358 pruebas; 357 pasan y 1 manual se omite por defecto)
+- Suite de pruebas unitarias (380 pruebas; 379 pasan y 1 manual se omite por defecto)
 
 ### Pendiente de validacion
 - Windows 11 (validado hasta ahora en Windows 10)
@@ -26,12 +27,15 @@ Documento de limitaciones y estado actual del proyecto.
 - Prueba del boton "Dar permisos de administrador" (UAC) del kit y del exe portable en una segunda cuenta/maquina
 - Kit armado con Python embebido: comportamiento bajo EDR (igual que el exe) y copia al pendrive en volumenes formateados en distintos sistemas de archivos
 - Diferentes contextos de permisos (equipo sin elevacion disponible)
+- Flujo de publicacion con un tag real y un release de GitHub: las notas, `release.json` y `SHA256SUMS.txt` se validaron en local y con kits sinteticos, pero no se creo un release real desde este entorno; el instalador tampoco se reconstruyo en esta fase
+- Verificacion de `verificar-kit` sobre un kit descargado de GitHub: falta descargar un release publicado y comprobar el ZIP con el comando y con `probar_kit.ps1`
 
 ## Restricciones conocidas
 
 ### Integridad
 - El manifiesto de hashes (`manifiesto_hashes.json`) detecta corrupcion y modificaciones accidentales de los colectores, pero NO protege contra un atacante con acceso de escritura al pendrive: puede modificar el manifiesto junto con los colectores.
 - El kit se apoya en `SHA256SUMS.txt` (integridad de todos los archivos) y en la firma del interprete embebido (Python Software Foundation). El kit como conjunto NO lleva firma digital propia; la proteccion contra un atacante con acceso de escritura es la firma digital del ejecutable (variante opcional, fuera del alcance actual).
+- `verificar-kit --estricto` comprueba que el contenido del ZIP coincida con su `SHA256SUMS.txt`, pero el manifiesto viaja dentro del propio ZIP: si alguien reemplaza el ZIP completo y su manifiesto, la comprobacion no detecta la sustitucion. Para eso hay que comparar el SHA-256 del ZIP con el publicado en las notas o en `SHA256SUMS.txt` del release.
 
 ### Arquitectura
 - PowerShell 5.1 minimo para colectores

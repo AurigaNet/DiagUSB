@@ -8,6 +8,11 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ### Agregado
 
+- Publicación reproducible: `scripts\publicar_release.ps1` (y su `.cmd`) ejecuta la suite, arma el kit, verifica el ZIP en modo estricto, corre la prueba de humo, construye opcionalmente el instalador y deja en `dist\release\<version>\` los artefactos, las notas, `release.json` y `SHA256SUMS.txt`. Falla cerrado si algo no coincide.
+- `core/publicacion.py`: validación de versión y tag (`v<version>` o `v<version>-rcN`), extracción de la sección del CHANGELOG, generación de notas desde datos reales y verificación de un kit en carpeta o ZIP contra su `SHA256SUMS.txt`, incluidos archivos obligatorios, rutas peligrosas, `__pycache__` y archivos ajenos en modo estricto.
+- Subcomandos `python -m diagusb verificar-kit RUTA [--estricto] [--json]` y `python -m diagusb notas-release --version V --tag vV --artefacto ARCHIVO --salida NOTAS.md [--json-salida release.json]`.
+- `docs/PUBLICACION.md`: reglas de versión, tag y CHANGELOG, flujo local, flujo de GitHub Actions, verificación de una descarga, firma y casos en que no se debe publicar.
+- Pruebas unitarias `tests/test_publicacion.py` sobre versión/tag, secciones del CHANGELOG, notas con hashes reales, kits sintéticos en carpeta y ZIP (hash distinto, faltantes, extras, rutas peligrosas, `__pycache__`), CLI y coherencia del workflow y del instalador.
 - Live USB opcional y manual: manifiesto `tools/tools.manifest.json` con SystemRescue 13.02 (GPL-3.0) y memtest86+ 9.00 (GPL-2.0), incluyendo URL, versión, SHA-256 y licencia tomados de las fuentes oficiales el 2026-10-28. Ventoy, WinPE, Sysinternals y Npcap quedan excluidos con su motivo documentado.
 - `core/live_usb.py`: estado del manifiesto, evaluación de cada herramienta con fallo cerrado (URL, versión, SHA-256, licencia y dominio oficial) y verificación de los archivos descargados sin descargar, formatear ni escribir.
 - Subcomando `python -m diagusb live-usb [--verificar CARPETA]`, endpoint `GET /api/live-usb` y panel «Pendrive de arranque» en Configuración con el estado, la versión, la licencia y el motivo de cada herramienta.
@@ -41,6 +46,9 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ### Cambiado
 
+- `scripts\armar_kit.ps1` acepta `-Python` para indicar el intérprete de desarrollo (sin depender del alias `python` del sistema) y `scripts\probar_kit.ps1` agrega una octava comprobación: manifiesto de live USB, guía `LIVE_USB.md`, `live-usb` y `verificar-kit --estricto` sobre el propio kit.
+- El workflow `build-kit.yml` genera las notas y `release.json` desde el CHANGELOG, calcula `SHA256SUMS.txt` y, antes de publicar, recalcula el SHA-256 de cada artefacto descargado y lo compara; si falta un archivo o no coincide, no crea el release. `build-firma.yml` verifica que el ejecutable arranque y que el manifiesto de live USB y su guía estén dentro del paquete de PyInstaller.
+- El instalador deriva `VersionInfoVersion` de la versión del build (con relleno numérico de cuatro componentes) en lugar de tener `0.1.0.0` fijo.
 - Rediseño visual de la interfaz: barra lateral azul marino con navegación clara, fondo gris suave, tarjetas y paneles blancos con borde y sombra discretos, tipografía y estados de color con contraste sobre blanco. Los formularios, la base de conocimiento, el registro y la configuración usan el mismo lenguaje visual.
 - Panel de resultados unificado: la vista de Diagnósticos, el Historial y el nuevo panel «Último análisis» de Inicio comparten la misma tarjeta de resultado (título, insignia de estado, conteos y puntaje), en lugar de estilos distintos por vista.
 - Gráficos del inicio adaptados a fondo claro: el texto del puntaje y de la dona de severidad pasan a color oscuro y las pistas de los anillos a gris claro, para que se lean sobre las tarjetas blancas.
@@ -53,7 +61,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 ### Corregido
 
 - Documentación: el registro de la versión 0.1.0 anunciaba un comando `report` que nunca existió en la CLI. Los comandos reales son `diagnose`, `snapshot`, `compare`, `list-packages` y `web`; los informes HTML/DOC/PDF los genera `diagnose`. Se conserva la entrada histórica y se deja esta corrección explícita.
-- Documentación: las cifras de pruebas y de paquetes quedaron unificadas con el código real (20 paquetes y 358 pruebas, de las cuales 357 pasan y 1 es manual y se omite por defecto).
+- Documentación: las cifras de pruebas y de paquetes quedaron unificadas con el código real (20 paquetes y 380 pruebas, de las cuales 379 pasan y 1 es manual y se omite por defecto).
 - Documentación: `docs/LIMITACIONES.md` decía que la conectividad no hacía ping real; el colector ejecuta ICMP y DNS reales desde hace varias versiones. Se corrigió la limitación.
 - Pruebas: `tests/run_tests.py` ahora descubre y ejecuta todos los `tests/test_*.py` con pytest, en lugar de importar una lista fija de seis suites.
 

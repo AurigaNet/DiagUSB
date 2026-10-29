@@ -10,7 +10,8 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$Salida,
-    [string]$PythonZip
+    [string]$PythonZip,
+    [string]$Python = 'python'
 )
 
 Set-StrictMode -Version Latest
@@ -137,7 +138,7 @@ Write-Host "Colectores compartidos en: $colDst"
 
 # 3c) manifiesto de hashes (core/integridad.py lo busca en <raiz-kit>/manifiesto_hashes.json)
 $manifiesto = Join-Path $KitRoot 'manifiesto_hashes.json'
-python -X utf8 (Join-Path $Repo 'scripts\generar_manifiesto.py') $manifiesto
+& $Python -X utf8 (Join-Path $Repo 'scripts\generar_manifiesto.py') $manifiesto
 if ($LASTEXITCODE -ne 0) { throw 'Fallo la generacion del manifiesto de hashes.' }
 if (-not (Test-Path -LiteralPath $manifiesto)) { throw "No se genero el manifiesto: $manifiesto" }
 

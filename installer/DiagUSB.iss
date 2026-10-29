@@ -5,6 +5,10 @@
   #define MiAppVersion "0.1.0"
 #endif
 
+#ifndef MiAppVersionNumerica
+  #define MiAppVersionNumerica "0.1.0.0"
+#endif
+
 #define MiAppName "DiagUSB"
 #define MiAppPublisher "Daniel Ricardo Novoa"
 #define MiAppURL "https://github.com/AurigaNet/DiagUSB"
@@ -21,7 +25,7 @@ AppPublisherURL={#MiAppURL}
 AppSupportURL={#MiAppURL}
 AppUpdatesURL={#MiAppURL}
 AppCopyright=Copyright (C) 2026 Daniel Ricardo Novoa
-VersionInfoVersion=0.1.0.0
+VersionInfoVersion={#MiAppVersionNumerica}
 VersionInfoProductName={#MiAppName}
 VersionInfoDescription=Instalador de DiagUSB
 VersionInfoCompany={#MiAppPublisher}

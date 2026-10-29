@@ -194,7 +194,7 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 ### 5.12 CLI (`__main__.py`)
 
 - Sin argumentos → menú interactivo (lista paquetes/síntomas, ejecuta diagnóstico, genera informes).
-- Subcomandos: `diagnose --package X --symptom Y --output-dir DIR`, `snapshot [-p paquete] -o archivo`, `compare antes.json despues.json`, `list-packages`, `web [--port]`, `live-usb [--verificar CARPETA]`.
+- Subcomandos: `diagnose --package X --symptom Y --output-dir DIR`, `snapshot [-p paquete] -o archivo`, `compare antes.json despues.json`, `list-packages`, `web [--port]`, `live-usb [--verificar CARPETA]`, `verificar-kit RUTA [--estricto] [--json]`, `notas-release --version V --tag vV --artefacto ARCHIVO --salida NOTAS.md [--json-salida RELEASE.json]`.
 - Flags globales: `--yes` (no preguntar), `--open` (abrir navegador), `--elevar` (pedir permisos de Administrador; opt-in) y `--no-elevate` (compatibilidad, sin efecto).
 - El CLI **no** eleva automáticamente: arranca en modo estándar y solo pide permisos si se pasa `--elevar`.
 
@@ -213,6 +213,16 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 - **API y UI**: `GET /api/live-usb` devuelve el resumen y el panel «Pendrive de arranque» de Configuración muestra herramienta, estado, versión, licencia y motivo.
 - **Script auxiliar**: `scripts/verificar_live_usb.ps1` (y su `.cmd`) hace la misma verificación con `Get-FileHash`, sin Python, en modo solo lectura. `scripts/fetch_tools.ps1` descarga solo entradas `verificado` y falla cerrado con las demás.
 - **Kit**: `armar_kit.ps1` copia `tools/tools.manifest.json` y `docs/LIVE_USB.md` para que el estado y la guía estén disponibles sin conexión; los `datas` de PyInstaller incluyen los mismos archivos.
+
+### 5.15 Publicación (`core/publicacion.py`, `scripts/publicar_release.ps1`)
+
+- **Alcance**: prepara una publicación local reproducible sin firmar ni subir nada. La distribución principal sigue siendo el kit portable; el instalador es opcional.
+- **Validación de versión y tag**: `version_declarada` lee `src/diagusb/_version.py`; `validar_tag` acepta `v<version>` y `v<version>-rcN` y falla cerrado con cualquier otro tag.
+- **Notas**: `seccion_changelog` usa primero `## [Sin publicar]` (cambios que se publican ahora) y si no existe `## [<version>]`. `generar_notas` calcula el SHA-256 y el tamaño reales de cada artefacto, arma la tabla, copia el cuerpo del CHANGELOG y agrega el alcance y los límites; no inventa versiones, URLs ni hashes. `notas-release` escribe el Markdown y, opcionalmente, `release.json`.
+- **Verificación de kit**: `verificar_kit` acepta una carpeta o un ZIP, localiza su `SHA256SUMS.txt`, resuelve el prefijo `DiagUSB/`, comprueba cada hash, exige los archivos obligatorios (intérprete, manifiesto de hashes, fuente, paquetes, colectores compartidos, manifiesto y guía de live USB, documentos legales) y detecta rutas peligrosas, `__pycache__`/`.pyc` y archivos ajenos. En modo `--estricto` los archivos ajenos son fallo, salvo `config/`, `reports/` y `tools/downloads/`; nunca escribe nada.
+- **Flujo local**: `scripts\publicar_release.ps1` ejecuta la suite, arma el kit, verifica el ZIP en modo estricto, corre `probar_kit.ps1`, construye opcionalmente el instalador, copia los artefactos a `dist\release\<version>\`, genera notas y `release.json`, y escribe `SHA256SUMS.txt`. Cualquier fallo detiene el proceso.
+- **CI**: `build-kit.yml` valida el tag contra la versión, ejecuta la suite, arma y prueba el kit, lo verifica en modo estricto, genera notas y sumas, y en el job de release recalcula cada hash antes de `gh release create --notes-file`. `build-firma.yml` verifica que el ejecutable arranque y que el manifiesto de live USB y su guía estén en el paquete de PyInstaller.
+- **Límites**: el flujo se ejecutó en local con el kit real armado; no se creó un tag ni un release de GitHub desde este entorno, y el instalador no se reconstruyó. Ver `docs/PUBLICACION.md` y `PENDIENTES.md`.
 
 ## 6. Formatos de datos principales
 
@@ -297,7 +307,7 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 ## 9. Estrategia de pruebas
 
 - **Con pytest**: `python tests\run_tests.py` descubre todos los `test_*.py` y ejecuta pytest (también `python -m pytest -q`); las suites (modelos, reglas, registry, KB, informes, elevación, registro) se ejecutan directamente con pytest.
-- **358 pruebas** (357 pasan y 1 manual se omite por defecto). Cubren, entre otros: creación de modelos; reglas con fixtures (spooler caído, WiFi débil, BSOD, drivers); descubrimiento de paquetes; KB (guardar/editar/eliminar en archivo temporal, embebida intacta); informes (PDF bytes, HTML, sección de diferencias, `_resumen_datos`, código de verificación); elevación (comandos, rechazo UAC simulado, hijo que sirve puerto); registro persistente (guardado, poda, full-scan, y **endpoints HTTP reales** con servidor en hilo sobre puerto efímero); endurecimiento web de Ronda 2 (bind local, token de sesión, `Host`/`Origin`, `Content-Type`, límite de cuerpo, rutas 404); escritura atómica y preservación de JSON corrupto; identidad del equipo en la comparación (mismo equipo / distinto / forzado); integridad de colectores (hash correcto, archivo alterado, manifiesto ausente); resolución de rutas portables (congelado vs desarrollo vs respaldo `%LOCALAPPDATA%`); y la Ronda 11 (arranque sin UAC, `POST /api/elevar` con y sin token, colector `denied` en reglas y línea de alcance en los informes).
+- **380 pruebas** (379 pasan y 1 manual se omite por defecto). Cubren, entre otros: creación de modelos; reglas con fixtures (spooler caído, WiFi débil, BSOD, drivers); descubrimiento de paquetes; KB (guardar/editar/eliminar en archivo temporal, embebida intacta); informes (PDF bytes, HTML, sección de diferencias, `_resumen_datos`, código de verificación); elevación (comandos, rechazo UAC simulado, hijo que sirve puerto); registro persistente (guardado, poda, full-scan, y **endpoints HTTP reales** con servidor en hilo sobre puerto efímero); endurecimiento web de Ronda 2 (bind local, token de sesión, `Host`/`Origin`, `Content-Type`, límite de cuerpo, rutas 404); escritura atómica y preservación de JSON corrupto; identidad del equipo en la comparación (mismo equipo / distinto / forzado); integridad de colectores (hash correcto, archivo alterado, manifiesto ausente); resolución de rutas portables (congelado vs desarrollo vs respaldo `%LOCALAPPDATA%`); y la Ronda 11 (arranque sin UAC, `POST /api/elevar` con y sin token, colector `denied` en reglas y línea de alcance en los informes).
 - Los colectores se validan contra Windows real (no hay mocks de PowerShell en la suite); las pruebas unitarias simulan `run_powershell` solo donde se prueba el conteo de estados.
 - Verificación manual periódica: full-scan completo sobre un equipo de prueba, `node --check` del JS embebido, smoke test del exe reconstruido.
 

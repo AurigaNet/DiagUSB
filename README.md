@@ -74,23 +74,28 @@ python -m diagusb list-packages
 ## Pruebas y build
 
 ```
-python tests\run_tests.py                        # suite completa (358 pruebas; 1 manual omitida por defecto)
+python tests\run_tests.py                        # suite completa (380 pruebas; 1 manual omitida por defecto)
 scripts\armar_kit.cmd -Salida dist\kit           # arma el kit (Python embebido + fuente) y lo comprime
 scripts\probar_kit.ps1 -Kit dist\kit\DiagUSB     # prueba de humo del kit
+python -m diagusb verificar-kit dist\kit\DiagUSB-kit-0.1.0.zip --estricto   # integridad del ZIP
+scripts\publicar_release.ps1                     # publicacion local: pruebas, kit, notas y SHA256SUMS
 scripts\build_exe.cmd                            # reconstruye dist\diagusb\diagusb.exe (variante opcional)
 ```
+
+El procedimiento completo de version, tag, notas y publicacion esta en
+[`docs/PUBLICACION.md`](docs/PUBLICACION.md).
 
 ## Estructura
 
 - `src/diagusb/`: paquete principal (`core/` motor, `packages/` los 20 paquetes de diagnóstico, `web_server.py` interfaz local).
 - `collectors/`: utilidades PowerShell compartidas (`_common.ps1`).
 - `config/`: datos locales (base de conocimiento editable y registro de análisis) — no versionados.
-- `docs/`: decisiones, legal, limitaciones, matriz de permisos y guía para alumnos.
-- `tests/`: pruebas unitarias (modelos, reglas, registry, KB, informes, elevación, registro).
+- `docs/`: decisiones, legal, limitaciones, guía para alumnos, live USB y publicación.
+- `tests/`: pruebas unitarias (modelos, reglas, registry, KB, informes, elevación, registro, publicación).
 - `reports/`: snapshots y salidas locales — no versionado.
 - `build/`, `dist/`: salidas de PyInstaller — no versionadas.
 - `tools/`: manifiesto de herramientas externas.
-- `scripts/`: utilidades locales para el técnico (`armar_kit.*`, `probar_kit.ps1`, `armar_pendrive.*`, `build_exe.cmd`).
+- `scripts/`: utilidades locales para el técnico (`armar_kit.*`, `probar_kit.ps1`, `publicar_release.*`, `armar_pendrive.*`, `build_exe.cmd`).
 - `scripts/kit/`: plantillas de los lanzadores del kit (`Iniciar_DiagUSB.cmd`, `Iniciar_DiagUSB_consola.cmd`).
 
 ## Restricciones del proyecto
@@ -113,6 +118,7 @@ El kit no es un ejecutable propio: es código fuente Python que corre con el int
 
 - **Firma del intérprete**: los binarios de `python\` están firmados por Python Software Foundation (y por Microsoft para `vcruntime*`). Verifique con `Get-AuthenticodeSignature python\python.exe` (debe mostrar `Status: Valid`); el lanzador `Iniciar_DiagUSB.cmd` ya comprueba esa firma antes de arrancar.
 - **Integridad de archivos**: `SHA256SUMS.txt` (dentro del kit) usa el formato `<hash>  <ruta>` con `/` y rutas relativas a la raíz del zip (`DiagUSB/...`). Verifique con:
+  - `python -m diagusb verificar-kit <kit.zip> --estricto` (verifica hashes, archivos obligatorios y que no haya archivos ajenos).
   - `scripts\probar_kit.ps1 -Kit <carpeta del kit>` (verifica todo el kit, la firma, un diagnóstico real y el PDF).
   - `sha256sum -c SHA256SUMS.txt`, desde la carpeta del kit (Linux/macOS/Git Bash).
 
