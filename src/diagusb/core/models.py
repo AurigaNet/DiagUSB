@@ -32,6 +32,7 @@ class QueryInfo:
     status: str = "unknown"
     duration_ms: int = 0
     timeout_seconds: int = 15
+    message: str = ""
 
 
 @dataclass

@@ -35,14 +35,20 @@ $result = New-DiagUsbCollectorResult -CollectorId 'network_neighbors' -TimeoutSe
         try { $octeto = [int]($ip.Split('.')[0]) } catch { $octeto = 0 }
         $multicast = ($octeto -ge 224 -and $octeto -le 239) -or ($ip -eq '255.255.255.255')
         $enlaceLocal = $ip -like '169.254.*'
+        $mac = [string]$vecino.LinkLayerAddress
+        # Difusion y multicast de nivel de enlace: su MAC es FF-FF-FF-FF-FF-FF,
+        # 00-00-00-00-00-00 o empieza con 01-00-5E / 33-33. No son equipos y
+        # no deben contarse como otro host de la red.
+        $difusion = ($mac -match '(?i)^(FF-FF-FF-FF-FF-FF|00-00-00-00-00-00)$') -or
+                    ($mac -match '(?i)^(01-00-5E|33-33)')
         $salida += [ordered]@{
             ip = $ip
-            mac = [string]$vecino.LinkLayerAddress
+            mac = $mac
             state = [string]$vecino.State
             interface_index = [int]$vecino.InterfaceIndex
             interface_alias = [string]$vecino.InterfaceAlias
             is_gateway = [bool]($ip -in $puertas)
-            multicast = [bool]$multicast
+            multicast = [bool]($multicast -or $difusion)
             link_local = [bool]$enlaceLocal
         }
     }

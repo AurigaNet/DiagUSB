@@ -77,7 +77,8 @@ def load_snapshot(path: Path) -> Snapshot:
             query=QueryInfo(
                 status=query_data.get("status", "unknown"),
                 duration_ms=query_data.get("duration_ms", 0),
-                timeout_seconds=query_data.get("timeout_seconds", 15)
+                timeout_seconds=query_data.get("timeout_seconds", 15),
+                message=str(query_data.get("message") or "")
             ),
             context=ContextInfo(
                 computer_name=context_data.get("computer_name", ""),

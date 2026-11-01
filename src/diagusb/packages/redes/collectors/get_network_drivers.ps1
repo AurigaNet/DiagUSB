@@ -20,7 +20,11 @@ if (-not $__diagusb_common) {
 . $__diagusb_common
 
 $result = New-DiagUsbCollectorResult -CollectorId 'network_drivers' -ScriptBlock {
-    Get-CimInstance -ClassName Win32_PnPSignedDriver | Where-Object { $_.DeviceClass -match 'Net|Adapter|Ethernet|WiFi|WLAN' } | Sort-Object -Property DeviceName | ForEach-Object {
+    # Clases de dispositivo de red. La comparacion debe ser exacta: un
+    # "SCSIADAPTER" contiene "Adapter" y no es un controlador de red.
+    Get-CimInstance -ClassName Win32_PnPSignedDriver |
+        Where-Object { $_.DeviceClass -match '(?i)^(Net|NetTrans|NetClient|NetService)$' } |
+        Sort-Object -Property DeviceName | ForEach-Object {
         $driverDate = Get-DiagUsbPropertyValue -InputObject $_ -PropertyName 'DriverDate'
         $isSigned = Get-DiagUsbPropertyValue -InputObject $_ -PropertyName 'IsSigned'
         $signer = Get-DiagUsbPropertyValue -InputObject $_ -PropertyName 'Signer'

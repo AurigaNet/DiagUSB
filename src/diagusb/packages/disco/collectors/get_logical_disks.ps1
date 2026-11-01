@@ -20,24 +20,66 @@ if (-not $__diagusb_common) {
 . $__diagusb_common
 
 $result = New-DiagUsbCollectorResult -CollectorId 'logical_disks' -ScriptBlock {
-    $disks = Get-CimInstance -ClassName Win32_LogicalDisk | Where-Object { $_.DriveType -in @(2, 3) }
-
     $items = @()
-    foreach ($disk in $disks) {
-        $totalSize = if ($disk.Size) { [math]::Round($disk.Size / 1GB, 2) } else { 0 }
-        $freeSpace = if ($disk.FreeSpace) { [math]::Round($disk.FreeSpace / 1GB, 2) } else { 0 }
-        $freePercent = if ($disk.Size -gt 0) { [math]::Round(($disk.FreeSpace / $disk.Size) * 100, 1) } else { 0 }
-        $usedPercent = [math]::Round(100 - $freePercent, 1)
 
-        $items += [ordered]@{
-            device_id = $disk.DeviceID
-            drive_type = switch ($disk.DriveType) { 2 { 'Removable' } 3 { 'Fixed' } default { 'Unknown' } }
-            total_gb = $totalSize
-            free_gb = $freeSpace
-            used_percent = $usedPercent
-            free_percent = $freePercent
-            volume_name = $disk.VolumeName
-            file_system = $disk.FileSystem
+    # Fuente principal: la API de volumenes de .NET. No depende del proveedor
+    # WMI de almacenamiento, que puede estar deshabilitado (servicio smphost
+    # detenido) y devolver Size/FreeSpace vacios sin informar error.
+    try {
+        foreach ($drive in [System.IO.DriveInfo]::GetDrives()) {
+            if ($null -eq $drive) { continue }
+            if (-not $drive.IsReady) { continue }
+            $tipo = $drive.DriveType
+            if ($tipo -ne [System.IO.DriveType]::Fixed -and
+                $tipo -ne [System.IO.DriveType]::Removable) { continue }
+
+            try {
+                $totalBytes = [double]$drive.TotalSize
+                $freeBytes = [double]$drive.AvailableFreeSpace
+            }
+            catch { continue }
+            if ($totalBytes -le 0) { continue }
+
+            $freePercent = [math]::Round(($freeBytes / $totalBytes) * 100, 1)
+            $items += [ordered]@{
+                device_id = $drive.Name.TrimEnd([char]'\')
+                drive_type = $(if ($tipo -eq [System.IO.DriveType]::Fixed) { 'Fixed' } else { 'Removable' })
+                total_gb = [math]::Round($totalBytes / 1GB, 2)
+                free_gb = [math]::Round($freeBytes / 1GB, 2)
+                used_percent = [math]::Round(100 - $freePercent, 1)
+                free_percent = $freePercent
+                volume_name = [string]$drive.VolumeLabel
+                file_system = [string]$drive.DriveFormat
+            }
+        }
+    }
+    catch {
+        # Si .NET falla se intenta el respaldo WMI.
+    }
+
+    # Respaldo: WMI, solo si .NET no devolvio unidades. Se descartan las
+    # unidades sin tamano real para no informar 0 GB ni 100% usado.
+    if ($items.Count -eq 0) {
+        $disks = @(Get-CimInstance -ClassName Win32_LogicalDisk -ErrorAction SilentlyContinue |
+            Where-Object {
+                $_.DriveType -in @(2, 3) -and
+                $null -ne $_.Size -and [double]$_.Size -gt 0
+            })
+        foreach ($disk in $disks) {
+            $totalBytes = [double]$disk.Size
+            $freeBytes = [double]$disk.FreeSpace
+            $freePercent = [math]::Round(($freeBytes / $totalBytes) * 100, 1)
+
+            $items += [ordered]@{
+                device_id = [string]$disk.DeviceID
+                drive_type = switch ($disk.DriveType) { 2 { 'Removable' } 3 { 'Fixed' } default { 'Unknown' } }
+                total_gb = [math]::Round($totalBytes / 1GB, 2)
+                free_gb = [math]::Round($freeBytes / 1GB, 2)
+                used_percent = [math]::Round(100 - $freePercent, 1)
+                free_percent = $freePercent
+                volume_name = [string]$disk.VolumeName
+                file_system = [string]$disk.FileSystem
+            }
         }
     }
 

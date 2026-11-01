@@ -183,6 +183,7 @@ def _observations_from_results(results: list) -> list[CollectorResult]:
                     status=q.get("status", "unknown"),
                     duration_ms=q.get("duration_ms", 0),
                     timeout_seconds=q.get("timeout_seconds", 15),
+                    message=str(q.get("message") or ""),
                 ),
             ))
     return observations
@@ -746,8 +747,11 @@ def run_diagnostic(package_name: str, symptom: str = None,
         return r.get("query", {}).get("status", "unknown") if isinstance(r, dict) else "error"
 
     ok = sum(1 for r in results if _status(r) == "ok")
-    errors = sum(1 for r in results if _status(r) in ("error", "timeout", "not_available", "denied"))
+    errors = sum(1 for r in results if _status(r) in ("error", "timeout"))
     empty = sum(1 for r in results if _status(r) == "empty")
+    no_disponibles = sum(1 for r in results if _status(r) == "not_available")
+    denegados = sum(1 for r in results if _status(r) == "denied")
+    no_evaluados = errors + no_disponibles + denegados
 
     is_elevated = None
     for r in results:
@@ -783,6 +787,9 @@ def run_diagnostic(package_name: str, symptom: str = None,
         "ok_count": ok,
         "error_count": errors,
         "empty_count": empty,
+        "not_available_count": no_disponibles,
+        "denied_count": denegados,
+        "no_evaluado_count": no_evaluados,
         "is_elevated": is_elevated,
         "results": results,
         "findings": findings_json,

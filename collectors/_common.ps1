@@ -105,6 +105,7 @@ function New-DiagUsbCollectorResult {
     $notes = @()
     $status = 'error'
     $data = $null
+    $mensajeQuery = ''
 
     try {
         $data = & $ScriptBlock
@@ -136,6 +137,7 @@ function New-DiagUsbCollectorResult {
         }
 
         $data = @()
+        $mensajeQuery = ($message -replace '^DIAGUSB_(NOT_AVAILABLE|DENIED|TIMEOUT):\s*', '').Trim()
     }
     finally {
         $stopwatch.Stop()
@@ -149,6 +151,7 @@ function New-DiagUsbCollectorResult {
             status = $status
             duration_ms = $stopwatch.ElapsedMilliseconds
             timeout_seconds = $TimeoutSeconds
+            message = $mensajeQuery
         }
         context = $context
         metadata = $Metadata

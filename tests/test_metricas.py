@@ -159,7 +159,11 @@ def test_campos_existentes_no_cambian():
             "results", "findings", "improvements", "integridad_fallida",
             "recommendations", "estados_accion", "timestamp"}
     assert base <= set(r)
-    assert set(r) - base == {"metricas", "identidad", "referencia"}
+    # Campos adicionales acordados: metricas, identidad, referencia y los
+    # contadores separados de estados no evaluados (no disponible/denegado).
+    assert set(r) - base == {"metricas", "identidad", "referencia",
+                             "not_available_count", "denied_count",
+                             "no_evaluado_count"}
 
 
 def test_metricas_de_results_reevalua():

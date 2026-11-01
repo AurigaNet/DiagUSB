@@ -23,10 +23,7 @@ $result = New-DiagUsbCollectorResult -CollectorId 'pending_updates' -ScriptBlock
     $moduleAvailable = Get-Module -ListAvailable -Name PSWindowsUpdate -ErrorAction SilentlyContinue
 
     if (-not $moduleAvailable) {
-        return @{
-            status = 'module_not_available'
-            message = 'El módulo PSWindowsUpdate no está instalado. Instale con: Install-Module -Name PSWindowsUpdate -Scope CurrentUser'
-        }
+        throw 'DIAGUSB_NOT_AVAILABLE: el modulo PSWindowsUpdate no esta instalado; no se pueden consultar las actualizaciones pendientes.'
     }
 
     try {
@@ -58,10 +55,7 @@ $result = New-DiagUsbCollectorResult -CollectorId 'pending_updates' -ScriptBlock
             actualizaciones = $updateList
         }
     } catch {
-        return @{
-            status = 'error'
-            message = $_.Exception.Message
-        }
+        throw ("DIAGUSB_NOT_AVAILABLE: no se pudo consultar PSWindowsUpdate: " + $_.Exception.Message)
     }
 }
 

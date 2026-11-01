@@ -19,7 +19,7 @@ if (-not $__diagusb_common) {
 }
 . $__diagusb_common
 
-$result = New-DiagUsbCollectorResult -CollectorId 'disk_performance' -ScriptBlock {
+$result = New-DiagUsbCollectorResult -CollectorId 'disk_performance' -TimeoutSeconds 30 -ScriptBlock {
     $perfData = Get-CimInstance -ClassName Win32_PerfFormattedData_PerfDisk_PhysicalDisk | Where-Object { $_.Name -ne '_Total' }
 
     $items = @()

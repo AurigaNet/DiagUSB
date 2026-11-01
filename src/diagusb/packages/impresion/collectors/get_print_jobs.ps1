@@ -20,6 +20,11 @@ if (-not $__diagusb_common) {
 . $__diagusb_common
 
 $result = New-DiagUsbCollectorResult -CollectorId 'print_jobs' -ScriptBlock {
+    $spooler = Get-Service -Name 'Spooler' -ErrorAction SilentlyContinue
+    if ($null -eq $spooler -or $spooler.Status -ne 'Running') {
+        throw 'DIAGUSB_NOT_AVAILABLE: el servicio Spooler no esta en ejecucion; no se pueden enumerar trabajos de impresion.'
+    }
+
     Get-CimInstance -ClassName Win32_PrintJob | Sort-Object -Property Name | ForEach-Object {
         [ordered]@{
             name = $_.Name

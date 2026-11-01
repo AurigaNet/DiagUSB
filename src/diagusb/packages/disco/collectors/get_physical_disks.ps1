@@ -19,8 +19,92 @@ if (-not $__diagusb_common) {
 }
 . $__diagusb_common
 
-$result = New-DiagUsbCollectorResult -CollectorId 'physical_disks' -ScriptBlock {
-    $physicalDisks = @(Get-PhysicalDisk -ErrorAction Stop)
+$result = New-DiagUsbCollectorResult -CollectorId 'physical_disks' -TimeoutSeconds 30 -ScriptBlock {
+    # El modulo Storage depende del servicio smphost. Si esta detenido,
+    # Get-PhysicalDisk devuelve una lista vacia sin error y el equipo
+    # aparentaria no tener discos. Se consulta primero el servicio.
+    $proveedorStorage = $true
+    try {
+        $smphost = Get-Service -Name 'smphost' -ErrorAction SilentlyContinue
+        if ($null -ne $smphost -and $smphost.Status -ne 'Running') {
+            $proveedorStorage = $false
+        }
+    }
+    catch {
+        $proveedorStorage = $true
+    }
+
+    $physicalDisks = @()
+    if ($proveedorStorage) {
+        $physicalDisks = @(Get-PhysicalDisk -ErrorAction SilentlyContinue)
+    }
+
+    # Respaldo sin el modulo Storage: Win32_DiskDrive + SMART.
+    if ($physicalDisks.Count -eq 0) {
+        $wmiDisks = @(Get-CimInstance -ClassName Win32_DiskDrive -ErrorAction SilentlyContinue |
+            Sort-Object -Property Index)
+        if ($wmiDisks.Count -eq 0) {
+            throw 'DIAGUSB_NOT_AVAILABLE: no se pudieron leer los discos fisicos (Storage y Win32_DiskDrive sin datos).'
+        }
+
+        $smart = @{}
+        try {
+            foreach ($sensor in @(Get-CimInstance -Namespace 'root\wmi' `
+                    -ClassName 'MSStorageDriver_FailurePredictStatus' `
+                    -ErrorAction SilentlyContinue)) {
+                if ($null -ne $sensor -and $sensor.InstanceName) {
+                    $smart[[string]$sensor.InstanceName] = $sensor
+                }
+            }
+        }
+        catch {
+            $smart = @{}
+        }
+
+        $items = @()
+        foreach ($disk in $wmiDisks) {
+            $serial = ([string]$disk.SerialNumber).Trim()
+            $estado = [string]$disk.Status
+            $prediccion = $null
+
+            $smartInfo = $null
+            $claveSmart = "$([string]$disk.PNPDeviceID)_0"
+            if ($smart.ContainsKey($claveSmart)) {
+                $smartInfo = $smart[$claveSmart]
+            }
+            else {
+                foreach ($clave in $smart.Keys) {
+                    if ($serial -and $clave -like "*$serial*") {
+                        $smartInfo = $smart[$clave]
+                        break
+                    }
+                }
+            }
+            if ($null -ne $smartInfo) {
+                $prediccion = [bool]$smartInfo.PredictFailure
+            }
+
+            $items += [ordered]@{
+                device_id = [string]$disk.Index
+                serial_number = $serial
+                friendly_name = ([string]$disk.Model).Trim()
+                bus_type = [string]$disk.InterfaceType
+                media_type = 'Unknown'
+                media_type_detalle = [string]$disk.MediaType
+                size_gb = [math]::Round(([double]$disk.Size) / 1GB, 2)
+                health_status = $(if ($prediccion -eq $true) { 'Warning' } else { $estado })
+                operational_status = $(if ($estado -eq 'OK') { 'OK' } else { $estado })
+                reliability = $null
+                reliability_motivo = 'solo estado SMART basico; sin horas, temperatura ni sectores reasignados'
+                power_on_hours = $null
+                temperature = $null
+                reallocated_sectors = $null
+                smart_predict_failure = $prediccion
+            }
+        }
+
+        return $items
+    }
 
     $jobs = [ordered]@{}
     foreach ($disk in $physicalDisks) {

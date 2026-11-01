@@ -22,7 +22,7 @@ if (-not $__diagusb_common) {
 $result = New-DiagUsbCollectorResult -CollectorId 'capture_drivers' -TimeoutSeconds 20 -ScriptBlock {
     $controladores = @()
     foreach ($driver in @(Get-CimInstance -ClassName Win32_SystemDriver -ErrorAction SilentlyContinue |
-            Where-Object { [string]$_.Name -match '(?i)^(npcap|npf|pcap)' })) {
+            Where-Object { [string]$_.Name -match '(?i)^(npcap|npcap_wifi|npf|pcap)$' })) {
         if ($null -eq $driver) { continue }
         $controladores += [ordered]@{
             name = [string]$driver.Name

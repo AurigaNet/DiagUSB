@@ -38,9 +38,24 @@ $result = New-DiagUsbCollectorResult -CollectorId 'system_performance' -ScriptBl
         [TimeSpan]::FromSeconds([double]$upTimeSeconds).ToString()
     } else { $null }
 
-    $cpuLoad = if ($processor.Count -gt 0) {
-        [math]::Round(($processor | Measure-Object -Property LoadPercentage -Average).Average, 1)
-    } else { $null }
+    # La carga instantanea de Win32_Processor puede quedar en 100 durante el
+    # propio analisis. Se prefiere el contador de rendimiento del sistema
+    # operativo (_Total) y se usa Win32_Processor solo como respaldo.
+    $cpuLoad = $null
+    try {
+        $perfProcesador = Get-CimInstance -ClassName Win32_PerfFormattedData_PerfOS_Processor `
+            -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq '_Total' } | Select-Object -First 1
+        if ($null -ne $perfProcesador) {
+            $valor = Get-DiagUsbPropertyValue -InputObject $perfProcesador -PropertyName 'PercentProcessorTime'
+            if ($null -ne $valor) { $cpuLoad = [math]::Round([double]$valor, 1) }
+        }
+    }
+    catch {
+        $cpuLoad = $null
+    }
+    if ($null -eq $cpuLoad -and $processor.Count -gt 0) {
+        $cpuLoad = [math]::Round(($processor | Measure-Object -Property LoadPercentage -Average).Average, 1)
+    }
 
     return [ordered]@{
         processor_queue_length = $queueLength

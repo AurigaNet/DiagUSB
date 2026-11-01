@@ -47,7 +47,7 @@ $result = New-DiagUsbCollectorResult -CollectorId 'proxy_settings' -TimeoutSecon
     $autoConfig = Remove-DiagUsbProxyCredentials -Value $autoConfig
 
     $entorno = @()
-    foreach ($nombre in @('HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY')) {
+    foreach ($nombre in @('HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY')) {
         $valor = [string][Environment]::GetEnvironmentVariable($nombre)
         if ($valor) {
             $entorno += [ordered]@{
@@ -56,6 +56,10 @@ $result = New-DiagUsbCollectorResult -CollectorId 'proxy_settings' -TimeoutSecon
             }
         }
     }
+
+    # NO_PROXY no es un proxy: es una lista de exclusiones. Se informa aparte
+    # para no contarla como configuracion que desvia el trafico.
+    $noProxy = [string][Environment]::GetEnvironmentVariable('NO_PROXY')
 
     $loopback = $false
     if ($servidor -match '(?i)(^|[=;\s])(127\.0\.0\.1|localhost)(:|\b)') {
@@ -71,6 +75,7 @@ $result = New-DiagUsbCollectorResult -CollectorId 'proxy_settings' -TimeoutSecon
         manual_remote_proxy = [bool]($habilitado -and $servidor -and -not $loopback)
         environment_proxy = @($entorno)
         environment_proxy_count = $entorno.Count
+        no_proxy = $noProxy
     }
 }
 

@@ -242,6 +242,7 @@ def run_collectors(package_id: str, logger=None) -> list[CollectorResult]:
                     status=query_data.get("status", "unknown"),
                     duration_ms=query_data.get("duration_ms", 0),
                     timeout_seconds=query_data.get("timeout_seconds", 15),
+                    message=str(query_data.get("message") or ""),
                 ),
                 metadata={"context": contexto} if isinstance(contexto, dict) else {},
             ))

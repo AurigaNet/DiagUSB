@@ -68,7 +68,11 @@ $result = New-DiagUsbCollectorResult -CollectorId 'lan_reachability' -TimeoutSec
             $_.IPAddress -notlike '224.*' -and
             $_.IPAddress -notlike '239.*' -and
             $_.IPAddress -ne '255.255.255.255' -and
-            $_.IPAddress -notlike '169.254.*'
+            $_.IPAddress -notlike '169.254.*' -and
+            # Excluir difusion y multicast: su MAC es FF-FF-FF-FF-FF-FF o
+            # empieza con 01-00-5E / 33-33. No son equipos a los que hacer ping.
+            $_.LinkLayerAddress -notmatch '^(FF-FF-FF-FF-FF-FF|00-00-00-00-00-00)$' -and
+            $_.LinkLayerAddress -notmatch '^(01-00-5E|33-33)'
         } |
         Sort-Object -Property @{ Expression = { if ($_.State -eq 'Reachable') { 0 } else { 1 } } }, IPAddress |
         Select-Object -First 8)

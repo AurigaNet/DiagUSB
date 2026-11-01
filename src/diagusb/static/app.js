@@ -1198,6 +1198,18 @@
             }
         }
 
+        function estadoEtiqueta(status) {
+            const etiquetas = {
+                ok: 'ok',
+                empty: 'sin datos',
+                error: 'error',
+                timeout: 'tiempo agotado',
+                not_available: 'no disponible',
+                denied: 'requiere administrador'
+            };
+            return etiquetas[status] || status;
+        }
+
         function getStatusBadge(ok, errors, problems, empty) {
             problems = problems || 0;
             empty = empty || 0;
@@ -1243,6 +1255,7 @@
                     mostrarIntegridad(data.integridad_fallida);
                     document.getElementById('diffSection').style.display = 'none';
                     const nProblemas = (data.findings || []).length;
+                    const noEval = (data.not_available_count || 0) + (data.denied_count || 0);
                     renderProblemas(data.findings || []);
                     renderMetricas(data.metricas);
                     let html = '<div class="diag-card ' + ((data.error_count > 0 || nProblemas > 0) ? 'warning' : 'success') + '">';
@@ -1255,6 +1268,7 @@
                     html += '<span>OK: ' + data.ok_count + '</span>';
                     html += '<span>Errores: ' + data.error_count + '</span>';
                     html += '<span>Sin datos: ' + (data.empty_count || 0) + '</span>';
+                    if (noEval > 0) html += '<span>No evaluado: ' + noEval + '</span>';
                     html += '<span>Problemas: ' + nProblemas + '</span>';
                     html += '<span>' + escHtml(data.timestamp) + '</span>';
                     if (data.identidad && data.identidad.id_corto) html += '<span>Equipo: ' + escHtml(data.identidad.id_corto) + '</span>';
@@ -1263,11 +1277,15 @@
                     for (const result of data.results) {
                         const status = (result.query && result.query.status) || 'unknown';
                         const cardClass = status === 'ok' ? 'success' : (status === 'error' ? 'error' : 'warning');
+                        const badgeClass = status === 'ok' ? 'ok' : (status === 'error' ? 'error' : 'warning');
                         html += '<div class="diag-card ' + cardClass + '" style="margin-top: 12px; border-left-width: 2px;">';
                         html += '<div class="diag-header">';
                         html += '<span class="diag-title">' + escHtml(result.collector_id || 'unknown') + '</span>';
-                        html += '<span class="diag-badge ' + (status === 'ok' ? 'ok' : 'error') + '">' + escHtml(status) + '</span>';
+                        html += '<span class="diag-badge ' + badgeClass + '">' + escHtml(estadoEtiqueta(status)) + '</span>';
                         html += '</div>';
+                        if (result.query && result.query.message) {
+                            html += '<div class="diag-stats"><span>' + escHtml(result.query.message) + '</span></div>';
+                        }
                         html += '<div class="diag-json">' + escHtml(formatJson(result.data || result)) + '</div>';
                         html += '</div>';
                     }
@@ -1324,6 +1342,7 @@
                 let totalErrors = 0;
                 let totalOk = 0;
                 let totalEmpty = 0;
+                let totalNoEval = 0;
                 let totalProblems = 0;
                 let totalCollectors = 0;
                 const allFindings = [];
@@ -1335,10 +1354,12 @@
                 for (const diag of data.diagnostics) {
                     const errors = diag.error_count || 0;
                     const ok = diag.ok_count || 0;
+                    const noEval = (diag.not_available_count || 0) + (diag.denied_count || 0);
                     const problems = (diag.findings || []).length;
                     totalErrors += errors;
                     totalOk += ok;
                     totalEmpty += (diag.empty_count || 0);
+                    totalNoEval += noEval;
                     totalProblems += problems;
                     totalCollectors += diag.collectors_count || (diag.results || []).length;
 
@@ -1368,6 +1389,7 @@
                     html += '<span>OK: ' + ok + '</span>';
                     html += '<span>Errores: ' + errors + '</span>';
                     html += '<span>Sin datos: ' + (diag.empty_count || 0) + '</span>';
+                    if (noEval > 0) html += '<span>No evaluado: ' + noEval + '</span>';
                     html += '<span>Problemas: ' + problems + '</span>';
                     html += '</div>';
 
@@ -1376,6 +1398,10 @@
                         if (status === 'error') {
                             html += '<div class="diag-json" style="margin-top: 8px; padding: 8px;">';
                             html += '<strong>' + escHtml(result.collector_id || 'unknown') + ':</strong> ' + escHtml(formatJson(result.data || result));
+                            html += '</div>';
+                        } else if (status !== 'ok' && result.query && result.query.message) {
+                            html += '<div class="diag-json" style="margin-top: 8px; padding: 8px;">';
+                            html += '<strong>' + escHtml(result.collector_id || 'unknown') + ' (' + escHtml(estadoEtiqueta(status)) + '):</strong> ' + escHtml(result.query.message);
                             html += '</div>';
                         }
                     }
@@ -1413,6 +1439,7 @@
                     '<span>Colectores OK: ' + totalOk + '</span>' +
                     '<span>Colectores con error: ' + totalErrors + '</span>' +
                     '<span>Sin datos: ' + totalEmpty + '</span>' +
+                    (totalNoEval ? '<span>Colectores no evaluados: ' + totalNoEval + '</span>' : '') +
                     '<span>Problemas detectados: ' + totalProblems + '</span>' +
                     '</div>' +
                     '</div>' + htmlOmitidos + html;

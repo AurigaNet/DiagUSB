@@ -430,19 +430,28 @@ class RuleEngine:
         findings = []
         disks = self._get_data(result) if isinstance(self._get_data(result), list) else []
         for disk in disks:
-            free_percent = disk.get("free_percent", 100)
+            if not isinstance(disk, dict):
+                continue
+            free_percent = disk.get("free_percent")
+            if free_percent is None:
+                continue
+            try:
+                free_percent = float(free_percent)
+            except (TypeError, ValueError):
+                continue
+            etiqueta = str(disk.get("device_id") or "").strip().rstrip(":") or "sin identificar"
             if free_percent < critical_threshold:
                 findings.append(Finding(
                     severity="critical",
                     collector_id="logical_disks",
-                    message=f"Espacio crítico en {disk.get('device_id')}: {free_percent:.1f}% libre",
+                    message=f"Espacio crítico en {etiqueta}: {free_percent:.1f}% libre",
                     details={"device_id": disk.get("device_id"), "free_gb": disk.get("free_gb"), "total_gb": disk.get("total_gb")}
                 ))
             elif free_percent < warning_threshold:
                 findings.append(Finding(
                     severity="warning",
                     collector_id="logical_disks",
-                    message=f"Espacio limitado en disco {disk.get('device_id')}: {free_percent:.1f}% libre",
+                    message=f"Espacio limitado en disco {etiqueta}: {free_percent:.1f}% libre",
                     details={"device_id": disk.get("device_id")}
                 ))
         return findings
@@ -1101,6 +1110,12 @@ class RuleEngine:
         for ev in data:
             if not isinstance(ev, dict):
                 continue
+            # Algunos eventos se registran con nivel Error aunque su propio
+            # HResult indique exito (p. ej. TPM-WMI 1801). No son fallas.
+            mensaje_evento = str(ev.get("message") or "")
+            if ("HResult: La operación se completó correctamente" in mensaje_evento
+                    or "HResult: The operation completed successfully" in mensaje_evento):
+                continue
             ts = self._parse_timestamp(ev.get("time_created"))
             if not ts or ts < hace_7:
                 continue
@@ -1278,15 +1293,18 @@ class RuleEngine:
                 state = (svc.get("state") or "").lower()
                 if start_mode != "auto" or state == "running":
                     continue
+                # "No inicia" exige un codigo de salida distinto de cero: un
+                # servicio automatico detenido sin error ya lo informa
+                # _check_service_failures, y duplicarlo confunde.
+                exit_code = svc.get("exit_code")
+                if exit_code in (None, 0, "0"):
+                    continue
                 nombre = svc.get("display_name") or svc.get("name") or "desconocido"
                 clave = (collector_id, nombre, state)
                 if clave in vistos:
                     continue
                 vistos.add(clave)
-                exit_code = svc.get("exit_code")
-                detalle = f"estado: {svc.get('state') or 'desconocido'}"
-                if exit_code not in (None, 0, "0"):
-                    detalle += f", codigo de salida: {exit_code}"
+                detalle = f"estado: {svc.get('state') or 'desconocido'}, codigo de salida: {exit_code}"
                 findings.append(Finding(
                     severity="error",
                     collector_id=collector_id,
@@ -1390,7 +1408,7 @@ class RuleEngine:
                 return [Finding(
                     severity="warning",
                     collector_id="network_neighbors",
-                    message="No se ven otros equipos en la red local (puede ser una red aislada)",
+                    message="No se ven otros equipos en la red local (solo la puerta de enlace en la tabla de vecinos)",
                     details={"neighbor_count": ndata.get("neighbor_count"),
                              "visible_count": ndata.get("visible_count")},
                     knowledge_id="equipos_red_no_visibles",
@@ -1607,11 +1625,13 @@ _engine = RuleEngine()
 
 
 # Estados de colector que NO son un resultado valido: el colector no se pudo
-# evaluar (permisos, no disponible, error o tiempo agotado). Nunca deben
-# interpretarse como "sin problemas".
+# evaluar (permisos, error o tiempo agotado). Nunca deben interpretarse como
+# "sin problemas". ``not_available`` queda fuera a proposito: describe una
+# funcion ausente o un servicio detenido que ya informa su propio colector
+# (por ejemplo ``spooler_service``); se refleja en la cobertura como "no
+# evaluado" y en el detalle de cada colector, sin duplicar el hallazgo.
 _ESTADOS_NO_EVALUADO = {
     "denied": "No evaluado (requiere administrador)",
-    "not_available": "No evaluado (no disponible en este equipo)",
     "error": "No evaluado (error al recopilar)",
     "timeout": "No evaluado (tiempo de espera agotado)",
 }
@@ -1625,6 +1645,14 @@ def _estado_observacion(obs) -> str:
     return getattr(query, "status", "") if query else ""
 
 
+def _mensaje_observacion(obs) -> str:
+    """Motivo informado por el colector (tolerando query dict u objeto)."""
+    query = getattr(obs, "query", None)
+    if isinstance(query, dict):
+        return str(query.get("message") or "")
+    return str(getattr(query, "message", "") or "") if query else ""
+
+
 def _findings_no_evaluados(observations: list[CollectorResult]) -> list[Finding]:
     """Findings sinteticos para colectores que no se pudieron evaluar."""
     findings: list[Finding] = []
@@ -1633,6 +1661,9 @@ def _findings_no_evaluados(observations: list[CollectorResult]) -> list[Finding]
         mensaje = _ESTADOS_NO_EVALUADO.get(status)
         if not mensaje:
             continue
+        motivo = _mensaje_observacion(obs).strip()
+        if motivo:
+            mensaje = f"{mensaje}: {motivo}"
         findings.append(Finding(
             severity="warning",
             collector_id=getattr(obs, "collector_id", ""),

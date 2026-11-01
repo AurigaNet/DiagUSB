@@ -20,6 +20,11 @@ if (-not $__diagusb_common) {
 . $__diagusb_common
 
 $result = New-DiagUsbCollectorResult -CollectorId 'printers' -ScriptBlock {
+    $spooler = Get-Service -Name 'Spooler' -ErrorAction SilentlyContinue
+    if ($null -eq $spooler -or $spooler.Status -ne 'Running') {
+        throw 'DIAGUSB_NOT_AVAILABLE: el servicio Spooler no esta en ejecucion; no se pueden enumerar impresoras.'
+    }
+
     Get-CimInstance -ClassName Win32_Printer | Sort-Object -Property Name | ForEach-Object {
         [ordered]@{
             device_id = $_.DeviceID
