@@ -14,6 +14,7 @@ build/*
 !build/diagusb.spec
 !build/diagusb_gui.spec
 !build/ejecutar_diagusb.spec
+!build/ejecutar_diagusb_onedir.spec
 !build/entry_console.py
 !build/entry_gui.py
 !build/README.md

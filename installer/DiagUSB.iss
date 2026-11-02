@@ -12,7 +12,7 @@
 #define MiAppName "DiagUSB"
 #define MiAppPublisher "Daniel Ricardo Novoa"
 #define MiAppURL "https://github.com/AurigaNet/DiagUSB"
-#define MiAppExe "DiagUSB.exe"
+#define MiAppExe "Ejecutar DiagUSB.exe"
 #define MiPayload "..\dist\DiagUSB"
 
 [Setup]
@@ -43,8 +43,8 @@ PrivilegesRequired=lowest
 MinVersion=10.0
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-OutputDir=..\dist\installer
-OutputBaseFilename=DiagUSB-Setup-{#MiAppVersion}
+OutputDir=..
+OutputBaseFilename=Ejecutar DiagUSB
 SetupIconFile=..\assets\branding\diagusb.ico
 WizardStyle=modern dark
 WizardImageFile=..\assets\branding\wizard.bmp
