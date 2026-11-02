@@ -221,3 +221,47 @@ def test_actualizaciones_pendientes_informa_no_disponible():
                    "get_pending_updates.ps1")
     assert "DIAGUSB_NOT_AVAILABLE" in texto
     assert "PSWindowsUpdate" in texto
+
+
+# ---------------------------------------------------------------------------
+# Revision total: identificacion de colectores
+# ---------------------------------------------------------------------------
+
+def test_revision_total_conserva_el_id_del_colector_con_timeout():
+    import diagusb.web_server as ws
+
+    diagnostico = {
+        "package": "puertos_locales",
+        "package_label": "Puertos locales",
+        "results": [{"query": {"status": "timeout", "message": "Timeout de 60s"},
+                     "data": {}}],
+        "findings": [],
+    }
+    metricas = ws._metricas_de_full_scan([diagnostico])
+    fila = next(c for c in metricas["categorias"]
+                if c["paquete_id"] == "puertos_locales")
+    assert fila["colectores"] == ["listening_ports"]
+    assert "None" not in fila["colectores"]
+    assert fila["timeout"] == 1
+    assert fila["total"] == 1
+
+
+def test_timeout_de_colector_conserva_su_identificador():
+    import diagusb.web_server as ws
+    from diagusb.core import integridad
+
+    original_powershell = ws.run_powershell
+    original_verificar = integridad.verificar
+    ws.run_powershell = lambda ruta, timeout=60: {
+        "query": {"status": "timeout", "message": "Timeout de 60s"}, "data": {}}
+    integridad.verificar = lambda ruta: (True, "")
+    try:
+        diag = ws.run_diagnostic("puertos_locales")
+    finally:
+        ws.run_powershell = original_powershell
+        integridad.verificar = original_verificar
+
+    assert diag["results"][0]["collector_id"] == "listening_ports"
+    assert diag["error_count"] == 1
+    assert diag["no_evaluado_count"] == 1
+

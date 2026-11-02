@@ -368,18 +368,36 @@ def _metricas_validadas(metricas) -> dict:
 
 def _metricas_de_full_scan(diagnostics: list) -> dict:
     """Metricas combinadas de una revision total (un modulo por paquete)."""
+    mapa = {m["id"]: list(m["collectors"]) for m in _mapa_paquetes()}
+    resultados = []
+    paquetes = []
+    for d in diagnostics:
+        if not isinstance(d, dict):
+            continue
+        pid = d.get("package") or ""
+        ids = mapa.get(pid) or []
+        propios = [r for r in (d.get("results") or []) if isinstance(r, dict)]
+        if ids and len(propios) == len(ids):
+            # Un script por colector: el orden de ejecucion coincide. Un
+            # colector que responde timeout/error no trae ``collector_id`` en
+            # su resultado y antes se perdia como "None" en la tabla.
+            propios = [
+                r if r.get("collector_id") else dict(r, collector_id=cid)
+                for r, cid in zip(propios, ids)
+            ]
+        resultados.extend(propios)
+        paquetes.append({
+            "id": pid,
+            "label": d.get("package_label") or pid,
+            "collectors": ids or [r.get("collector_id") for r in propios],
+        })
+
     combinado = {
         "package": "full-scan",
         "package_label": "Revisión Total",
-        "results": [r for d in diagnostics for r in (d.get("results") or [])],
+        "results": resultados,
         "findings": [f for d in diagnostics for f in (d.get("findings") or [])],
-        "paquetes": [
-            {"id": d.get("package") or "",
-             "label": d.get("package_label") or d.get("package") or "",
-             "collectors": [r.get("collector_id")
-                            for r in (d.get("results") or [])]}
-            for d in diagnostics if isinstance(d, dict)
-        ],
+        "paquetes": paquetes,
     }
     return calcular_metricas(combinado, modulos=len(diagnostics))
 
@@ -457,11 +475,15 @@ def _matar_arbol_procesos(proc) -> None:
         pass
 
 
-def run_powershell(script_path: str, timeout: int = 30) -> dict:
+def run_powershell(script_path: str, timeout: int = 60) -> dict:
     """Ejecuta un script PowerShell y devuelve el resultado JSON.
 
     Al vencer ``timeout`` termina el arbol de procesos completo para que la
     duracion real no supere el limite aunque el script haya lanzado hijos.
+    El limite externo (60 s) es la red de seguridad: cada colector ya declara
+    su propio ``-TimeoutSeconds`` interno. La revision total ejecuta varios
+    paquetes en paralelo y con la proteccion en tiempo real activa un colector
+    puede tardar mas de 30 s aunque solo tarde segundos por separado.
     """
     try:
         proc = subprocess.Popen(
@@ -736,7 +758,11 @@ def run_diagnostic(package_name: str, symptom: str = None,
                 })
                 continue
             raw = run_powershell(str(ps_file))
-            results.extend(_normalize_results(raw))
+            for resultado in _normalize_results(raw):
+                if isinstance(resultado, dict) and not resultado.get("collector_id"):
+                    resultado["collector_id"] = _collector_id_real(
+                        ps_file, ps_file.stem)
+                results.append(resultado)
         finally:
             _progreso_completado(package_name)
 
