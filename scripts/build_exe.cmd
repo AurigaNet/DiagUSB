@@ -2,15 +2,22 @@
 chcp 65001 >nul
 REM SPDX-License-Identifier: GPL-3.0-or-later
 REM Copyright (C) 2026 Daniel Ricardo Novoa
-REM Construye el ejecutable portable de DiagUSB con PyInstaller.
+REM OBSOLETO PARA DISTRIBUCION. Construye el ejecutable onefile de PyInstaller
+REM (dist\diagusb\diagusb.exe), que Windows Defender marca como troyano por el
+REM empaquetado de un solo archivo. Se conserva solo para el workflow de firma
+REM (.github\workflows\build-firma.yml). Para entregar DiagUSB use:
+REM   scripts\build_instalador.cmd
 REM Uso: scripts\build_exe.cmd   (sin pausas, apto para automatizacion)
 
 cd /d "%~dp0.."
 
 echo.
 echo ============================================================
-echo  DiagUSB - Construccion de ejecutable portable
+echo  DiagUSB - Construccion de ejecutable portable (OBSOLETO)
 echo ============================================================
+echo.
+echo AVISO: el onefile lo detectan los antivirus. Para entregar use:
+echo    scripts\build_instalador.cmd
 echo.
 
 python --version >nul 2>&1

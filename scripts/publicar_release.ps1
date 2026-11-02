@@ -128,7 +128,7 @@ if ($ConInstalador) {
     Escribir-Paso 'Construyendo el instalador (PyInstaller + Inno Setup)'
     Invocar-Script -Script (Join-Path $PSScriptRoot 'build_installer.ps1') `
         -Opciones @{ Python = $Python }
-    $instalador = Join-Path $Repo ("dist\installer\DiagUSB-Setup-{0}.exe" -f $Version)
+    $instalador = Join-Path $Repo 'Ejecutar DiagUSB.exe'
     if (-not (Test-Path -LiteralPath $instalador -PathType Leaf)) {
         throw ("No se genero el instalador esperado: {0}" -f $instalador)
     }

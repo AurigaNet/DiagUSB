@@ -1,6 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Daniel Ricardo Novoa
 # Construye el instalador unico de DiagUSB para Windows x64.
+#
+# La aplicacion se empaqueta en modo carpeta (dist\DiagUSB) y el instalador
+# de Inno Setup la contiene. El resultado es "Ejecutar DiagUSB.exe" en la raiz
+# del repositorio. No se usa el modo onefile de PyInstaller: ese archivo
+# empaquetado es el que dispara las heuristicas de los antivirus.
 
 [CmdletBinding()]
 param(
@@ -15,7 +20,7 @@ $Repo = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $VersionPy = Join-Path $Repo 'src\diagusb\_version.py'
 $Iss = Join-Path $Repo 'installer\DiagUSB.iss'
 $Payload = Join-Path $Repo 'dist\DiagUSB'
-$Salida = Join-Path $Repo 'dist\installer'
+$Instalador = Join-Path $Repo 'Ejecutar DiagUSB.exe'
 
 function Escribir-Paso {
     param([string]$Texto)
@@ -56,15 +61,13 @@ else {
 }
 
 Escribir-Paso "Verificando dependencias de build"
-& $Python -c "import PyInstaller, PIL" 2>$null
+& $Python -c "import PyInstaller" 2>$null
 if ($LASTEXITCODE -ne 0) {
-    throw "Faltan dependencias. Ejecuta: $Python -m pip install pyinstaller pillow"
+    throw "Falta PyInstaller. Ejecuta: $Python -m pip install pyinstaller"
 }
 $Iscc = Buscar-InnoSetup
 
-Escribir-Paso "Generando recursos de marca y metadatos"
-& $Python -X utf8 (Join-Path $Repo 'scripts\generar_marca.py')
-if ($LASTEXITCODE -ne 0) { throw "Fallo la generacion de recursos de marca." }
+Escribir-Paso "Generando metadatos"
 & $Python -X utf8 (Join-Path $Repo 'scripts\generar_version_info.py')
 if ($LASTEXITCODE -ne 0) { throw "Fallo la generacion de version_info." }
 & $Python -X utf8 (Join-Path $Repo 'scripts\generar_manifiesto.py')
@@ -74,23 +77,21 @@ Escribir-Paso "Limpiando payload anterior"
 if (Test-Path -LiteralPath $Payload) {
     Remove-Item -LiteralPath $Payload -Recurse -Force
 }
-if (Test-Path -LiteralPath $Salida) {
-    Get-ChildItem -LiteralPath $Salida -Filter 'DiagUSB-Setup-*.exe' -File -ErrorAction SilentlyContinue |
-        Remove-Item -Force
+if (Test-Path -LiteralPath $Instalador) {
+    Remove-Item -LiteralPath $Instalador -Force
 }
-New-Item -ItemType Directory -Force -Path $Salida | Out-Null
 
-Escribir-Paso "Construyendo aplicacion windowed con PyInstaller"
+Escribir-Paso "Construyendo la aplicacion en modo carpeta con PyInstaller"
 Push-Location $Repo
 try {
-    & $Python -m PyInstaller 'build\diagusb_gui.spec' --noconfirm --clean
+    & $Python -m PyInstaller 'build\ejecutar_diagusb_onedir.spec' --noconfirm --clean --distpath dist
     if ($LASTEXITCODE -ne 0) { throw "Fallo PyInstaller." }
 }
 finally {
     Pop-Location
 }
 
-$Exe = Join-Path $Payload 'DiagUSB.exe'
+$Exe = Join-Path $Payload 'Ejecutar DiagUSB.exe'
 if (-not (Test-Path -LiteralPath $Exe)) {
     throw "PyInstaller no genero $Exe"
 }
@@ -109,7 +110,6 @@ finally {
     Pop-Location
 }
 
-$Instalador = Join-Path $Salida "DiagUSB-Setup-$Version.exe"
 if (-not (Test-Path -LiteralPath $Instalador)) {
     throw "No se genero el instalador esperado: $Instalador"
 }

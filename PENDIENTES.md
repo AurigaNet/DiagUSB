@@ -1,14 +1,16 @@
 # PENDIENTES
 
 - Probar el kit armado en un Windows 10 y un Windows 11 reales; este entorno no tiene acceso a hardware de destino.
-- Validar `temperatura` y `ventilador` con LibreHardwareMonitor en hardware real (sensores expuestos).
+- Validar `temperatura` y `ventilador` en un segundo equipo: en el equipo de desarrollo la revisión total devolvió lecturas reales de temperatura y RPM, pero falta confirmar otros fabricantes y equipos sin sensores expuestos.
 - Validar `bateria` en un portatil real con bateria (el equipo de desarrollo es de escritorio).
 - Probar el arranque real del pendrive live USB en hardware (Ventoy + SystemRescue 13.02 + memtest86+ 9.00), en UEFI y Legacy, con Secure Boot activo y desactivado, y en al menos dos fabricantes; el procedimiento solo se validó por lectura y con archivos de prueba.
 - Confirmar manualmente la versión de Ventoy usada y su hash en la fuente oficial: DiagUSB no la fija porque la página oficial no publica un SHA-256 directo; queda excluida de la verificación automática.
 - Descargar las ISO reales de SystemRescue 13.02 y memtest86+ 9.00 y comprobar que el SHA-256 coincide con el manifiesto; en este entorno solo se copió el checksum oficial, no se descargaron las imágenes.
 - Probar el panel «Pendrive de arranque» y `python -m diagusb live-usb` desde el kit armado y desde el ejecutable PyInstaller, no solo desde el código fuente.
 - Completar la publicación real: cortar un tag `v*` en GitHub, verificar que el workflow `build-kit.yml` genere el kit, las notas, `release.json` y `SHA256SUMS.txt`, y que el job de release recalcule los hashes y publique; en este entorno el flujo se ejecutó en local con el kit real armado, pero no se creó un tag ni un release de GitHub.
-- Reconstruir y probar el instalador opcional con Inno Setup (`scripts\build_installer.ps1 -ConInstalador`) y confirmar `VersionInfoVersion` y la instalación/desinstalación; en esta fase no se generó el instalador.
+- Crear un GitHub Release con el instalador cuando haya `gh` instalado y autenticado. La descarga por `raw.githubusercontent.com` ya se validó de punta a punta el 2026-11-02, pero un Release da URL estable y permite publicar `SHA256SUMS.txt` junto al `.exe`.
+- Postular a SignPath Foundation para firmar el instalador sin costo. Mientras no haya firma, la entrega se apoya en el SHA-256 y en el escaneo con Defender.
+- Validar la instalación y desinstalación del instalador en un Windows 11 real y en una cuenta de usuario sin permisos de Administrador. En el equipo de desarrollo (Windows 10, instalación por usuario) se validaron instalación silenciosa, instalación desde el archivo descargado, 160 archivos sin bloqueos y desinstalación con código 0.
 - Descargar un kit publicado desde GitHub y validarlo con `python -m diagusb verificar-kit <zip> --estricto`, `scripts\probar_kit.ps1` y la comparación del SHA-256 del ZIP con las notas; falta esa prueba de punta a punta fuera del repositorio.
 - Decidir cuándo renombrar `## [Sin publicar]` a `## [<versión>]` en el CHANGELOG y subir `_version.py`: las notas actuales usan `Sin publicar` y lo advierten de forma explícita.
 - Validar la comparación contra la referencia en dos equipos reales distintos: la captura y la lectura de hardware se probaron en este equipo, pero falta confirmar que una referencia de otro equipo nunca se compara y que las diferencias de impresora aparecen de punta a punta en la interfaz y el informe.

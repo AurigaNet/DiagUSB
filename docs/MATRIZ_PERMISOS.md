@@ -31,11 +31,12 @@ Los **34** colectores restantes dan el mismo estado y la misma estructura de dat
 
 ## Caso especial: colector `cpu_temperature` (agregado posterior a 0.1.0)
 
-El colector de temperatura del CPU **no depende del permiso de DiagUSB**, sino de LibreHardwareMonitor (LHM), herramienta externa que se ejecuta aparte:
+El colector de temperatura del CPU usa `LibreHardwareMonitorLib.dll`, incluida en el instalador:
 
-- DiagUSB consulta `http://127.0.0.1:8085` (solo loopback; configurable con `DIAGUSB_LHM_URL`), sin permisos especiales.
-- Si LHM no esta activo (o lo esta sin su servidor web), el paquete `temperatura` queda bloqueado por el preflight de capacidades con el motivo visible; DiagUSB mismo **no necesita** elevacion para este colector.
-- Medir el cambio de lecturas con/sin admin de **DiagUSB** no aplica; el cambio relevante esta en ejecutar LHM con o sin Administrador (sin admin + sin PawnIO, LHM no expone sensores CPU).
+- La lectura principal es directa por la DLL, dentro del mismo proceso de DiagUSB.
+- Algunos sensores solo se exponen cuando DiagUSB se ejecuta como Administrador; sin esos permisos el paquete informa los datos disponibles o queda como no disponible, con el motivo visible.
+- Queda un respaldo opcional por el servidor web local de LibreHardwareMonitor en `http://127.0.0.1:8085` (solo loopback; configurable con `DIAGUSB_LHM_URL`).
+- Medir el cambio de lecturas con/sin admin es una prueba pendiente en hardware distinto al equipo de desarrollo.
 
 ## Contextos pendientes
 

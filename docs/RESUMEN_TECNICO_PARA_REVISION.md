@@ -216,13 +216,13 @@ Trampas de Windows 5.1 / StrictMode que ya están resueltas en los colectores:
 
 ### 5.15 Publicación (`core/publicacion.py`, `scripts/publicar_release.ps1`)
 
-- **Alcance**: prepara una publicación local reproducible sin firmar ni subir nada. La distribución principal sigue siendo el kit portable; el instalador es opcional.
+- **Alcance**: prepara una publicación local reproducible sin firmar ni subir nada. La distribución principal es el instalador `Ejecutar DiagUSB.exe` con la aplicación en modo carpeta; el kit portable queda como alternativa.
 - **Validación de versión y tag**: `version_declarada` lee `src/diagusb/_version.py`; `validar_tag` acepta `v<version>` y `v<version>-rcN` y falla cerrado con cualquier otro tag.
 - **Notas**: `seccion_changelog` usa primero `## [Sin publicar]` (cambios que se publican ahora) y si no existe `## [<version>]`. `generar_notas` calcula el SHA-256 y el tamaño reales de cada artefacto, arma la tabla, copia el cuerpo del CHANGELOG y agrega el alcance y los límites; no inventa versiones, URLs ni hashes. `notas-release` escribe el Markdown y, opcionalmente, `release.json`.
 - **Verificación de kit**: `verificar_kit` acepta una carpeta o un ZIP, localiza su `SHA256SUMS.txt`, resuelve el prefijo `DiagUSB/`, comprueba cada hash, exige los archivos obligatorios (intérprete, manifiesto de hashes, fuente, paquetes, colectores compartidos, manifiesto y guía de live USB, documentos legales) y detecta rutas peligrosas, `__pycache__`/`.pyc` y archivos ajenos. En modo `--estricto` los archivos ajenos son fallo, salvo `config/`, `reports/` y `tools/downloads/`; nunca escribe nada.
-- **Flujo local**: `scripts\publicar_release.ps1` ejecuta la suite, arma el kit, verifica el ZIP en modo estricto, corre `probar_kit.ps1`, construye opcionalmente el instalador, copia los artefactos a `dist\release\<version>\`, genera notas y `release.json`, y escribe `SHA256SUMS.txt`. Cualquier fallo detiene el proceso.
+- **Flujo local**: `scripts\publicar_release.ps1` ejecuta la suite, arma el kit, verifica el ZIP en modo estricto, corre `probar_kit.ps1`, construye el instalador con `-ConInstalador`, copia los artefactos a `dist\release\<version>\`, genera notas y `release.json`, y escribe `SHA256SUMS.txt`. Cualquier fallo detiene el proceso. `scripts\build_instalador.cmd` construye solo el instalador.
 - **CI**: `build-kit.yml` valida el tag contra la versión, ejecuta la suite, arma y prueba el kit, lo verifica en modo estricto, genera notas y sumas, y en el job de release recalcula cada hash antes de `gh release create --notes-file`. `build-firma.yml` verifica que el ejecutable arranque y que el manifiesto de live USB y su guía estén en el paquete de PyInstaller.
-- **Límites**: el flujo se ejecutó en local con el kit real armado; no se creó un tag ni un release de GitHub desde este entorno, y el instalador no se reconstruyó. Ver `docs/PUBLICACION.md` y `PENDIENTES.md`.
+- **Límites**: el flujo se ejecutó en local con el kit real armado y con el instalador construido, descargado de GitHub, escaneado, instalado y probado de punta a punta; no se creó un tag ni un release de GitHub desde este entorno porque no hay `gh`. Ver `docs/PUBLICACION.md` y `PENDIENTES.md`.
 
 ## 6. Formatos de datos principales
 
